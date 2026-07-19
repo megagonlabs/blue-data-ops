@@ -15,12 +15,16 @@ from blue_data_ops.operators.intersect_operator import IntersectOperator
 from blue_data_ops.operators.join_operator import JoinOperator
 from blue_data_ops.operators.max_operator import MaxOperator
 from blue_data_ops.operators.min_operator import MinOperator
+from blue_data_ops.operators.multipart_query_operator import MultipartQueryOperator
 from blue_data_ops.operators.nl2bn_operator import NL2BNOperator
 from blue_data_ops.operators.nl2llm_operator import NL2LLMOperator
+from blue_data_ops.operators.nl2query_router_operator import NL2QueryRouterOperator
 from blue_data_ops.operators.nl2sql_operator import NL2SQLOperator
 from blue_data_ops.operators.normalize_text_operator import NormalizeTextOperator
 from blue_data_ops.operators.operator import Operator
+from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
 from blue_data_ops.operators.project_operator import ProjectOperator
+from blue_data_ops.operators.query_breakdown_operator import QueryBreakdownOperator
 from blue_data_ops.operators.registry import (
     OperatorCard,
     OperatorRegistry,
@@ -70,8 +74,10 @@ __all__ = [
     "JoinOperator",
     "MaxOperator",
     "MinOperator",
+    "MultipartQueryOperator",
     "NL2BNOperator",
     "NL2LLMOperator",
+    "NL2QueryRouterOperator",
     "NL2SQLOperator",
     "NormalizeTextOperator",
     "Operator",
@@ -80,7 +86,9 @@ __all__ = [
     "OperatorError",
     "OperatorValidationError",
     "Properties",
+    "PlanDiscoverOperator",
     "ProjectOperator",
+    "QueryBreakdownOperator",
     "Record",
     "ResolveError",
     "SelectOperator",

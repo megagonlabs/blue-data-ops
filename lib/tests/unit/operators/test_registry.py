@@ -179,6 +179,7 @@ def test_list_cards_ordering(registry: OperatorRegistry) -> None:
 def test_default_registry_covers_package_operators() -> None:
     registry = default_registry()
     cards = registry.list_cards()
+    assert len(cards) == 36
     names = {c.name for c in cards}
     # spot checks across families; every card is at 1.0.0 unless overridden
     for expected in ("select", "join", "nl2sql", "nl2bn", "data_discover", "semantic_join"):

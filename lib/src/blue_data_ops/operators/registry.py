@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from types import GenericAlias
 from typing import Any
 
 from blue_data_ops.operators.operator import Operator
@@ -138,6 +139,9 @@ def default_registry(**versions: Any) -> OperatorRegistry:
     registry = OperatorRegistry()
     for attr_name in operator_package.__all__:
         candidate = getattr(operator_package, attr_name)
+        # Python 3.10 treats PEP 585 aliases as types that ABCMeta rejects.
+        if isinstance(candidate, GenericAlias):
+            continue
         if (
             isinstance(candidate, type)
             and issubclass(candidate, Operator)

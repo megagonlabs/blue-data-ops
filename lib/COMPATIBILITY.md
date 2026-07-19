@@ -54,3 +54,17 @@ Operators expose only the declarative attribute metadata surface; the reference 
 dependency combination do not overwrite each other; the reference implementation keys by
 combination only. Merged-group lookups use the group's own dependency fields; the reference
 implementation reuses the last target's source-field list, which can silently drop results.
+
+## Portable plan boundaries
+
+Portable data pipelines replace the reference runtime synchronizer with an optional injected
+`sync_backend`. The default is a no-op, so the plan package has no Redis, pubsub, stream, or
+connection dependency; the established `auto_sync` and per-call `sync` truth table is retained.
+
+Operator entities store only pinned `operator_id` values in `name@<MAJOR.MINOR.PATCH>` form. Bare
+names, deployment routes, and host addresses are rejected so serialized plans remain deterministic
+and deployment-neutral.
+
+Plan-producing operators emit the canonical live record through `to_dict()`. The reference
+implementation used the generic `get_data()` accessor for this emission path; both expose the same
+live record, but `to_dict()` is the portable serialization boundary.
