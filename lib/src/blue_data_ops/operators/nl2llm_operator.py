@@ -3,8 +3,16 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 _PROMPT = """
 You are an intelligent system that converts a natural language query into a structured JSON output.
@@ -95,12 +103,20 @@ class NL2LLMOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         query = cast(str, attributes.get("query", ""))
         context = attributes.get("context", "")
         attrs = cast("list[dict[str, Any]]", attributes.get("attrs", []))
 
         if not query or not query.strip():
-            return []
+            return FunctionResult([], {})
 
         attrs_formatted = ""
         if attrs:
@@ -116,7 +132,10 @@ class NL2LLMOperator(Operator):
         client = resolve_llm_client(merged)
         additional_data = {"query": query, "context": context, "attrs": attrs_formatted}
 
-        return [client.execute_api_call({}, properties=merged, additional_data=additional_data)]
+        return FunctionResult(
+            [client.execute_api_call({}, properties=merged, additional_data=additional_data)],
+            {},
+        )
 
     def validate(
         self,
@@ -124,14 +143,24 @@ class NL2LLMOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid natural-language query attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
 
         if "attrs" in attributes and attributes["attrs"]:
             for attr in cast("list[Any]", attributes["attrs"]):
                 if not isinstance(attr, dict) or "name" not in attr:
-                    return False
-        return True
+                    return ValidationResult(False, reason)
+        return ValidationResult(True, None)
 
     def explain(
         self,
@@ -143,3 +172,19 @@ class NL2LLMOperator(Operator):
             "output": output,
             "attributes": attributes,
         }
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when a natural-language request should be sent to the configured reasoning "
+        "provider and returned as structured data."
+    ),
+    tags=(
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "capability-generation",
+        "requires-llm",
+    ),
+)

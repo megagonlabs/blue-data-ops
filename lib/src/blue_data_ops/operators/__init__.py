@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from blue_data_ops.operators._discovery import DiscoveryError, DiscoverySpec
 from blue_data_ops.operators.argmax_operator import ArgmaxOperator
 from blue_data_ops.operators.argmin_operator import ArgminOperator
 from blue_data_ops.operators.avg_operator import AvgOperator
@@ -21,7 +22,8 @@ from blue_data_ops.operators.nl2llm_operator import NL2LLMOperator
 from blue_data_ops.operators.nl2query_router_operator import NL2QueryRouterOperator
 from blue_data_ops.operators.nl2sql_operator import NL2SQLOperator
 from blue_data_ops.operators.normalize_text_operator import NormalizeTextOperator
-from blue_data_ops.operators.operator import Operator
+from blue_data_ops.operators.operator import DeclarativeOperator, Operator
+from blue_data_ops.operators.operator_discover_operator import OperatorDiscoverOperator
 from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
 from blue_data_ops.operators.project_operator import ProjectOperator
 from blue_data_ops.operators.query_breakdown_operator import QueryBreakdownOperator
@@ -29,7 +31,10 @@ from blue_data_ops.operators.registry import (
     OperatorCard,
     OperatorRegistry,
     ResolveError,
+    UpgradeError,
     default_registry,
+    upgrade_legacy_operator_id,
+    versioned_registry,
 )
 from blue_data_ops.operators.segment_text_operator import SegmentTextOperator
 from blue_data_ops.operators.select_operator import SelectOperator
@@ -40,14 +45,22 @@ from blue_data_ops.operators.semantic_project_operator import SemanticProjectOpe
 from blue_data_ops.operators.semantic_transform_operator import SemanticTransformOperator
 from blue_data_ops.operators.sum_operator import SumOperator
 from blue_data_ops.operators.types import (
+    ABSENT,
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    ErrorCategory,
+    ErrorCode,
+    ErrorRecord,
+    ErrorStage,
+    ExecMeta,
+    FunctionResult,
     OperatorError,
     OperatorValidationError,
     Properties,
     Record,
+    ValidationResult,
 )
 from blue_data_ops.operators.union_operator import UnionOperator
 from blue_data_ops.operators.vector_embed_operator import VectorEmbedOperator
@@ -57,6 +70,7 @@ from blue_data_ops.operators.vector_similarity_operator import VectorSimilarityO
 __all__ = [
     "ArgmaxOperator",
     "ArgminOperator",
+    "ABSENT",
     "Attributes",
     "AttributeSpec",
     "AvgOperator",
@@ -69,6 +83,12 @@ __all__ = [
     "Data",
     "DataBundle",
     "DeleteOperator",
+    "ErrorCategory",
+    "ErrorCode",
+    "ErrorRecord",
+    "ErrorStage",
+    "ExecMeta",
+    "FunctionResult",
     "IntersectOperator",
     "InsertOperator",
     "JoinOperator",
@@ -80,9 +100,13 @@ __all__ = [
     "NL2QueryRouterOperator",
     "NL2SQLOperator",
     "NormalizeTextOperator",
+    "DeclarativeOperator",
+    "DiscoverySpec",
+    "DiscoveryError",
     "Operator",
     "OperatorCard",
     "OperatorRegistry",
+    "OperatorDiscoverOperator",
     "OperatorError",
     "OperatorValidationError",
     "Properties",
@@ -91,6 +115,8 @@ __all__ = [
     "QueryBreakdownOperator",
     "Record",
     "ResolveError",
+    "UpgradeError",
+    "upgrade_legacy_operator_id",
     "SelectOperator",
     "SemanticExtractOperator",
     "SemanticFilterOperator",
@@ -100,7 +126,9 @@ __all__ = [
     "SegmentTextOperator",
     "SumOperator",
     "UnionOperator",
+    "ValidationResult",
     "default_registry",
+    "versioned_registry",
     "VectorEmbedOperator",
     "VectorSearchOperator",
     "VectorSimilarityOperator",

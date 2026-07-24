@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, Data, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    Data,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 
 class SelectOperator(Operator):
@@ -40,6 +49,14 @@ class SelectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         operand_key = attributes.get("operand_key")
         operand = attributes.get("operand")
         operand_val = attributes.get("operand_val")
@@ -47,7 +64,7 @@ class SelectOperator(Operator):
         eps = attributes.get("eps", 1e-9)
 
         if not input_data or not input_data[0]:
-            return []
+            return FunctionResult([], {})
 
         data = input_data[0]
         result: Data = []
@@ -57,7 +74,7 @@ class SelectOperator(Operator):
             record_value = record[operand_key]
             if _evaluate_condition(record_value, operand, operand_val, approximate_match, eps):
                 result.append(record)
-        return [result]
+        return FunctionResult([result], {})
 
     def validate(
         self,
@@ -65,15 +82,25 @@ class SelectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = "supply a supported operand and a nonnegative eps value"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, suggestion)
         operand = attributes.get("operand")
         if operand and operand not in ("=", "!=", ">", ">=", "<", "<="):
-            return False
+            return ValidationResult(False, suggestion)
         eps = attributes.get("eps", 1e-9)
         if eps < 0:
-            return False
-        return True
+            return ValidationResult(False, suggestion)
+        return ValidationResult(True, None)
 
 
 def _evaluate_condition(
@@ -132,3 +159,17 @@ def _evaluate_condition(
         return False
 
     return False
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when records should be filtered by a type-aware comparison against one key."
+    ),
+    tags=(
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-filter",
+    ),
+)

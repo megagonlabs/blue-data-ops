@@ -4,14 +4,17 @@ from collections.abc import Callable, Sequence
 from importlib import import_module
 from typing import Any, ClassVar, Protocol, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 _DEFAULT_MODEL = "all-MiniLM-L6-v2"
@@ -76,6 +79,14 @@ class VectorEmbedOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         properties = properties or {}
         model_ref = attributes.get("model_ref")
         text_fields = cast(list[str], attributes.get("text_field", []))
@@ -89,7 +100,7 @@ class VectorEmbedOperator(Operator):
         if on_missing_fields not in {"raise", "use_empty"}:
             raise ValueError("on_missing_fields must be one of: raise, use_empty")
         if not input_data or not input_data[0]:
-            return [[]]
+            return FunctionResult([[]], {})
 
         constructor = _embedder_constructor()
         if model_ref:
@@ -166,7 +177,7 @@ class VectorEmbedOperator(Operator):
                     new_record["embed.fields"] = str(text_fields) if text_fields else "all_fields"
                 output_records.append(new_record)
             output_data.append(output_records)
-        return output_data
+        return FunctionResult(output_data, {})
 
     def validate(
         self,
@@ -174,27 +185,50 @@ class VectorEmbedOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid vector embedding attributes and properties"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
 
         text_fields = attributes.get("text_field")
         if text_fields is not None and not isinstance(text_fields, list):
-            return False
+            return ValidationResult(False, reason)
         if text_fields and not all(
             isinstance(field, str) for field in cast(list[object], text_fields)
         ):
-            return False
+            return ValidationResult(False, reason)
         on_missing_fields = attributes.get("on_missing_fields")
         if on_missing_fields is not None and on_missing_fields not in {
             "raise",
             "use_empty",
         }:
-            return False
+            return ValidationResult(False, reason)
         if properties is not None:
             batch_size = properties.get("batch_size")
             if batch_size is not None and (not isinstance(batch_size, int) or batch_size < 1):
-                return False
+                return ValidationResult(False, reason)
             normalize = properties.get("normalize")
             if normalize is not None and not isinstance(normalize, bool):
-                return False
-        return True
+                return ValidationResult(False, reason)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke="Use when text fields must be encoded as vectors for later similarity work.",
+    tags=(
+        "domain-vector",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-embedding",
+        "requires-vector",
+    ),
+)

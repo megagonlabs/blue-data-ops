@@ -1,10 +1,8 @@
-"""Acceptance tests for the migrated data_discover operator.
+"""Compatibility tests for data discovery.
 
-Operator logic is asserted against the recording seam double (consumer-shaped
-search pages); scope construction, threshold semantics, progressive pagination,
-the swallow-to-[[]] design, the validator, and the explainer quirks are pinned
-from blue-dev's source. The seam's search normalization itself is
-pinned against real blue-data in the data-layer suite.
+These tests cover scope construction, threshold semantics, pagination, contained
+search failures, validation, and explanations through a recording registry seam.
+The data-layer suite covers search-result normalization against ``blue-data``.
 """
 
 from __future__ import annotations
@@ -69,7 +67,7 @@ def _props(seam: RegistrySeam) -> dict[str, Any]:
     return {"data_registry": seam}
 
 
-# --- D-F1: no registry => [[]] ---
+# --- no registry returns [[]] --------------------------------------------------------
 @pytest.mark.parametrize("properties", [None, {}, {"unrelated": 1}])
 def test_no_registry_returns_empty(
     op: DataDiscoverOperator, properties: dict[str, Any] | None
@@ -77,7 +75,7 @@ def test_no_registry_returns_empty(
     assert op.apply(INPUT, dict(ATTRS), properties) == [[]]
 
 
-# --- D-F2: simple pagination call shapes ---
+# --- simple pagination call shapes --------------------------------------------------
 def test_hierarchical_call_shape_default(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
     op.apply(INPUT, dict(ATTRS), _props(seam))
     [call] = seam.calls_to("search_records_hierarchical")
@@ -100,7 +98,7 @@ def test_regular_call_shape_forwards_approximate_hybrid(
     assert call["page"] == 0 and call["page_size"] == 10
 
 
-# --- D-F3: threshold + filter_names + transform ---
+# --- threshold, name filtering, and transformation ----------------------------------
 def test_threshold_keeps_low_scores_only(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
     seam.search_pages = {0: [_hit("close", 0.2), _hit("far", 0.9)]}
     out = op.apply(INPUT, {**ATTRS, "threshold": 0.5}, _props(seam))
@@ -143,7 +141,7 @@ def test_include_metadata(op: DataDiscoverOperator, seam: _RecordingSeam) -> Non
     assert "metadata" not in out[0][1]  # absent record: no metadata key even when requested
 
 
-# --- D-F4: limit ---
+# --- result limit -------------------------------------------------------------------
 @pytest.mark.parametrize(
     "limit,expected", [(-1, 2), (0, 0), (1, 1), (5, 2)], ids=["all", "zero", "one", "over"]
 )
@@ -152,7 +150,7 @@ def test_limit(op: DataDiscoverOperator, seam: _RecordingSeam, limit: int, expec
     assert len(out[0]) == expected
 
 
-# --- D-F5: progressive pagination ---
+# --- progressive pagination ---------------------------------------------------------
 def test_progressive_pagination_walks_pages_until_threshold(
     op: DataDiscoverOperator, seam: _RecordingSeam
 ) -> None:
@@ -190,7 +188,7 @@ def test_progressive_requires_approximate_or_hybrid(
     assert [r["name"] for r in out[0]] == ["a"]  # single call, unfiltered
 
 
-# --- D-F6: the swallow design ---
+# --- contained search failures ------------------------------------------------------
 def test_search_failure_swallowed_to_empty(op: DataDiscoverOperator) -> None:
     # The upstream engine's crash shape (and any other search failure) is logged
     # and swallowed to [[]] by design.
@@ -198,7 +196,7 @@ def test_search_failure_swallowed_to_empty(op: DataDiscoverOperator) -> None:
     assert op.apply(INPUT, dict(ATTRS), _props(raising)) == [[]]
 
 
-# --- D-F7: scope construction (module helper, upstream-verbatim observables) ---
+# --- scope construction -------------------------------------------------------------
 @pytest.mark.parametrize(
     "kwargs,expected",
     [
@@ -247,7 +245,7 @@ def test_construct_scope_matrix(kwargs: dict[str, Any], expected: str | None) ->
     assert _construct_scope(**{**defaults, **kwargs}) == expected
 
 
-# --- D-F8: transform helper edge (score passthrough only when present) ---
+# --- score passthrough in transformed results ---------------------------------------
 def test_transform_without_score(seam: _RecordingSeam) -> None:
     result = {"name": "x", "id": "/x", "scope": "/"}
     transformed = _transform_result(result, "source", seam, include_metadata=False)
@@ -256,7 +254,7 @@ def test_transform_without_score(seam: _RecordingSeam) -> None:
 
 # --- Validator ---
 # `approximate` is declared required (with a default) — the presence-based base gate
-# rejects attribute sets without it, matching blue-dev's declared schema.
+# rejects attribute sets without it, matching Blue source's declared schema.
 BASE: dict[str, Any] = {"search_query": "q", "approximate": True}
 
 

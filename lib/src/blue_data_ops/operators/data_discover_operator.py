@@ -5,10 +5,22 @@ import traceback
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import RegistrySeam, resolve_registry
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _DataDiscoverFailure(Exception):
+    pass
 
 
 def _construct_scope(
@@ -26,11 +38,9 @@ def _construct_scope(
         # notes the ambiguity). Kept as-is.
         return None
 
-    # If auto_construct is False, return the scope as-is
     if not auto_construct:
         return scope.rstrip("/") if scope else "/"
 
-    # If explicit scope is provided and not default, use it as base
     if scope and scope != "/":
         base_scope = scope.rstrip("/")
     else:
@@ -42,7 +52,6 @@ def _construct_scope(
                 if collection:
                     base_scope = f"/source/{source}/database/{database}/collection/{collection}"
 
-    # Parse the base scope to extract components
     scope_parts = base_scope.split("/")
     scope_components: dict[str, str | None] = {
         "source": None,
@@ -53,7 +62,6 @@ def _construct_scope(
         "attribute": None,
     }
 
-    # Extract components from scope path
     for i, part in enumerate(scope_parts):
         if part in scope_components and i + 1 < len(scope_parts):
             scope_components[part] = scope_parts[i + 1]
@@ -65,7 +73,6 @@ def _construct_scope(
     if collection:
         scope_components["collection"] = collection
 
-    # Construct the appropriate scope based on concept_type
     if concept_type == "source":
         return "/"
     elif concept_type == "database":
@@ -129,7 +136,6 @@ def _construct_scope(
             return f"/source/{scope_components['source']}"
         return "/"
     else:
-        # Fallback to base scope for unknown concept types
         return base_scope
 
 
@@ -165,7 +171,7 @@ def _transform_result(
 class DataDiscoverOperator(Operator):
     """Discover registry records through hierarchical or regular search."""
 
-    # Faithful to blue-dev's data_discover operator: any search failure is logged
+    # Faithful to Blue source's data_discover operator: any search failure is logged
     # and swallowed to [[]] (by upstream design); scope=None (the default) is passed
     # through as None regardless of source/database/collection; the threshold keeps
     # score <= threshold (lower = better); progressive pagination walks pages until
@@ -237,20 +243,28 @@ class DataDiscoverOperator(Operator):
             default=True,
         ),
         "scope": AttributeSpec(
-            type="str", description="Search scope to limit results", default=None
+            type="str",
+            description="Search scope to limit results",
+            default=None,
+            materialize_default=False,
         ),
         "source": AttributeSpec(
-            type="str", description="Source name to limit search scope", default=None
+            type="str",
+            description="Source name to limit search scope",
+            default=None,
+            materialize_default=False,
         ),
         "database": AttributeSpec(
             type="str",
             description="Database name to limit search scope (requires source)",
             default=None,
+            materialize_default=False,
         ),
         "collection": AttributeSpec(
             type="str",
             description="Collection name to limit search scope (requires source and database)",
             default=None,
+            materialize_default=False,
         ),
         "auto_construct_scope": AttributeSpec(
             type="bool",
@@ -274,7 +288,17 @@ class DataDiscoverOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
-        # Extract attributes
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _DataDiscoverFailure:
+            return [[]]
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         search_query = cast(str, attributes.get("search_query", ""))
         approximate = attributes.get("approximate", True)
         hybrid = attributes.get("hybrid", False)
@@ -300,16 +324,14 @@ class DataDiscoverOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            return [[]]
+            raise _DataDiscoverFailure
 
         results: list[dict[str, Any]] = []
 
         try:
-            # Determine if we should use simple pagination
             use_simple_pagination = (not approximate and not hybrid) or not progressive_pagination
 
             if use_simple_pagination:
-                # Simple pagination - single call
                 if use_hierarchical_search:
                     search_results = registry.search_records_hierarchical(
                         search_query,
@@ -330,7 +352,6 @@ class DataDiscoverOperator(Operator):
                     )
 
                 for result in search_results:
-                    # filter names
                     if result["name"] in filter_names:
                         continue
 
@@ -338,8 +359,6 @@ class DataDiscoverOperator(Operator):
                         result, concept_type, registry, include_metadata
                     )
 
-                    # Apply threshold filtering for approximate/hybrid search even in
-                    # simple pagination mode
                     if (approximate or hybrid) and "score" in result:
                         score = float(result["score"])
                         if score <= threshold:
@@ -347,7 +366,6 @@ class DataDiscoverOperator(Operator):
                     else:
                         results.append(transformed_result)
             else:
-                # Progressive pagination - loop until threshold exceeded
                 current_page = page
 
                 while True:
@@ -374,11 +392,9 @@ class DataDiscoverOperator(Operator):
                         break
 
                     for result in search_results:
-                        # filter names
                         if result["name"] in filter_names:
                             continue
 
-                        # Check threshold for approximate/hybrid search
                         score = float(result["score"])
                         if score <= threshold:
                             transformed_result = _transform_result(
@@ -386,28 +402,24 @@ class DataDiscoverOperator(Operator):
                             )
                             results.append(transformed_result)
                         else:
-                            # Score exceeds threshold, stop searching
                             break
 
-                    # Check if last result exceeded threshold to break outer loop
                     if len(search_results) > 0:
                         last_score = float(search_results[-1]["score"])
                         if last_score > threshold:
                             break
 
-                    # Move to next page
                     current_page += 1
 
-        except Exception:
+        except Exception as error:
             # Upstream design: any search failure is logged and swallowed to [[]].
             logger.error(traceback.format_exc())
-            return [[]]
+            raise _DataDiscoverFailure from error
 
-        # limit results
         if limit >= 0:
-            return [results[:limit]]
+            return FunctionResult([results[:limit]], {})
         else:
-            return [results]
+            return FunctionResult([results], {})
 
     def validate(
         self,
@@ -415,13 +427,23 @@ class DataDiscoverOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = "supply a valid search query, pagination, threshold, scope, and concept type"
         # Upstream wraps its base-validator call defensively; kept, though the base
         # gate is total.
         try:
             if not super().validate(input_data, attributes, properties):
-                return False
+                return ValidationResult(False, suggestion)
         except Exception:
-            return False
+            return ValidationResult(False, suggestion)
 
         search_query = cast(str, attributes.get("search_query", ""))
         page = cast(int, attributes.get("page", 0))
@@ -432,16 +454,16 @@ class DataDiscoverOperator(Operator):
         collection = attributes.get("collection", None)
 
         if not search_query or not search_query.strip():
-            return False
+            return ValidationResult(False, suggestion)
         if page < 0 or page_size <= 0:
-            return False
+            return ValidationResult(False, suggestion)
         if threshold < 0 or threshold > 1:
-            return False
+            return ValidationResult(False, suggestion)
 
         if database and not source:
-            return False
+            return ValidationResult(False, suggestion)
         if collection and (not source or not database):
-            return False
+            return ValidationResult(False, suggestion)
 
         concept_type = attributes.get("concept_type", "source")
         valid_concept_types = [
@@ -453,9 +475,9 @@ class DataDiscoverOperator(Operator):
             "attribute",
         ]
         if concept_type not in valid_concept_types:
-            return False
+            return ValidationResult(False, suggestion)
 
-        return True
+        return ValidationResult(True, None)
 
     def explain(
         self,
@@ -467,7 +489,6 @@ class DataDiscoverOperator(Operator):
         use_hierarchical = attributes.get("use_hierarchical_search", True)
         search_method = "hierarchical" if use_hierarchical else "regular"
 
-        # Get scope information
         scope = cast("str | None", attributes.get("scope", None))
         source = cast("str | None", attributes.get("source", None))
         database = cast("str | None", attributes.get("database", None))
@@ -492,3 +513,20 @@ class DataDiscoverOperator(Operator):
                 f"{len(output[0]) if output and len(output) > 0 else 0} results."
             ),
         }
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when data sources, databases, collections, or entities must be found through "
+        "registry search."
+    ),
+    tags=(
+        "domain-plan",
+        "flow-head",
+        "accepts-none",
+        "produces-metadata",
+        "capability-discovery",
+        "capability-metadata-search",
+        "requires-data-registry",
+    ),
+)

@@ -3,8 +3,17 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 _MAPPING_PROMPT = """## Task
 You are given a database schema with data types and natural language projection instructions. Your job is to generate a JSON mapping that specifies which columns to keep and how to rename them.
@@ -90,9 +99,17 @@ class SemanticProjectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         projection_instructions = cast(str, attributes.get("projection_instructions", ""))
         if not input_data or not input_data[0] or not projection_instructions:
-            return []
+            return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         client = resolve_llm_client(merged)
@@ -127,7 +144,7 @@ class SemanticProjectOperator(Operator):
                         projected_record[new_key] = record[old_key]
                 projected_records.append(projected_record)
             results.append(projected_records)
-        return results
+        return FunctionResult(results, {})
 
     @staticmethod
     def _extract_typed_schema(data_group: list[Record]) -> dict[str, str]:
@@ -153,7 +170,33 @@ class SemanticProjectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, "supply valid semantic projection attributes")
         projection_instructions = attributes.get("projection_instructions", "")
-        return isinstance(projection_instructions, str) and bool(projection_instructions.strip())
+        valid = isinstance(projection_instructions, str) and bool(projection_instructions.strip())
+        return ValidationResult(
+            valid,
+            None if valid else "supply valid semantic projection attributes",
+        )
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke="Use when fields must be selected or renamed using semantic mapping.",
+    tags=(
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-projection",
+        "requires-llm",
+    ),
+)

@@ -3,8 +3,17 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 _FILTER_PROMPT = """## Task
 You are given a data record and natural language filter conditions. Your job is to determine if the record should be included in the filtered results.
@@ -101,12 +110,20 @@ class SemanticFilterOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         filter_conditions = cast(dict[str, str], attributes.get("filter_conditions", {}))
         context = cast(str, attributes.get("context", ""))
         demonstrations = cast(str, attributes.get("demonstrations", ""))
         return_idx = attributes.get("return_idx", False)
         if not input_data or not input_data[0] or not filter_conditions:
-            return []
+            return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         client = resolve_llm_client(merged)
@@ -150,7 +167,7 @@ class SemanticFilterOperator(Operator):
                 results.append([{"indices": filtered_indices}])
             else:
                 results.append(filtered_records)
-        return results
+        return FunctionResult(results, {})
 
     def validate(
         self,
@@ -158,15 +175,41 @@ class SemanticFilterOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid semantic filter attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
         filter_conditions_value = attributes.get("filter_conditions", {})
         if not isinstance(filter_conditions_value, dict) or not filter_conditions_value:
-            return False
+            return ValidationResult(False, reason)
         filter_conditions = cast(dict[Any, Any], filter_conditions_value)
         for key, value in filter_conditions.items():
             if not isinstance(key, str) or not isinstance(value, str):
-                return False
+                return ValidationResult(False, reason)
             if not key.strip() or not value.strip():
-                return False
-        return True
+                return ValidationResult(False, reason)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when records must be filtered by a natural-language condition that cannot be "
+        "expressed as a simple comparison."
+    ),
+    tags=(
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-filter",
+        "requires-llm",
+    ),
+)

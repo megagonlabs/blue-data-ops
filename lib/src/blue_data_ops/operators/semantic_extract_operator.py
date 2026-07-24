@@ -3,8 +3,17 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 _SINGLE_EXTRACT_PROMPT = """## Task
 You are given one data record in JSON format. Your job is to extract specific entities from this record and return them in strict JSON format.
@@ -152,13 +161,21 @@ class SemanticExtractOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         entities = cast(list[dict[str, Any]], attributes.get("entities", []))
         context = attributes.get("context", "")
         demonstrations = attributes.get("demonstrations", "")
         extract_with_single_prompt = attributes.get("extract_with_single_prompt", True)
 
         if not input_data or not input_data[0] or not entities:
-            return []
+            return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         client = resolve_llm_client(merged)
@@ -187,7 +204,7 @@ class SemanticExtractOperator(Operator):
                     merged,
                 )
             results.append(result)
-        return results
+        return FunctionResult(results, {})
 
     @staticmethod
     def _extract_all_entities_single_prompt(
@@ -301,23 +318,48 @@ class SemanticExtractOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid semantic extraction attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
         entities_value = attributes.get("entities", [])
         if not isinstance(entities_value, list) or not entities_value:
-            return False
+            return ValidationResult(False, reason)
         entities = cast(list[Any], entities_value)
         for entity in entities:
             if not isinstance(entity, dict) or "name" not in entity:
-                return False
+                return ValidationResult(False, reason)
             entity = cast(dict[Any, Any], entity)
             if "description" in entity and not isinstance(entity["description"], str):
-                return False
+                return ValidationResult(False, reason)
             if "type" in entity and not isinstance(entity["type"], str):
-                return False
+                return ValidationResult(False, reason)
             if "extract_on_fields" in entity:
                 if not isinstance(entity["extract_on_fields"], list):
-                    return False
+                    return ValidationResult(False, reason)
                 if len(cast(list[Any], entity["extract_on_fields"])) == 0:
-                    return False
-        return True
+                    return ValidationResult(False, reason)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when entities must be extracted from text fields using natural-language instructions."
+    ),
+    tags=(
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-extraction",
+        "requires-llm",
+    ),
+)

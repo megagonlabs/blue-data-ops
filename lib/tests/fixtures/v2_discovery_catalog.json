@@ -1,0 +1,1163 @@
+{
+  "card_count": 72,
+  "cards": [
+    {
+      "description": "Given an input data, find the record(s) that contain the maximum value for a specified key.",
+      "name": "argmax",
+      "operator_id": "argmax@2.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-record-selection"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when the result must retain the input record or tied records with the largest value for one key."
+    },
+    {
+      "description": "Given an input data, find the record(s) that contain the maximum value for a specified key.",
+      "name": "argmax",
+      "operator_id": "argmax@1.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-record-selection"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when the result must retain the input record or tied records with the largest value for one key."
+    },
+    {
+      "description": "Given an input data, find the record(s) that contain the minimum value for a specified key.",
+      "name": "argmin",
+      "operator_id": "argmin@2.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-record-selection"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when the result must retain the input record or tied records with the smallest value for one key."
+    },
+    {
+      "description": "Given an input data, find the record(s) that contain the minimum value for a specified key.",
+      "name": "argmin",
+      "operator_id": "argmin@1.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-record-selection"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when the result must retain the input record or tied records with the smallest value for one key."
+    },
+    {
+      "description": "Given an input data, calculate the average (arithmetic mean) of values for a specified key across all records.",
+      "name": "avg",
+      "operator_id": "avg@2.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-average",
+        "capability-reduction"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its arithmetic mean across records."
+    },
+    {
+      "description": "Given an input data, calculate the average (arithmetic mean) of values for a specified key across all records.",
+      "name": "avg",
+      "operator_id": "avg@1.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-average",
+        "capability-reduction"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its arithmetic mean across records."
+    },
+    {
+      "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier.",
+      "name": "classify",
+      "operator_id": "classify@2.0.0",
+      "tags": [
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-classification",
+        "requires-ml"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when labeled numeric vectors are available and class labels are needed for input samples."
+    },
+    {
+      "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier.",
+      "name": "classify",
+      "operator_id": "classify@1.0.0",
+      "tags": [
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-classification",
+        "requires-ml"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when labeled numeric vectors are available and class labels are needed for input samples."
+    },
+    {
+      "description": "Given input data with numeric vectors, compute clusters and predict cluster index for each sample using KMeans, DBSCAN, or GaussianMixture.",
+      "name": "cluster",
+      "operator_id": "cluster@2.0.0",
+      "tags": [
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-clustering",
+        "requires-ml"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when unlabeled numeric vectors must be assigned to clusters."
+    },
+    {
+      "description": "Given input data with numeric vectors, compute clusters and predict cluster index for each sample using KMeans, DBSCAN, or GaussianMixture.",
+      "name": "cluster",
+      "operator_id": "cluster@1.0.0",
+      "tags": [
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-clustering",
+        "requires-ml"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when unlabeled numeric vectors must be assigned to clusters."
+    },
+    {
+      "description": "Creates databases in data sources using the data registry. If the database already exists, it will be overwritten if overwrite is True.",
+      "name": "create_database",
+      "operator_id": "create_database@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-control",
+        "accepts-data",
+        "accepts-none",
+        "produces-data",
+        "produces-side-effect",
+        "capability-create-database",
+        "requires-data-registry",
+        "requires-database-backend"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when one or more databases must be created or overwritten through the data registry."
+    },
+    {
+      "description": "Creates databases in data sources using the data registry. If the database already exists, it will be overwritten if overwrite is True.",
+      "name": "create_database",
+      "operator_id": "create_database@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-control",
+        "accepts-data",
+        "accepts-none",
+        "produces-data",
+        "produces-side-effect",
+        "capability-create-database",
+        "requires-data-registry",
+        "requires-database-backend"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when one or more databases must be created or overwritten through the data registry."
+    },
+    {
+      "description": "Creates tables (entities) in database collections using the data registry. If the table already exists, it will be overwritten if overwrite is True.",
+      "name": "create_table",
+      "operator_id": "create_table@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-control",
+        "accepts-data",
+        "accepts-none",
+        "produces-data",
+        "produces-side-effect",
+        "capability-create-table",
+        "requires-data-registry",
+        "requires-database-backend"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when tables or entities must be created or overwritten in registry-backed database collections."
+    },
+    {
+      "description": "Creates tables (entities) in database collections using the data registry. If the table already exists, it will be overwritten if overwrite is True.",
+      "name": "create_table",
+      "operator_id": "create_table@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-control",
+        "accepts-data",
+        "accepts-none",
+        "produces-data",
+        "produces-side-effect",
+        "capability-create-table",
+        "requires-data-registry",
+        "requires-database-backend"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when tables or entities must be created or overwritten in registry-backed database collections."
+    },
+    {
+      "description": "Discovers data sources using the data registry",
+      "name": "data_discover",
+      "operator_id": "data_discover@2.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-head",
+        "accepts-none",
+        "produces-metadata",
+        "capability-discovery",
+        "capability-metadata-search",
+        "requires-data-registry"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when data sources, databases, collections, or entities must be found through registry search."
+    },
+    {
+      "description": "Discovers data sources using the data registry",
+      "name": "data_discover",
+      "operator_id": "data_discover@1.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-head",
+        "accepts-none",
+        "produces-metadata",
+        "capability-discovery",
+        "capability-metadata-search",
+        "requires-data-registry"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when data sources, databases, collections, or entities must be found through registry search."
+    },
+    {
+      "description": "Given input data, delete records from the first data source at specified positions",
+      "name": "delete",
+      "operator_id": "delete@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-delete"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records must be removed from the first input group by position."
+    },
+    {
+      "description": "Given input data, delete records from the first data source at specified positions",
+      "name": "delete",
+      "operator_id": "delete@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-delete"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records must be removed from the first input group by position."
+    },
+    {
+      "description": "Given input data, insert records by position(s)",
+      "name": "insert",
+      "operator_id": "insert@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-combine",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-insert"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records from input groups must be inserted at specified positions."
+    },
+    {
+      "description": "Given input data, insert records by position(s)",
+      "name": "insert",
+      "operator_id": "insert@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-combine",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-insert"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records from input groups must be inserted at specified positions."
+    },
+    {
+      "description": "Inserts data rows into database tables in a data source.",
+      "name": "insert_table",
+      "operator_id": "insert_table@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-sink",
+        "accepts-data",
+        "produces-data",
+        "produces-side-effect",
+        "capability-persist",
+        "requires-data-registry",
+        "requires-database-backend"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when record rows must be persisted into a registry-backed database table."
+    },
+    {
+      "description": "Inserts data rows into database tables in a data source.",
+      "name": "insert_table",
+      "operator_id": "insert_table@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-sink",
+        "accepts-data",
+        "produces-data",
+        "produces-side-effect",
+        "capability-persist",
+        "requires-data-registry",
+        "requires-database-backend"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when record rows must be persisted into a registry-backed database table."
+    },
+    {
+      "description": "Given multiple input data sources, return only records that exist in all data sources",
+      "name": "intersect",
+      "operator_id": "intersect@2.0.0",
+      "tags": [
+        "domain-set",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-intersection"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when only records shared by all input groups should remain under the configured match rule."
+    },
+    {
+      "description": "Given multiple input data sources, return only records that exist in all data sources",
+      "name": "intersect",
+      "operator_id": "intersect@1.0.0",
+      "tags": [
+        "domain-set",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-intersection"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when only records shared by all input groups should remain under the configured match rule."
+    },
+    {
+      "description": "Joins multiple JSON array data sources using N-way join operations",
+      "name": "join",
+      "operator_id": "join@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-join"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when two or more JSON record groups must be joined on configured keys and join types."
+    },
+    {
+      "description": "Joins multiple JSON array data sources using N-way join operations",
+      "name": "join",
+      "operator_id": "join@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-join"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when two or more JSON record groups must be joined on configured keys and join types."
+    },
+    {
+      "description": "Given an input data, find the maximum value for a specified key across all records.",
+      "name": "max",
+      "operator_id": "max@2.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-reduction"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its largest value."
+    },
+    {
+      "description": "Given an input data, find the maximum value for a specified key across all records.",
+      "name": "max",
+      "operator_id": "max@1.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-reduction"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its largest value."
+    },
+    {
+      "description": "Given an input data, find the minimum value for a specified key across all records.",
+      "name": "min",
+      "operator_id": "min@2.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-reduction"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its smallest value."
+    },
+    {
+      "description": "Given an input data, find the minimum value for a specified key across all records.",
+      "name": "min",
+      "operator_id": "min@1.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-reduction"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its smallest value."
+    },
+    {
+      "description": "Orchestrates the execution of multi-part query, starting with data discovery, leading to execution",
+      "name": "multipart_query",
+      "operator_id": "multipart_query@2.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-query",
+        "produces-plan",
+        "capability-query-orchestration"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when alternative multi-part query specifications must be refined into ordered data-query plans."
+    },
+    {
+      "description": "Orchestrates the execution of multi-part query, starting with data discovery, leading to execution",
+      "name": "multipart_query",
+      "operator_id": "multipart_query@1.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-query",
+        "produces-plan",
+        "capability-query-orchestration"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when alternative multi-part query specifications must be refined into ordered data-query plans."
+    },
+    {
+      "description": "Translates natural language questions into Bayesian Network queries using LLM models",
+      "name": "nl2bn",
+      "operator_id": "nl2bn@2.0.0",
+      "tags": [
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "capability-bayesian-query",
+        "capability-query-execution",
+        "capability-query-generation",
+        "requires-data-registry",
+        "requires-llm",
+        "requires-query-backend"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a natural-language question must be translated into a Bayesian-network query."
+    },
+    {
+      "description": "Translates natural language questions into Bayesian Network queries using LLM models",
+      "name": "nl2bn",
+      "operator_id": "nl2bn@1.0.0",
+      "tags": [
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "capability-bayesian-query",
+        "capability-query-execution",
+        "capability-query-generation",
+        "requires-data-registry",
+        "requires-llm",
+        "requires-query-backend"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a natural-language question must be translated into a Bayesian-network query."
+    },
+    {
+      "description": "Processes natural language query using LLM models and returns structured data",
+      "name": "nl2llm",
+      "operator_id": "nl2llm@2.0.0",
+      "tags": [
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "capability-generation",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a natural-language request should be sent to the configured reasoning provider and returned as structured data."
+    },
+    {
+      "description": "Processes natural language query using LLM models and returns structured data",
+      "name": "nl2llm",
+      "operator_id": "nl2llm@1.0.0",
+      "tags": [
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "capability-generation",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a natural-language request should be sent to the configured reasoning provider and returned as structured data."
+    },
+    {
+      "description": "Routees the execution of query, based on source",
+      "name": "nl2query_router",
+      "operator_id": "nl2query_router@2.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-metadata",
+        "produces-plan",
+        "capability-query-routing"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when discovered source metadata must be refined into a source-specific query plan."
+    },
+    {
+      "description": "Routees the execution of query, based on source",
+      "name": "nl2query_router",
+      "operator_id": "nl2query_router@1.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-metadata",
+        "produces-plan",
+        "capability-query-routing"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when discovered source metadata must be refined into a source-specific query plan."
+    },
+    {
+      "description": "Translates natural language questions into SQL queries using LLM models",
+      "name": "nl2sql",
+      "operator_id": "nl2sql@2.0.0",
+      "tags": [
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "produces-query",
+        "capability-query-execution",
+        "capability-query-generation",
+        "capability-sql",
+        "requires-data-registry",
+        "requires-llm",
+        "requires-query-backend"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a natural-language question must be translated into SQL, with optional execution."
+    },
+    {
+      "description": "Translates natural language questions into SQL queries using LLM models",
+      "name": "nl2sql",
+      "operator_id": "nl2sql@1.0.0",
+      "tags": [
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "produces-query",
+        "capability-query-execution",
+        "capability-query-generation",
+        "capability-sql",
+        "requires-data-registry",
+        "requires-llm",
+        "requires-query-backend"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a natural-language question must be translated into SQL, with optional execution."
+    },
+    {
+      "description": "Normalize raw text into a stable canonical form for downstream extraction and segmentation.",
+      "name": "normalize_text",
+      "operator_id": "normalize_text@2.0.0",
+      "tags": [
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-normalization"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when text needs canonical Unicode, whitespace, case, or recognized-date normalization before later text work."
+    },
+    {
+      "description": "Normalize raw text into a stable canonical form for downstream extraction and segmentation.",
+      "name": "normalize_text",
+      "operator_id": "normalize_text@1.0.0",
+      "tags": [
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-normalization"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when text needs canonical Unicode, whitespace, case, or recognized-date normalization before later text work."
+    },
+    {
+      "description": "Discovers plans using the operator registry to search for top-level operators as plan starters",
+      "name": "plan_discover",
+      "operator_id": "plan_discover@2.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-none",
+        "produces-plan",
+        "capability-operator-discovery",
+        "requires-operator-registry"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a task description must be matched to pinned operators and emitted as starter plans."
+    },
+    {
+      "description": "Discovers plans using the operator registry to search for top-level operators as plan starters",
+      "name": "plan_discover",
+      "operator_id": "plan_discover@1.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-none",
+        "produces-plan",
+        "capability-operator-discovery",
+        "requires-operator-registry"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a task description must be matched to pinned operators and emitted as starter plans."
+    },
+    {
+      "description": "Given an input data, return only a set of attributes for each data element (key-wise)",
+      "name": "project",
+      "operator_id": "project@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-projection"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when each record should retain and optionally rename a specified set of keys without semantic inference."
+    },
+    {
+      "description": "Given an input data, return only a set of attributes for each data element (key-wise)",
+      "name": "project",
+      "operator_id": "project@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-projection"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when each record should retain and optionally rename a specified set of keys without semantic inference."
+    },
+    {
+      "description": "Processes natural language query and break it down to subqueries using common table expressions",
+      "name": "query_breakdown",
+      "operator_id": "query_breakdown@2.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-none",
+        "produces-plan",
+        "produces-query",
+        "capability-query-decomposition",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a natural-language query must be decomposed into alternative common-table-expression plans."
+    },
+    {
+      "description": "Processes natural language query and break it down to subqueries using common table expressions",
+      "name": "query_breakdown",
+      "operator_id": "query_breakdown@1.0.0",
+      "tags": [
+        "domain-plan",
+        "flow-plan",
+        "accepts-none",
+        "produces-plan",
+        "produces-query",
+        "capability-query-decomposition",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a natural-language query must be decomposed into alternative common-table-expression plans."
+    },
+    {
+      "description": "Split normalized text into stable segments with offsets and flat metadata.",
+      "name": "segment_text",
+      "operator_id": "segment_text@2.0.0",
+      "tags": [
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-segmentation"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when normalized text must be split into stable segments with offsets and metadata."
+    },
+    {
+      "description": "Split normalized text into stable segments with offsets and flat metadata.",
+      "name": "segment_text",
+      "operator_id": "segment_text@1.0.0",
+      "tags": [
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-segmentation"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when normalized text must be split into stable segments with offsets and metadata."
+    },
+    {
+      "description": "Given an input data, filter data elements based on a specified condition by type-aware comparison (record-wise)",
+      "name": "select",
+      "operator_id": "select@2.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-filter"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records should be filtered by a type-aware comparison against one key."
+    },
+    {
+      "description": "Given an input data, filter data elements based on a specified condition by type-aware comparison (record-wise)",
+      "name": "select",
+      "operator_id": "select@1.0.0",
+      "tags": [
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-filter"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records should be filtered by a type-aware comparison against one key."
+    },
+    {
+      "description": "Extracts entities from natural language text fields using LLM models",
+      "name": "semantic_extract",
+      "operator_id": "semantic_extract@2.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-extraction",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when entities must be extracted from text fields using natural-language instructions."
+    },
+    {
+      "description": "Extracts entities from natural language text fields using LLM models",
+      "name": "semantic_extract",
+      "operator_id": "semantic_extract@1.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-extraction",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when entities must be extracted from text fields using natural-language instructions."
+    },
+    {
+      "description": "Filters records based on natural language conditions using LLM models",
+      "name": "semantic_filter",
+      "operator_id": "semantic_filter@2.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-filter",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records must be filtered by a natural-language condition that cannot be expressed as a simple comparison."
+    },
+    {
+      "description": "Filters records based on natural language conditions using LLM models",
+      "name": "semantic_filter",
+      "operator_id": "semantic_filter@1.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-filter",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records must be filtered by a natural-language condition that cannot be expressed as a simple comparison."
+    },
+    {
+      "description": "Joins two datasets based on natural language join predicate using LLM models",
+      "name": "semantic_join",
+      "operator_id": "semantic_join@2.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-embedding-filter",
+        "capability-join",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when two datasets must be joined by a natural-language relationship rather than exact keys."
+    },
+    {
+      "description": "Joins two datasets based on natural language join predicate using LLM models",
+      "name": "semantic_join",
+      "operator_id": "semantic_join@1.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-embedding-filter",
+        "capability-join",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when two datasets must be joined by a natural-language relationship rather than exact keys."
+    },
+    {
+      "description": "Projects records to select and rename columns using LLM-based mapping resolution",
+      "name": "semantic_project",
+      "operator_id": "semantic_project@2.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-projection",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when fields must be selected or renamed using semantic mapping."
+    },
+    {
+      "description": "Projects records to select and rename columns using LLM-based mapping resolution",
+      "name": "semantic_project",
+      "operator_id": "semantic_project@1.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-projection",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when fields must be selected or renamed using semantic mapping."
+    },
+    {
+      "description": "Transforms data into target fields and values using LLM-based transformations",
+      "name": "semantic_transform",
+      "operator_id": "semantic_transform@2.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-transformation",
+        "requires-llm"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records must be converted into requested target fields or values using natural-language transformations."
+    },
+    {
+      "description": "Transforms data into target fields and values using LLM-based transformations",
+      "name": "semantic_transform",
+      "operator_id": "semantic_transform@1.0.0",
+      "tags": [
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-transformation",
+        "requires-llm"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records must be converted into requested target fields or values using natural-language transformations."
+    },
+    {
+      "description": "Given an input data, calculate the sum of values for a specified key across all records.",
+      "name": "sum",
+      "operator_id": "sum@2.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-reduction",
+        "capability-sum"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its total across records."
+    },
+    {
+      "description": "Given an input data, calculate the sum of values for a specified key across all records.",
+      "name": "sum",
+      "operator_id": "sum@1.0.0",
+      "tags": [
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-reduction",
+        "capability-sum"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when a numeric key must be reduced to its total across records."
+    },
+    {
+      "description": "Given multiple input data sources, combine all records and remove exact duplicates",
+      "name": "union",
+      "operator_id": "union@2.0.0",
+      "tags": [
+        "domain-set",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-union"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when input groups must be combined and duplicate records removed under the configured match rule."
+    },
+    {
+      "description": "Given multiple input data sources, combine all records and remove exact duplicates",
+      "name": "union",
+      "operator_id": "union@1.0.0",
+      "tags": [
+        "domain-set",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-union"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when input groups must be combined and duplicate records removed under the configured match rule."
+    },
+    {
+      "description": "Convert text data into vector embeddings using a specified model.",
+      "name": "vector_embed",
+      "operator_id": "vector_embed@2.0.0",
+      "tags": [
+        "domain-vector",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-embedding",
+        "requires-vector"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when text fields must be encoded as vectors for later similarity work."
+    },
+    {
+      "description": "Convert text data into vector embeddings using a specified model.",
+      "name": "vector_embed",
+      "operator_id": "vector_embed@1.0.0",
+      "tags": [
+        "domain-vector",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-embedding",
+        "requires-vector"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when text fields must be encoded as vectors for later similarity work."
+    },
+    {
+      "description": "Perform semantic search within each dataset using text or vector queries.",
+      "name": "vector_search",
+      "operator_id": "vector_search@2.0.0",
+      "tags": [
+        "domain-vector",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-search",
+        "requires-vector"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records in each group must be ranked by similarity to a text or vector query."
+    },
+    {
+      "description": "Perform semantic search within each dataset using text or vector queries.",
+      "name": "vector_search",
+      "operator_id": "vector_search@1.0.0",
+      "tags": [
+        "domain-vector",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-search",
+        "requires-vector"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records in each group must be ranked by similarity to a text or vector query."
+    },
+    {
+      "description": "Compute similarity between two lists of records using embeddings.",
+      "name": "vector_similarity",
+      "operator_id": "vector_similarity@2.0.0",
+      "tags": [
+        "domain-vector",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-similarity",
+        "requires-vector"
+      ],
+      "version": "2.0.0",
+      "when_to_invoke": "Use when records from two groups must be compared by embedding-based similarity in pairwise or cartesian mode."
+    },
+    {
+      "description": "Compute similarity between two lists of records using embeddings.",
+      "name": "vector_similarity",
+      "operator_id": "vector_similarity@1.0.0",
+      "tags": [
+        "domain-vector",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-similarity",
+        "requires-vector"
+      ],
+      "version": "1.0.0",
+      "when_to_invoke": "Use when records from two groups must be compared by embedding-based similarity in pairwise or cartesian mode."
+    }
+  ],
+  "namespaces": [
+    "domain",
+    "flow",
+    "accepts",
+    "produces",
+    "capability",
+    "requires"
+  ],
+  "operator_count": 36,
+  "registry": "versioned_registry",
+  "schema_version": "operator-discovery/1",
+  "source_manifest": {
+    "aggregate_sha256": "fe14b1d7de2e590989ce517f6045385fd63a11051bcd54b77ebeccc6ff5f3837",
+    "files": {
+      "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
+      "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
+      "avg": "2ffc1e520e7ce1d65c9c030bdfbf6921f37bfcd97f3d8a66689437b66477c82d",
+      "classify": "9499bf0a217b6cd0e0856e946ec039c90760f6b17af1aa2875637151ffcd193e",
+      "cluster": "2ac4fdbbf672da3cdc0b50bce4f3ad712a877609dd5f493ba2a02d43a650babf",
+      "create_database": "ce5eb3429058756222d6cd93b7d26e80ff4a904898ab2375b22ddfed71d12277",
+      "create_table": "13a3fb1922b4d882212df5b274c757bb2a4159414405cee12ef766efe5e17a4c",
+      "data_discover": "b5574117ae9f35aed0934d27f2b798be62d2573db5d13705e759a203638e1995",
+      "delete": "ab33f67a6e072192556a493d6e8570735c28417e74b3590b666621c0bc64cd02",
+      "insert": "5b77700cb7a1d56b7e57fd38e73f833da89ab382e17753a6f2e2383b001e7e32",
+      "insert_table": "8737a51c3055df4d8d5f55bc5f7e45d767393506c403a3fcc09814b40696db84",
+      "intersect": "08b04aac356d9935778653b98b22acbdd5d48a7dfd6a6dfa7fa085a9a16241a9",
+      "join": "c28ff17ee207b271a671a054f5585c7606d5b8773d4b0b892a5965bd8d272401",
+      "max": "5d9a4d2de8b402ca848e5553a726deeff18c18d28a54d4cb96b4ac2c61c6e4e2",
+      "min": "5ad7edbfc06b5d61af50c29c9255b48825679f94ca856bf9a4e0b631aa7a9c5c",
+      "multipart_query": "e14c0202b1978b0b30a80e418634b9c55e8bf3d2478cd8a80a6ef3c86ef24ed1",
+      "nl2bn": "2f7d03c95a7d330a18f5ae1f593fb820559a6a17fd927c137a530707c1556a31",
+      "nl2llm": "123b9b10041d9c89dadc0ad3abae25e3fef65e9397fbf8729c743c618ff564f4",
+      "nl2query_router": "944d92fc977034dce953f325908a8aa6a9eb8be21520d0c8b76d9c7fd59186b8",
+      "nl2sql": "24e45552027691d0e1da3f526e9fe4a49af92a112c0ff5c5aeecd2b024df5b73",
+      "normalize_text": "3ba875420c503489f90865e655ea5494161be9cec59eff6702d259470db43014",
+      "plan_discover": "3c06a6828c3051101fd1805f3ff8b32715967aee284052a5478540bfc4dab70f",
+      "project": "ededc1a16f129310f44047b1fa013624ebc4d466c619d4712d1cb1583c239000",
+      "query_breakdown": "9236fd1ef7458ec2c13516d0b158d1d9ac42acf39562b0eb1be1ac318a2d63a7",
+      "segment_text": "8565aa50bed2e1124ee0d29b041453debbb05a89aac9fdc0323482eb64297153",
+      "select": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c",
+      "semantic_extract": "bcd21ac95965245564c7dd77d054e71de22bb245f47c264595e26a8efe0c9a9e",
+      "semantic_filter": "6c84a8124dabc1d7bdc981fbca98a18149174d5a59aba9ab29323459d37e5e5f",
+      "semantic_join": "d0ac8f4392ee9b8c6cf876a5e65f96258a477aed2343ad8d41a1d8a751e3e157",
+      "semantic_project": "cfb78fef257f905931a1b96cfa3245b5648201e436764c6de16d7e972056cc64",
+      "semantic_transform": "328292737735a6e7cad47a3d1bd347facd4175cb01726896add23d65b5a63360",
+      "sum": "57de9ac53c365356fa76ed8eb4e1968a9342daabb172eaeadcb934dafabbfeac",
+      "union": "b08bffdd9a6bb397c7764e68fec8e41f103b4404338ce2b2c7a71baccd2fe95b",
+      "vector_embed": "6a15fe204e50c63b343f9f991c844077fc8a6a86b7550268a4805ea9820288af",
+      "vector_search": "aa5b5888540919f12408e7cdf48af2cdb663139023818cee845021616a2dea60",
+      "vector_similarity": "4d8b0ef97c175fce63cf3554611f3752b62d6d69ba545dd4053a79b76cef163a"
+    }
+  },
+  "text_weights": {
+    "description": 5,
+    "name": 10,
+    "tags": 8,
+    "when_to_invoke": 6
+  }
+}

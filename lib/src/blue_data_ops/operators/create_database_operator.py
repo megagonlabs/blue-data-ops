@@ -4,10 +4,22 @@ import logging
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import resolve_registry
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _CreateDatabaseFailure(Exception):
+    pass
 
 
 class CreateDatabaseOperator(Operator):
@@ -37,7 +49,10 @@ class CreateDatabaseOperator(Operator):
         # The public schema declares str while retaining an empty-mapping default.
         # A caller-supplied mapping therefore fails normal attribute validation.
         "properties": AttributeSpec(
-            type="str", description="Properties of the database to be created", default={}
+            type="str",
+            description="Properties of the database to be created",
+            default={},
+            materialize_default=False,
         ),
         "created_by": AttributeSpec(type="str", description="Creator of the database", default=""),
         "overwrite": AttributeSpec(
@@ -51,6 +66,17 @@ class CreateDatabaseOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _CreateDatabaseFailure:
+            return input_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         overwrite = attributes.get("overwrite", False)
         source = cast(str, attributes.get("source", ""))
         database = cast(str, attributes.get("database"))
@@ -60,7 +86,7 @@ class CreateDatabaseOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            return input_data
+            raise _CreateDatabaseFailure
 
         try:
             registry.create_source_database(
@@ -92,10 +118,10 @@ class CreateDatabaseOperator(Operator):
                 )
 
             logger.info("Successfully created database '%s' in source '%s'.", database, source)
-            return input_data
-        except Exception:
+            return FunctionResult(input_data, {})
+        except Exception as error:
             logger.exception("create_database failed; passing input through")
-            return input_data
+            raise _CreateDatabaseFailure from error
 
     def validate(
         self,
@@ -103,18 +129,28 @@ class CreateDatabaseOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = "supply non-empty source and database values"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, suggestion)
 
         source = attributes.get("source", "")
         if not source or not source.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
         database = attributes.get("database", "")
         if not database or not database.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
-        return True
+        return ValidationResult(True, None)
 
     def explain(
         self,
@@ -139,3 +175,21 @@ class CreateDatabaseOperator(Operator):
                 f"database '{database_name}' in source '{source}'."
             ),
         }
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when one or more databases must be created or overwritten through the data registry."
+    ),
+    tags=(
+        "domain-relational",
+        "flow-control",
+        "accepts-data",
+        "accepts-none",
+        "produces-data",
+        "produces-side-effect",
+        "capability-create-database",
+        "requires-data-registry",
+        "requires-database-backend",
+    ),
+)

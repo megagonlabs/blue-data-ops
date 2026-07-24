@@ -2,8 +2,20 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators._discovery import DiscoverySpec
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 from blue_data_ops.plan import DataPipeline, PlanRecord, RefinableOperator
+from blue_data_ops.plan.refiner import (
+    _rewrite_plan_operator_version,  # pyright: ignore[reportPrivateUsage]
+    _selected_refinement_version,  # pyright: ignore[reportPrivateUsage]
+)
 
 _DATA_DISCOVER = "data_discover@1.0.0"
 _NL2LLM = "nl2llm@1.0.0"
@@ -172,6 +184,49 @@ def nl2query_router_operator_explainer(
     }
 
 
+def _valid_columns(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(column, dict)
+        and isinstance(cast(dict[str, Any], column).get("name"), str)
+        and (
+            "type" not in cast(dict[str, Any], column)
+            or isinstance(cast(dict[str, Any], column)["type"], str)
+        )
+        for column in cast(list[object], value)
+    )
+
+
+def _valid_sources(value: object) -> bool:
+    if not isinstance(value, list):
+        return False
+    for record_value in cast(list[object], value):
+        if not isinstance(record_value, dict):
+            return False
+        record = cast(dict[str, Any], record_value)
+        if not all(isinstance(record.get(name), str) for name in ("name", "type", "scope")):
+            return False
+        record_type = record["type"]
+        if record_type == "source":
+            source_properties = record.get("properties")
+            if not isinstance(source_properties, dict):
+                return False
+            connection = cast(dict[str, Any], source_properties).get("connection")
+            if not isinstance(connection, dict) or not isinstance(
+                cast(dict[str, Any], connection).get("protocol"), str
+            ):
+                return False
+        elif record_type == "collection":
+            try:
+                parsed = parse_scope(cast(str, record["scope"]))
+            except (AttributeError, IndexError, TypeError, ValueError):
+                return False
+            if not parsed.get("source") or not parsed.get("database"):
+                return False
+        else:
+            return False
+    return True
+
+
 class NL2QueryRouterOperator(RefinableOperator):
     """Route natural-language queries according to source metadata."""
 
@@ -207,7 +262,18 @@ class NL2QueryRouterOperator(RefinableOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
-        return nl2query_router_operator_function(input_data, attributes, properties)
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
+        return FunctionResult(
+            nl2query_router_operator_function(input_data, attributes, properties),
+            {},
+        )
 
     def refiner(
         self,
@@ -216,6 +282,53 @@ class NL2QueryRouterOperator(RefinableOperator):
         properties: Properties | None = None,
     ) -> list[PlanRecord]:
         return nl2query_router_operator_refiner(input_data, attributes, properties)
+
+    def _pre_validate_normalize(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None,
+    ) -> tuple[DataBundle, Attributes]:
+        normalized_input, normalized_attributes = super()._pre_validate_normalize(
+            input_data,
+            attributes,
+            properties,
+        )
+        if "sources" not in normalized_attributes:
+            normalized_attributes["sources"] = normalized_input[0] if normalized_input else []
+        return [[]], normalized_attributes
+
+    def _refiner(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> list[PlanRecord]:
+        del input_data
+        records = nl2query_router_operator_refiner(
+            [cast(list[dict[str, Any]], attributes["sources"])],
+            attributes,
+            properties,
+        )
+        return _rewrite_plan_operator_version(
+            records,
+            _selected_refinement_version(self),
+        )
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid query-routing attributes"
+        if not super().validate(input_data, attributes, properties):
+            return ValidationResult(False, reason)
+        if "columns" in attributes and not _valid_columns(attributes["columns"]):
+            return ValidationResult(False, reason)
+        if "sources" in attributes and not _valid_sources(attributes["sources"]):
+            return ValidationResult(False, reason)
+        return ValidationResult(True, None)
 
     def validate(self, *args: Any, **kwargs: Any) -> bool:
         """Keep the source's direct validator and canonical call mismatch."""
@@ -248,3 +361,17 @@ __all__ = [
     "nl2query_router_operator_validator",
     "parse_scope",
 ]
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when discovered source metadata must be refined into a source-specific query plan."
+    ),
+    tags=(
+        "domain-plan",
+        "flow-plan",
+        "accepts-metadata",
+        "produces-plan",
+        "capability-query-routing",
+    ),
+)

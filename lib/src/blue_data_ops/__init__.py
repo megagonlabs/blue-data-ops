@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from blue_data_ops import utils
 from blue_data_ops.data import (
     BlueDataRegistryProvider,
     DataRegistryProvider,
@@ -7,6 +8,7 @@ from blue_data_ops.data import (
     resolve_registry,
 )
 from blue_data_ops.operators import (
+    ABSENT,
     ArgmaxOperator,
     ArgminOperator,
     AvgOperator,
@@ -16,6 +18,12 @@ from blue_data_ops.operators import (
     CreateTableOperator,
     DataDiscoverOperator,
     DeleteOperator,
+    ErrorCategory,
+    ErrorCode,
+    ErrorRecord,
+    ErrorStage,
+    ExecMeta,
+    FunctionResult,
     InsertOperator,
     InsertTableOperator,
     IntersectOperator,
@@ -37,12 +45,16 @@ from blue_data_ops.operators import (
     SemanticTransformOperator,
     SumOperator,
     UnionOperator,
+    ValidationResult,
     VectorEmbedOperator,
     VectorSearchOperator,
     VectorSimilarityOperator,
 )
+from blue_data_ops.tools import Tool
 
 __all__ = [
+    "utils",
+    "ABSENT",
     "ArgmaxOperator",
     "ArgminOperator",
     "AvgOperator",
@@ -54,6 +66,12 @@ __all__ = [
     "ClusterOperator",
     "DataRegistryProvider",
     "DeleteOperator",
+    "ErrorCategory",
+    "ErrorCode",
+    "ErrorRecord",
+    "ErrorStage",
+    "ExecMeta",
+    "FunctionResult",
     "InsertOperator",
     "InsertTableOperator",
     "IntersectOperator",
@@ -75,9 +93,11 @@ __all__ = [
     "SemanticProjectOperator",
     "SemanticTransformOperator",
     "SumOperator",
+    "Tool",
     "UnionOperator",
     "VectorEmbedOperator",
     "VectorSearchOperator",
     "VectorSimilarityOperator",
+    "ValidationResult",
     "resolve_registry",
 ]

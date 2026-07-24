@@ -5,14 +5,17 @@ from typing import Any, ClassVar, cast
 
 from pydantic import TypeAdapter, ValidationError
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 # Keep local adapters for the operator-specific nested-value checks even though the
@@ -47,13 +50,21 @@ class ProjectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         kept_keys = cast(Iterable[Any], attributes.get("kept_keys", []))
         key_mapping = cast(Mapping[Any, Any], attributes.get("key_mapping", {}))
 
         if not input_data or not input_data[0]:
-            return []
+            return FunctionResult([], {})
         if not kept_keys:
-            return []
+            return FunctionResult([], {})
 
         result: Data = []
         for record in input_data[0]:
@@ -63,7 +74,7 @@ class ProjectOperator(Operator):
                     output_key = key_mapping.get(key, key)
                     projected_record[output_key] = record[key]
             result.append(projected_record)
-        return [result]
+        return FunctionResult([result], {})
 
     def validate(
         self,
@@ -71,25 +82,35 @@ class ProjectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = "supply compatible kept_keys and key_mapping attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, suggestion)
 
         kept_keys = attributes.get("kept_keys")
         key_mapping = attributes.get("key_mapping", {})
         if not _is_string_sequence(kept_keys) or not _is_string_mapping(key_mapping):
-            return False
+            return ValidationResult(False, suggestion)
 
         kept_keys_iterable = cast(Iterable[Any], kept_keys)
         key_mapping_values = cast(Mapping[Any, Any], key_mapping)
         for mapped_key in key_mapping_values:
             if mapped_key not in kept_keys_iterable:
-                return False
+                return ValidationResult(False, suggestion)
 
         try:
             _validate_key_mapping_conflicts(kept_keys_iterable, key_mapping_values)
         except ValueError:
-            return False
-        return True
+            return ValidationResult(False, suggestion)
+        return ValidationResult(True, None)
 
 
 def _is_string_sequence(value: Any) -> bool:
@@ -121,3 +142,18 @@ def _validate_key_mapping_conflicts(
                 f"Key mapping conflict: output key '{output_key}' appears multiple times"
             )
         output_keys.add(output_key)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when each record should retain and optionally rename a specified set of keys "
+        "without semantic inference."
+    ),
+    tags=(
+        "domain-relational",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-projection",
+    ),
+)

@@ -1,10 +1,7 @@
-"""Acceptance tests for the migrated nl2bn operator (LLM + registry execution).
+"""Compatibility tests for NL-to-Bayesian-network execution.
 
-The transport is the accepted adapter over the deterministic litellm stub; the
-registry boundary is the recording seam double. Prompt bytes, the schema-section
-builder, the correction loop, the error-boundary split (initial call caught,
-correction call propagating), and the execution call shape are pinned from
-blue-dev's source.
+The suite uses deterministic LLM and registry doubles to cover prompt bytes,
+schema rendering, correction, exception boundaries, and registry execution.
 """
 
 from __future__ import annotations
@@ -108,7 +105,7 @@ def _prompt_of(call_index: int) -> str:
     return str(litellm.calls[call_index]["messages"][0]["content"])
 
 
-# --- B-F1: blank question => [[]], zero provider and registry calls ---
+# --- blank question returns [[]] without external calls ------------------------------
 @pytest.mark.parametrize("question", ["", "   "])
 def test_blank_question_returns_empty(
     op: NL2BNOperator, seam: _RecordingSeam, question: str
@@ -118,7 +115,7 @@ def test_blank_question_returns_empty(
     assert seam.calls == []
 
 
-# --- B-F2: required attributes ---
+# --- required attributes ------------------------------------------------------------
 @pytest.mark.parametrize(
     "overrides",
     [{"source": ""}, {"collection": ""}, {"database": ""}, {"protocol_variant": ""}],
@@ -140,21 +137,21 @@ def test_unsupported_protocol_variant(op: NL2BNOperator, seam: _RecordingSeam) -
         op.apply(INPUT, {**ATTRS, "protocol_variant": "bayes"}, _props(seam))
 
 
-# --- B-F3: no registry => [[]] ---
+# --- no registry returns [[]] --------------------------------------------------------
 @pytest.mark.parametrize("properties", [None, {}, {"unrelated": 1}])
 def test_no_registry_returns_empty(op: NL2BNOperator, properties: dict[str, Any] | None) -> None:
     assert op.apply(INPUT, dict(ATTRS), properties) == [[]]
     assert litellm.calls == []
 
 
-# --- B-F4: schema resolution — registry shapes ---
+# --- schema resolution from registry results ----------------------------------------
 def test_registry_schema_call_shape_and_database_default(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _sequence_provider(monkeypatch, VALID_RESPONSE)
     op.apply(INPUT, dict(ATTRS), _props(seam))
     [schema_call] = seam.calls_to("get_data_source_schema")
-    # blue-dev's call shape through the facade; database defaults to "default"
+    # Blue source's call shape through the facade; database defaults to "default"
     assert schema_call == {
         "source": "bn_src",
         "database": "default",
@@ -208,7 +205,7 @@ def test_empty_registry_schema_yields_empty_section(
     assert "**Bayesian Network Schema:**\n\n\n" in _prompt_of(0)
 
 
-# --- B-F5: schema resolution — provided schema variants ---
+# --- provided schema variants -------------------------------------------------------
 @pytest.mark.parametrize(
     "provided,expect_structured",
     [
@@ -265,7 +262,7 @@ def test_provided_unstructured_dict_is_dumped(
     assert json.dumps({"x": 1}, indent=2) in _prompt_of(0)
 
 
-# --- B-F6: the happy path end-to-end ---
+# --- successful execution -----------------------------------------------------------
 def test_happy_path_output_and_execution_call(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -337,7 +334,7 @@ def test_dict_execution_result(
     assert out[0][0]["explanation"] == "direct"
 
 
-# --- B-F7: the correction loop ---
+# --- correction loop ----------------------------------------------------------------
 def test_missing_target_node_triggers_correction(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -400,7 +397,7 @@ def test_caller_properties_not_mutated_by_correction_flow(
     assert properties == {"data_registry": seam, "marker": 1}  # no template key leaked
 
 
-# --- B-F8: the error-boundary split (initial caught, correction propagates) ---
+# --- initial-call and correction-call exception boundaries --------------------------
 def test_initial_call_failure_recovers_via_correction(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -470,7 +467,7 @@ def test_correction_call_failure_propagates(
     assert seam.calls_to("execute_query") == []
 
 
-# --- B-F9: the schema-section helpers (module surface, upstream-verbatim) ---
+# --- schema-section helpers ---------------------------------------------------------
 def test_extract_nodes_info_variants() -> None:
     assert _extract_nodes_info({"nodes": {}}) == "No nodes found"
     assert _extract_nodes_info({}) == "No nodes found"

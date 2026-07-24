@@ -6,11 +6,24 @@ from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import RegistrySeam, resolve_registry
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._query_results import format_execution_result
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _MissingRegistryError(RuntimeError):
+    pass
+
 
 _PROMPT = """
 You are an assistant that maps natural language questions into probabilistic query components for a Bayesian Network.
@@ -123,7 +136,6 @@ def _extract_edges_info(graph_structure: dict[str, Any]) -> str:
             for child in cast("list[Any]", children):
                 edges_list.append(f"- {parent} → {child}")
         elif isinstance(children, dict):
-            # Handle different edge formats
             for child in cast("dict[str, Any]", children).keys():
                 edges_list.append(f"- {parent} → {child}")
 
@@ -134,12 +146,10 @@ def _extract_node_descriptions(graph_structure: dict[str, Any]) -> str:
     """Extract collection and node descriptions (with state descriptions)."""
     descriptions: list[str] = []
 
-    # Collection description from graph_structure top-level
     collection_desc = graph_structure.get("description", "")
     if collection_desc:
         descriptions.append(f"Collection: {collection_desc}")
 
-    # Node descriptions from graph_structure
     nodes = graph_structure.get("nodes", {})
 
     node_descriptions: list[str] = []
@@ -151,7 +161,6 @@ def _extract_node_descriptions(graph_structure: dict[str, Any]) -> str:
 
             if node_desc:
                 desc_line = f"- {node_name}: {node_desc}"
-                # Add state descriptions if available
                 if states_desc:
                     state_lines: list[str] = []
                     for state, state_desc in states_desc.items():
@@ -173,14 +182,12 @@ def _validate_bn_query(bn_query_data: dict[str, Any], graph_structure: dict[str,
     errors: list[str] = []
     nodes = graph_structure.get("nodes", {})
 
-    # Validate target_node
     target_node = bn_query_data.get("target_node")
     if not target_node:
         errors.append("Missing target_node")
     elif target_node not in nodes:
         errors.append(f"Target node '{target_node}' not found in BN.")
     else:
-        # Validate target_state
         target_state = bn_query_data.get("target_state")
         if not target_state:
             errors.append("Missing target_state")
@@ -193,7 +200,6 @@ def _validate_bn_query(bn_query_data: dict[str, Any], graph_structure: dict[str,
                     f"Valid states: {node_states}"
                 )
 
-    # Validate context nodes and states
     context = bn_query_data.get("context", {})
     if context:
         for ctx_node, ctx_state in context.items():
@@ -254,16 +260,13 @@ def _resolve_schema_section(
             graph_structure and "nodes" in graph_structure and "edges" in graph_structure
         )
     else:
-        # Parse provided schema
         if isinstance(provided_schema, str):
             try:
                 parsed_schema = json.loads(provided_schema)
             except json.JSONDecodeError:
-                # Not valid JSON, use as raw string
                 schema_info = provided_schema
                 is_structured = False
             else:
-                # Check if it's structured (has nodes and edges)
                 if (
                     isinstance(parsed_schema, dict)
                     and "nodes" in parsed_schema
@@ -272,7 +275,6 @@ def _resolve_schema_section(
                     graph_structure = cast("dict[str, Any]", parsed_schema)
                     is_structured = True
                 else:
-                    # Not structured, use as raw schema
                     schema_info = (
                         json.dumps(parsed_schema, indent=2)
                         if isinstance(parsed_schema, dict)
@@ -280,7 +282,6 @@ def _resolve_schema_section(
                     )
                     is_structured = False
         else:
-            # Schema is already a dict
             if (
                 isinstance(provided_schema, dict)
                 and "nodes" in provided_schema
@@ -289,12 +290,10 @@ def _resolve_schema_section(
                 graph_structure = cast("dict[str, Any]", provided_schema)
                 is_structured = True
             else:
-                # Not structured, convert to string
                 schema_info = json.dumps(provided_schema, indent=2)
                 is_structured = False
 
     if is_structured:
-        # Build structured schema section from graph_structure
         schema_info = f"""**Nodes and their states:**
 
 {_extract_nodes_info(graph_structure)}
@@ -307,7 +306,6 @@ def _resolve_schema_section(
 
 {_extract_node_descriptions(graph_structure)}"""
     else:
-        # Use raw schema (or schema_dict if from registry)
         if not schema_info:
             schema_info = json.dumps(schema_dict, indent=2) if schema_dict else ""
         schema_info = f"""**Bayesian Network Schema:**
@@ -320,7 +318,7 @@ def _resolve_schema_section(
 class NL2BNOperator(Operator):
     """Translate a natural language question into a Bayesian Network query and run it."""
 
-    # Faithful to blue-dev's nl2bn operator: a blank question returns [[]] with no
+    # Faithful to Blue source's nl2bn operator: a blank question returns [[]] with no
     # provider call; source/database/collection/protocol_variant are required; a
     # missing registry returns [[]]. Failures of the INITIAL LLM CALL become
     # validation errors routed into the correction loop — upstream catches its
@@ -420,6 +418,17 @@ class NL2BNOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _MissingRegistryError:
+            return [[]]
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         question = cast(str, attributes.get("question", ""))
         source = cast(str, attributes.get("source", ""))
         database = cast(str, attributes.get("database", "default"))
@@ -433,7 +442,7 @@ class NL2BNOperator(Operator):
         max_num_paths = attributes.get("max_num_paths", 50)
 
         if not question or not question.strip():
-            return [[]]
+            return FunctionResult([[]], {})
 
         if not source or not database or not collection or not protocol_variant:
             raise ValueError("Source, database, collection, and protocol_variant are required")
@@ -445,14 +454,14 @@ class NL2BNOperator(Operator):
 
         registry = resolve_registry(properties)
         if not registry:
-            return [[]]
+            raise _MissingRegistryError
 
         schema_info, graph_structure = _resolve_schema_section(
             provided_schema, registry, source, database, collection
         )
         is_structured = graph_structure is not None
 
-        # Caller properties override the operator defaults (blue-dev merges the same
+        # Caller properties override the operator defaults (Blue source merges the same
         # values through its instance properties; same observable, different shell).
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         client = resolve_llm_client(merged)
@@ -463,7 +472,6 @@ class NL2BNOperator(Operator):
             "schema_section": schema_info,
         }
 
-        # Execute API call and handle JSON parsing errors as validation errors
         bn_query_data: dict[str, Any] = {}
         validation_errors: list[str] = []
 
@@ -479,7 +487,6 @@ class NL2BNOperator(Operator):
             validation_errors.append(f"Service error: {str(e)}")
             bn_query_data = {}
         else:
-            # Parse the result to get the query
             if isinstance(bn_query_result, str):
                 try:
                     bn_query_data = json.loads(bn_query_result)
@@ -494,7 +501,6 @@ class NL2BNOperator(Operator):
                 )
                 bn_query_data = {}
 
-        # Validate the query structure
         if not validation_errors:
             if "target_node" not in bn_query_data:
                 validation_errors.append("No target_node found in LLM response")
@@ -503,7 +509,6 @@ class NL2BNOperator(Operator):
             if "context" not in bn_query_data:
                 bn_query_data["context"] = {}
 
-        # Validate and correct the query against graph_structure
         if is_structured and not validation_errors:
             assert graph_structure is not None
             validation_errors.extend(_validate_bn_query(bn_query_data, graph_structure))
@@ -515,7 +520,6 @@ class NL2BNOperator(Operator):
                 f"{validation_errors}"
             )
 
-            # Ask LLM to correct the query
             correction_data = {
                 "question": question,
                 "original_query": json.dumps(bn_query_data, indent=2),
@@ -533,7 +537,6 @@ class NL2BNOperator(Operator):
                 {}, properties=correction_properties, additional_data=correction_data
             )
 
-            # Parse corrected query (JSON parsing errors become validation errors)
             if isinstance(correction_result, str):
                 try:
                     bn_query_data = json.loads(correction_result)
@@ -550,7 +553,6 @@ class NL2BNOperator(Operator):
                 ]
                 break
 
-            # Validate query structure
             if not validation_errors:
                 if "target_node" not in bn_query_data:
                     validation_errors.append("No target_node found in corrected query")
@@ -559,7 +561,6 @@ class NL2BNOperator(Operator):
                 if "context" not in bn_query_data:
                     bn_query_data["context"] = {}
 
-            # Validate against graph_structure
             if is_structured and not validation_errors:
                 assert graph_structure is not None
                 validation_errors.extend(_validate_bn_query(bn_query_data, graph_structure))
@@ -573,11 +574,9 @@ class NL2BNOperator(Operator):
             logger.error(error_message)
             raise ValueError(error_message)
 
-        # Execute the generated BN query
         query_json = json.dumps(bn_query_data)
         logger.info("Generated BN Query: " + query_json)
 
-        # Prepare optional properties for explanation
         optional_properties: dict[str, Any] = {}
         if explanation:
             optional_properties["explanation"] = True
@@ -590,10 +589,8 @@ class NL2BNOperator(Operator):
         logger.debug("Result: ")
         logger.debug(result)
 
-        # Format result with probability
         formatted_result = format_execution_result(result)
 
-        # Extract probability from result
         prob = None
         explanation_text = None
         if formatted_result and len(formatted_result) > 0 and len(formatted_result[0]) > 0:
@@ -602,14 +599,24 @@ class NL2BNOperator(Operator):
             if explanation:
                 explanation_text = first_result.get("explanation", "")
 
-        # Build output
         output: dict[str, Any] = {"prob": prob, "query": bn_query_data}
 
-        # Add explanation if requested and available
         if explanation and explanation_text:
             output["explanation"] = explanation_text
 
-        return [[output]]
+        return FunctionResult([[output]], {})
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties)
+        return ValidationResult(
+            valid,
+            None if valid else "supply valid Bayesian-network query attributes",
+        )
 
     def explain(
         self,
@@ -621,3 +628,22 @@ class NL2BNOperator(Operator):
             "output": output,
             "attributes": attributes,
         }
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when a natural-language question must be translated into a Bayesian-network query."
+    ),
+    tags=(
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "capability-bayesian-query",
+        "capability-query-execution",
+        "capability-query-generation",
+        "requires-data-registry",
+        "requires-llm",
+        "requires-query-backend",
+    ),
+)

@@ -4,10 +4,22 @@ import logging
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import resolve_registry
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _CreateTableFailure(Exception):
+    pass
 
 
 class CreateTableOperator(Operator):
@@ -51,7 +63,10 @@ class CreateTableOperator(Operator):
         ),
         # The public schema declares str while retaining an empty-mapping default.
         "properties": AttributeSpec(
-            type="str", description="Properties of the table to be created", default={}
+            type="str",
+            description="Properties of the table to be created",
+            default={},
+            materialize_default=False,
         ),
         "columns": AttributeSpec(
             type="list",
@@ -76,6 +91,17 @@ class CreateTableOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _CreateTableFailure:
+            return input_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         overwrite = attributes.get("overwrite", False)
         source = cast(str, attributes.get("source", "default_source"))
         database = cast(str, attributes.get("database", "default"))
@@ -89,7 +115,7 @@ class CreateTableOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            return input_data
+            raise _CreateTableFailure
 
         # SQLite sources always use 'public' as the collection name, even when the
         # caller specifies a different one (lookup errors are ignored).
@@ -146,10 +172,10 @@ class CreateTableOperator(Operator):
                 collection,
                 source,
             )
-            return input_data
-        except Exception:
+            return FunctionResult(input_data, {})
+        except Exception as error:
             logger.exception("create_table failed; passing input through")
-            return input_data
+            raise _CreateTableFailure from error
 
     def validate(
         self,
@@ -157,39 +183,49 @@ class CreateTableOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = "supply valid source, database, collection, table, columns, and key metadata"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, suggestion)
 
         source = attributes.get("source", "")
         if not source or not source.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
         database = attributes.get("database", "")
         if not database or not database.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
         collection = attributes.get("collection", "public")
         if not collection or not collection.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
         table = attributes.get("table", "")
         if not table or not table.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
         columns = attributes.get("columns", [])
         if not isinstance(columns, list) or not columns:
-            return False
+            return ValidationResult(False, suggestion)
 
         for column in cast("list[Any]", columns):
             if not isinstance(column, dict):
-                return False
+                return ValidationResult(False, suggestion)
             column = cast("dict[str, Any]", column)
             if "name" not in column or not column["name"]:
-                return False
+                return ValidationResult(False, suggestion)
             if "type" in column and not isinstance(column["type"], str):
-                return False
+                return ValidationResult(False, suggestion)
             if "misc" in column and not isinstance(column["misc"], str):
-                return False
+                return ValidationResult(False, suggestion)
 
         column_dicts = cast("list[dict[str, Any]]", columns)
         misc = cast("dict[str, Any]", attributes.get("misc", {}))
@@ -197,19 +233,19 @@ class CreateTableOperator(Operator):
         primary_key = misc.get("primary_key", [])
         if primary_key:
             if not isinstance(primary_key, list):
-                return False
+                return ValidationResult(False, suggestion)
             col_names = [col["name"] for col in column_dicts]
             for pk_col in cast("list[Any]", primary_key):
                 if pk_col not in col_names:
-                    return False
+                    return ValidationResult(False, suggestion)
 
         foreign_keys = misc.get("foreign_keys", [])
         if foreign_keys:
             if not isinstance(foreign_keys, list):
-                return False
+                return ValidationResult(False, suggestion)
             for fk in cast("list[Any]", foreign_keys):
                 if not isinstance(fk, dict):
-                    return False
+                    return ValidationResult(False, suggestion)
                 fk = cast("dict[str, Any]", fk)
                 required_fk_fields = [
                     "foreign_keys_source_columns",
@@ -218,13 +254,13 @@ class CreateTableOperator(Operator):
                 ]
                 for field in required_fk_fields:
                     if field not in fk:
-                        return False
+                        return ValidationResult(False, suggestion)
                 col_names = [col["name"] for col in column_dicts]
                 for fk_col in cast("list[Any]", fk["foreign_keys_source_columns"]):
                     if fk_col not in col_names:
-                        return False
+                        return ValidationResult(False, suggestion)
 
-        return True
+        return ValidationResult(True, None)
 
     def explain(
         self,
@@ -253,3 +289,22 @@ class CreateTableOperator(Operator):
                 f"source '{source}'."
             ),
         }
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when tables or entities must be created or overwritten in registry-backed "
+        "database collections."
+    ),
+    tags=(
+        "domain-relational",
+        "flow-control",
+        "accepts-data",
+        "accepts-none",
+        "produces-data",
+        "produces-side-effect",
+        "capability-create-table",
+        "requires-data-registry",
+        "requires-database-backend",
+    ),
+)

@@ -8,8 +8,17 @@ from importlib import import_module
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import LLMClient, resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 COST_PER_1K_TOKENS_USD = 0.04
 CHARS_PER_TOKEN = 4
@@ -996,6 +1005,14 @@ class SemanticJoinOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         join_predicate = cast(str, attributes.get("join_predicate", ""))
         join_type = cast(str, attributes.get("join_type", "inner"))
         left_fields = cast(list[str], attributes.get("left_fields", []))
@@ -1009,7 +1026,7 @@ class SemanticJoinOperator(Operator):
         use_embedding_filter = cast(bool, attributes.get("use_embedding_filter", False))
         embedding_threshold = cast(float, attributes.get("embedding_threshold", 0.7))
         if not input_data or len(input_data) < 2:
-            return []
+            return FunctionResult([], {})
 
         left_data = input_data[0]
         right_data = input_data[1]
@@ -1047,7 +1064,7 @@ class SemanticJoinOperator(Operator):
                 else [f"_ds{index}" for index in range(len(input_data))]
             )
         if len(join_suffix) != len(input_data):
-            return []
+            return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         merged.update(
@@ -1083,7 +1100,7 @@ class SemanticJoinOperator(Operator):
             use_embedding_filter,
             embedding_threshold,
         )
-        return [result]
+        return FunctionResult([result], {})
 
     def validate(
         self,
@@ -1091,23 +1108,51 @@ class SemanticJoinOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid semantic join attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
         join_predicate = attributes.get("join_predicate", "")
         join_type = attributes.get("join_type", "inner")
         left_fields = attributes.get("left_fields", [])
         right_fields = attributes.get("right_fields", [])
         keep_keys = attributes.get("keep_keys", "left")
         if join_predicate and not isinstance(join_predicate, str):
-            return False
+            return ValidationResult(False, reason)
         if join_type not in ["inner", "left", "right", "outer"]:
-            return False
+            return ValidationResult(False, reason)
         if left_fields is None or not isinstance(left_fields, list):
-            return False
+            return ValidationResult(False, reason)
         if right_fields is None or not isinstance(right_fields, list):
-            return False
+            return ValidationResult(False, reason)
         if attributes.get("left_suffix") and not isinstance(attributes.get("left_suffix"), str):
-            return False
+            return ValidationResult(False, reason)
         if attributes.get("right_suffix") and not isinstance(attributes.get("right_suffix"), str):
-            return False
-        return keep_keys in ["left", "both"]
+            return ValidationResult(False, reason)
+        valid = keep_keys in ["left", "both"]
+        return ValidationResult(valid, None if valid else reason)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when two datasets must be joined by a natural-language relationship rather than "
+        "exact keys."
+    ),
+    tags=(
+        "domain-semantic",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-embedding-filter",
+        "capability-join",
+        "requires-llm",
+    ),
+)

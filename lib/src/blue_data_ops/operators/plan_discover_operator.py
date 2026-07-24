@@ -1,10 +1,27 @@
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from collections.abc import Sequence
+from typing import Any, ClassVar, cast
 
+from blue_data_ops.operators._discovery import (
+    DiscoveryError,
+    DiscoverySpec,
+    normalize_filter_tag,
+)
+from blue_data_ops.operators.operator import default_operator_validator
 from blue_data_ops.operators.registry import OperatorRegistry, default_registry
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 from blue_data_ops.plan import DataPipeline, PlanRecord, RefinableOperator, Status
+from blue_data_ops.plan.refiner import (
+    _selected_refinement_version,  # pyright: ignore[reportPrivateUsage]
+)
 
 
 def plan_discover_operator_function(
@@ -23,15 +40,25 @@ def plan_discover_operator_refiner(
     properties: Properties | None = None,
     *,
     registry: OperatorRegistry | None = None,
+    version: str | None = None,
+    use_tag_filter: bool = False,
 ) -> list[PlanRecord]:
-    """Discover pinned operator cards and emit one starter plan per card."""
+    """Discover pinned operator cards and emit one starter plan per card.
+
+    The canonical v2 path (``use_tag_filter=True``) reads an optional exact ``tags`` list from the
+    call attributes and filters the view before ranking, version selection, and limiting. The raw v1
+    path ignores it, so v1 behavior and the live metadata view are unchanged.
+    """
     task = attributes["task"]
     data = attributes["data"]
     limit = attributes.get("limit", -1)
+    filter_tags = attributes.get("tags") if use_tag_filter else None
     del data, input_data, properties
 
     active_registry = registry if registry is not None else default_registry()
-    cards = active_registry.find(task)
+    cards = active_registry.find(task, tags=filter_tags)
+    if version is not None:
+        cards = [card for card in cards if card.version == version]
     plans: list[PlanRecord] = []
     for card in cards:
         pipeline = DataPipeline()
@@ -56,12 +83,34 @@ def plan_discover_operator_validator(
     attributes: Attributes,
     properties: Properties | None = None,
 ) -> bool:
-    """Validate the declared plan schema and unchanged operator-discovery constraints."""
-    del input_data, properties
-    if not PlanDiscoverOperator()._validate_attributes(  # pyright: ignore[reportPrivateUsage]
-        attributes
-    ):
+    """Validate an explicit Blue-shaped property schema and discovery constraints."""
+    if not default_operator_validator(input_data, attributes, properties):
         return False
+
+    return _plan_discover_constraints(attributes)
+
+
+def _validate_v2_tags(tags: Any) -> str | None:
+    """Validate the optional v2 exact-tag filter; return a suggestion if invalid, else None.
+
+    The v2 canonical refinement rejects a malformed filter at VALIDATE, before the refiner can touch
+    the registry, so bad planner input is a recoverable INVALID_INPUT rather than a refinement
+    failure and no registry work begins.
+    """
+    if not isinstance(tags, (list, tuple)):
+        return "tags must be a list of exact tag strings"
+    for token in cast("Sequence[object]", tags):
+        if not isinstance(token, str):
+            return "tags must be a list of exact tag strings"
+        try:
+            normalize_filter_tag(token)
+        except DiscoveryError:
+            return "supply well-formed namespaced exact tags without whitespace"
+    return None
+
+
+def _plan_discover_constraints(attributes: Attributes) -> bool:
+    """Apply the Blue-compatible discovery-specific value constraints."""
 
     search_query = attributes.get("search_query", "")
     page = attributes.get("page", 0)
@@ -170,6 +219,7 @@ class PlanDiscoverOperator(RefinableOperator):
     PROPERTIES: ClassVar[dict[str, Any]] = {"refine": True}
 
     def __init__(self, registry: OperatorRegistry | None = None) -> None:
+        super().__init__()
         self._registry = registry
 
     def apply(
@@ -178,7 +228,18 @@ class PlanDiscoverOperator(RefinableOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
-        return plan_discover_operator_function(input_data, attributes, properties)
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
+        return FunctionResult(
+            plan_discover_operator_function(input_data, attributes, properties),
+            {},
+        )
 
     def refiner(
         self,
@@ -193,13 +254,58 @@ class PlanDiscoverOperator(RefinableOperator):
             registry=self._registry,
         )
 
+    def _refiner(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> list[PlanRecord]:
+        version = _selected_refinement_version(self)
+        return plan_discover_operator_refiner(
+            input_data,
+            attributes,
+            properties,
+            registry=self._registry,
+            version=version,
+            use_tag_filter=version == "2.0.0",
+        )
+
     def validate(
         self,
         input_data: DataBundle,
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
-        return plan_discover_operator_validator(input_data, attributes, properties)
+        """Validate against this instance's live metadata and discovery constraints."""
+        del input_data, properties
+        if not self._validate_attributes(attributes):
+            return False
+        return _plan_discover_constraints(attributes)
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid input attributes"
+        if not super().validate(input_data, attributes, properties):
+            return ValidationResult(False, reason)
+
+        # v2 canonical refinement accepts an optional exact-tag filter; reject a malformed one
+        # here, before the refiner reaches the registry (v1 raw path and live metadata view).
+        if _selected_refinement_version(self) == "2.0.0" and "tags" in attributes:
+            tag_reason = _validate_v2_tags(attributes["tags"])
+            if tag_reason is not None:
+                return ValidationResult(False, tag_reason)
+
+        canonical_attributes = dict(attributes)
+        canonical_attributes["search_query"] = canonical_attributes.get("task", "")
+        valid = _plan_discover_constraints(canonical_attributes)
+        return ValidationResult(
+            valid,
+            None if valid else reason,
+        )
 
     def explain(
         self,
@@ -217,3 +323,19 @@ __all__ = [
     "plan_discover_operator_refiner",
     "plan_discover_operator_validator",
 ]
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when a task description must be matched to pinned operators and emitted as "
+        "starter plans."
+    ),
+    tags=(
+        "domain-plan",
+        "flow-plan",
+        "accepts-none",
+        "produces-plan",
+        "capability-operator-discovery",
+        "requires-operator-registry",
+    ),
+)

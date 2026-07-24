@@ -4,14 +4,17 @@ from collections.abc import Callable, Sequence
 from importlib import import_module
 from typing import Any, ClassVar, Protocol, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 _DEFAULT_MODEL = "all-MiniLM-L6-v2"
@@ -89,6 +92,14 @@ class VectorSimilarityOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         model_ref = attributes.get("model_ref")
         # Omitted fields are valid when both inputs already contain embeddings.
         fields_value: object = attributes.get("fields")
@@ -268,7 +279,7 @@ class VectorSimilarityOperator(Operator):
                 result["similarity.passed"] = score >= threshold
                 result["similarity.threshold"] = threshold
             results.append(result)
-        return [results]
+        return FunctionResult([results], {})
 
     def validate(
         self,
@@ -276,20 +287,30 @@ class VectorSimilarityOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply exactly two compatible vector input groups and valid attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
         if len(input_data) != 2:
-            return False
+            return ValidationResult(False, reason)
 
         fields = attributes.get("fields")
         if fields is not None and (
             not isinstance(fields, list) or len(cast(list[object], fields)) != 2
         ):
-            return False
+            return ValidationResult(False, reason)
         if fields is not None and not all(
             isinstance(field, str) for field in cast(list[object], fields)
         ):
-            return False
+            return ValidationResult(False, reason)
 
         def has_embedding(record: object) -> bool:
             if not isinstance(record, dict):
@@ -305,27 +326,45 @@ class VectorSimilarityOperator(Operator):
                 has_all_embeddings = False
                 break
         if not has_all_embeddings and fields is None:
-            return False
+            return ValidationResult(False, reason)
         if attributes.get("metric", "cosine") not in {"cosine", "dot", "l2"}:
-            return False
+            return ValidationResult(False, reason)
         comparison_mode = attributes.get("comparison_mode", "cartesian")
         if comparison_mode not in {"cartesian", "pairwise"}:
-            return False
+            return ValidationResult(False, reason)
         if comparison_mode == "pairwise" and len(input_data[0]) != len(input_data[1]):
-            return False
+            return ValidationResult(False, reason)
         if attributes.get("on_missing_embedding", "raise") not in {
             "raise",
             "embed_missing",
         }:
-            return False
+            return ValidationResult(False, reason)
         if attributes.get("on_missing_fields", "raise") not in {
             "raise",
             "use_empty",
         }:
-            return False
+            return ValidationResult(False, reason)
         if not isinstance(attributes.get("add_meta_data", False), bool):
-            return False
+            return ValidationResult(False, reason)
         threshold = attributes.get("threshold")
         if threshold is not None and not isinstance(threshold, (int, float)):
-            return False
-        return isinstance(attributes.get("normalize", False), bool)
+            return ValidationResult(False, reason)
+        if not isinstance(attributes.get("normalize", False), bool):
+            return ValidationResult(False, reason)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when records from two groups must be compared by embedding-based similarity in "
+        "pairwise or cartesian mode."
+    ),
+    tags=(
+        "domain-vector",
+        "flow-combine",
+        "accepts-data",
+        "produces-data",
+        "capability-similarity",
+        "requires-vector",
+    ),
+)

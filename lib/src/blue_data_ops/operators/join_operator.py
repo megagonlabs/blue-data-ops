@@ -3,14 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 
@@ -74,27 +77,35 @@ class JoinOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         join_on = cast(list[list[str]], attributes.get("join_on", []))
         join_type = cast(str, attributes.get("join_type", "inner"))
         join_suffix = cast(list[str], attributes.get("join_suffix", []))
         keep_keys = cast(str, attributes.get("keep_keys", "left"))
 
         if not input_data or len(input_data) < 2:
-            return []
+            return FunctionResult([], {})
         if len(join_on) != len(input_data):
-            return []
+            return FunctionResult([], {})
         if not join_suffix:
             join_suffix = [f"_ds{index}" for index in range(len(input_data))]
         if len(join_suffix) != len(input_data):
-            return []
+            return FunctionResult([], {})
         if len(join_suffix) != len(set(join_suffix)):
-            return []
+            return FunctionResult([], {})
 
         data_sources: list[_DataSource] = [data_source for data_source in input_data]
         result, _schema = _perform_n_way_join(
             data_sources, join_on, join_type, join_suffix, keep_keys
         )
-        return [result]
+        return FunctionResult([result], {})
 
     def validate(
         self,
@@ -102,32 +113,43 @@ class JoinOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid join_on, join_suffix, keep_keys, and join_type values"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
 
         join_on_value = attributes.get("join_on", [])
         join_suffix_value = attributes.get("join_suffix", [])
         if not isinstance(join_on_value, list):
-            return False
+            return ValidationResult(False, reason)
         join_on = cast(list[Any], join_on_value)
         if len(join_on) < 2:
-            return False
+            return ValidationResult(False, reason)
         for field_list_value in join_on:
             if not isinstance(field_list_value, list) or not field_list_value:
-                return False
+                return ValidationResult(False, reason)
             field_list = cast(list[Any], field_list_value)
             if any(not isinstance(field_name, str) for field_name in field_list):
-                return False
+                return ValidationResult(False, reason)
 
         if join_suffix_value:
             if not isinstance(join_suffix_value, list):
-                return False
+                return ValidationResult(False, reason)
             join_suffix = cast(list[Any], join_suffix_value)
             if len(join_suffix) != len(join_on):
-                return False
+                return ValidationResult(False, reason)
         if attributes.get("keep_keys", "left") not in {"left", "both"}:
-            return False
-        return attributes.get("join_type", "inner") in {"inner", "left", "right", "outer"}
+            return ValidationResult(False, reason)
+        valid = attributes.get("join_type", "inner") in {"inner", "left", "right", "outer"}
+        return ValidationResult(valid, None if valid else reason)
 
 
 def _perform_n_way_join(
@@ -429,3 +451,11 @@ def _determine_join_keys(schema_info: _SchemaInfo, left_fields: list[str]) -> li
         else:
             join_keys.append(left_key)
     return join_keys
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when two or more JSON record groups must be joined on configured keys and join types."
+    ),
+    tags=("domain-relational", "flow-combine", "accepts-data", "produces-data", "capability-join"),
+)

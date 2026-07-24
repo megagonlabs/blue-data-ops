@@ -3,14 +3,17 @@ from __future__ import annotations
 import re
 from typing import ClassVar, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 _WORD_PATTERN = re.compile(r"\S+")
@@ -72,6 +75,14 @@ class SegmentTextOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         text_field = cast(str, attributes.get("text_field"))
         split_strategy = cast(str, attributes.get("split_strategy", "sentence"))
         word_overlap = cast(int, attributes.get("word_overlap", 0))
@@ -127,7 +138,7 @@ class SegmentTextOperator(Operator):
                             segment_record[f"segment.{meta_field}"] = record[meta_field]
                     segmented_group.append(segment_record)
             results.append(segmented_group)
-        return results
+        return FunctionResult(results, {})
 
     def validate(
         self,
@@ -135,8 +146,18 @@ class SegmentTextOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid text segmentation options"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
 
         text_field = attributes.get("text_field")
         split_strategy = attributes.get("split_strategy", "sentence")
@@ -145,7 +166,7 @@ class SegmentTextOperator(Operator):
         min_chars = attributes.get("min_chars", 20)
         meta_fields = attributes.get("meta_fields", [])
         if not isinstance(text_field, str) or not text_field.strip():
-            return False
+            return ValidationResult(False, reason)
         if split_strategy not in {
             "sentence",
             "paragraph",
@@ -153,18 +174,19 @@ class SegmentTextOperator(Operator):
             "word",
             "heading",
         }:
-            return False
+            return ValidationResult(False, reason)
         try:
             if word_overlap < 0 or max_tokens <= 0 or min_chars < 0:
-                return False
+                return ValidationResult(False, reason)
         except (TypeError, ValueError, AttributeError):
             # Lax attribute coercion can still produce values that cannot be compared
             # with an integer; validation reports them as invalid instead of raising.
-            return False
+            return ValidationResult(False, reason)
         if not isinstance(meta_fields, list):
-            return False
+            return ValidationResult(False, reason)
         raw_meta_fields = cast(list[object], meta_fields)
-        return all(isinstance(field, str) and bool(field.strip()) for field in raw_meta_fields)
+        valid = all(isinstance(field, str) and bool(field.strip()) for field in raw_meta_fields)
+        return ValidationResult(valid, None if valid else reason)
 
 
 def _split_units(text: str, split_strategy: str, keep_delimiters: bool) -> list[tuple[int, int]]:
@@ -452,3 +474,17 @@ def _stringify_text(value: object) -> str:
     if value is None:
         return ""
     return str(value)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when normalized text must be split into stable segments with offsets and metadata."
+    ),
+    tags=(
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-segmentation",
+    ),
+)

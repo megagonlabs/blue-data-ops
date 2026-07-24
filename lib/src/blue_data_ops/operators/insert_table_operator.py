@@ -4,10 +4,27 @@ import logging
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import RegistrySeam, resolve_registry
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _InsertTablePassThroughFailure(Exception):
+    pass
+
+
+class _InsertTableEmptyFailure(Exception):
+    pass
 
 
 class InsertTableOperator(Operator):
@@ -60,6 +77,19 @@ class InsertTableOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _InsertTableEmptyFailure:
+            return [[]]
+        except _InsertTablePassThroughFailure:
+            return input_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         source = cast(str, attributes.get("source", "default_source"))
         database = cast(str, attributes.get("database", "default"))
         collection = cast(str, attributes.get("collection", "public"))
@@ -69,7 +99,7 @@ class InsertTableOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            return input_data
+            raise _InsertTablePassThroughFailure
 
         # SQLite sources report 'public' as the collection name; the probe runs even
         # though collection only affects the log line below (lookup errors ignored).
@@ -86,7 +116,7 @@ class InsertTableOperator(Operator):
             # The guard checks only the first group: an empty first group ends the
             # whole operation even when later groups have rows.
             if not input_data or not input_data[0]:
-                return [[]]
+                return FunctionResult([[]], {})
 
             total_inserted = 0
             for group_idx, row_group in enumerate(input_data):
@@ -97,7 +127,7 @@ class InsertTableOperator(Operator):
                     registry, source, database, table, row_group, batch_size, group_idx
                 )
                 if group_inserted is None:
-                    return [[]]
+                    raise _InsertTableEmptyFailure
                 total_inserted += group_inserted
 
             logger.info(
@@ -109,10 +139,12 @@ class InsertTableOperator(Operator):
                 collection,
                 source,
             )
-            return input_data
-        except Exception:
+            return FunctionResult(input_data, {})
+        except _InsertTableEmptyFailure:
+            raise
+        except Exception as error:
             logger.exception("insert_table failed; passing input through")
-            return input_data
+            raise _InsertTablePassThroughFailure from error
 
     def validate(
         self,
@@ -120,25 +152,37 @@ class InsertTableOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = (
+            "supply non-empty source, database, and table values with a positive batch size"
+        )
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, suggestion)
 
         source = attributes.get("source", "")
         database = attributes.get("database", "")
         table = attributes.get("table", "")
 
         if not source or not source.strip():
-            return False
+            return ValidationResult(False, suggestion)
         if not database or not database.strip():
-            return False
+            return ValidationResult(False, suggestion)
         if not table or not table.strip():
-            return False
+            return ValidationResult(False, suggestion)
 
         batch_size = attributes.get("batch_size", 100)
         if not isinstance(batch_size, int) or batch_size <= 0:
-            return False
+            return ValidationResult(False, suggestion)
 
-        return True
+        return ValidationResult(True, None)
 
     def explain(
         self,
@@ -219,3 +263,18 @@ def _insert_data_group(
             return None
 
     return group_inserted
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke="Use when record rows must be persisted into a registry-backed database table.",
+    tags=(
+        "domain-relational",
+        "flow-sink",
+        "accepts-data",
+        "produces-data",
+        "produces-side-effect",
+        "capability-persist",
+        "requires-data-registry",
+        "requires-database-backend",
+    ),
+)

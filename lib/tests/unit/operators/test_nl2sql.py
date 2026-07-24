@@ -1,9 +1,7 @@
-"""Acceptance tests for the migrated nl2sql operator (LLM + registry execution).
+"""Compatibility tests for NL-to-SQL execution.
 
-The transport is the accepted adapter over the deterministic litellm stub; the
-registry boundary is the recording seam double. Prompt bytes, the requirements
-check (source excluded — upstream quirk), the always-fetched schema, prefix
-validation, and the execution call shape are pinned from blue-dev's source.
+The suite uses deterministic LLM and registry doubles to cover prompt bytes,
+required attributes, schema lookup, query validation, and registry execution.
 """
 
 from __future__ import annotations
@@ -88,7 +86,7 @@ def _prompt() -> str:
     return str(litellm.calls[-1]["messages"][0]["content"])
 
 
-# --- S-F1: blank question => [[]], zero provider and registry calls ---
+# --- blank question returns [[]] without external calls ------------------------------
 @pytest.mark.parametrize("question", ["", "   "])
 def test_blank_question_returns_empty(
     op: NL2SQLOperator, seam: _RecordingSeam, question: str
@@ -98,7 +96,7 @@ def test_blank_question_returns_empty(
     assert seam.calls == []
 
 
-# --- S-F2: protocol/database/collection required; source is NOT (upstream quirk) ---
+# --- required protocol, database, and collection attributes -------------------------
 @pytest.mark.parametrize(
     "overrides",
     [{"protocol": ""}, {"database": ""}, {"collection": ""}],
@@ -131,14 +129,14 @@ def test_unsupported_protocol(op: NL2SQLOperator, seam: _RecordingSeam) -> None:
         op.apply(INPUT, {**ATTRS, "protocol": "oracle"}, _props(seam))
 
 
-# --- S-F3: no registry => [[]] ---
+# --- no registry returns [[]] --------------------------------------------------------
 @pytest.mark.parametrize("properties", [None, {}, {"unrelated": 1}])
 def test_no_registry_returns_empty(op: NL2SQLOperator, properties: dict[str, Any] | None) -> None:
     assert op.apply(INPUT, dict(ATTRS), properties) == [[]]
     assert litellm.calls == []
 
 
-# --- S-F4: the schema is ALWAYS fetched; the schema attribute is ignored ---
+# --- registry schema lookup ignores the schema attribute ----------------------------
 def test_schema_fetched_and_provided_schema_ignored(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -166,7 +164,7 @@ def test_non_dict_schema_stringified(
     assert "entity jobs(role text)" in _prompt()
 
 
-# --- S-F5: prompt construction ---
+# --- prompt construction ------------------------------------------------------------
 def test_attr_names_section_exact(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -246,7 +244,7 @@ def test_rendered_prompt_full_equality(
     assert not _prompt().endswith("\n")
 
 
-# --- S-F6: response parsing ---
+# --- response parsing ---------------------------------------------------------------
 def test_execute_path_call_shape_and_output(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -303,7 +301,7 @@ def test_non_dict_response_raises(
         op.apply(INPUT, dict(ATTRS), _props(seam))
 
 
-# --- S-F7: prefix validation ---
+# --- query-prefix validation --------------------------------------------------------
 def test_non_select_query_rejected(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -329,7 +327,7 @@ def test_custom_validate_query_prefixes(
     assert out == [[{"role": "manager"}]]
 
 
-# --- S-F8: LLM errors PROPAGATE (no catch — unlike nl2bn's initial call) ---
+# --- provider errors propagate ------------------------------------------------------
 def test_provider_error_propagates(op: NL2SQLOperator, seam: _RecordingSeam) -> None:
     litellm.fail_next.extend([RuntimeError("down")] * 3)
     with pytest.raises(LLMError):
@@ -337,7 +335,7 @@ def test_provider_error_propagates(op: NL2SQLOperator, seam: _RecordingSeam) -> 
     assert seam.calls_to("execute_query") == []
 
 
-# --- S-F9: execution result formatting (shared formatter, incl. the None quirk) ---
+# --- execution-result formatting ----------------------------------------------------
 _RESULT_SHAPES: list[tuple[Any, Any]] = [
     ({"n": 1}, [[{"n": 1}]]),
     ([], [[]]),
@@ -371,7 +369,7 @@ def test_inner_non_dict_result_returns_none_quirk(
     assert op.apply(INPUT, dict(ATTRS), _props(seam)) is None
 
 
-# --- S-F10: defaults reach the provider; caller properties override ---
+# --- provider defaults and caller overrides -----------------------------------------
 def test_defaults_reach_provider(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from blue_data_ops.plan.executor import (
+    NodeRun,
+    PipelineError,
+    PipelineExecutor,
+    PipelineRun,
+)
 from blue_data_ops.plan.pipeline import DataPipeline, Entity, Node, Plan
 from blue_data_ops.plan.refiner import (
     DeclarativeOperator,
     RefinableOperator,
     declarative_operator_refiner,
     default_operator_refiner,
+    normalized_declarative_operator_refiner,
 )
 from blue_data_ops.plan.types import (
     EntityType,
@@ -21,7 +28,11 @@ __all__ = [
     "Entity",
     "EntityType",
     "Node",
+    "NodeRun",
     "NodeType",
+    "PipelineError",
+    "PipelineExecutor",
+    "PipelineRun",
     "Plan",
     "PlanRecord",
     "RefinableOperator",
@@ -29,4 +40,5 @@ __all__ = [
     "SyncBackend",
     "declarative_operator_refiner",
     "default_operator_refiner",
+    "normalized_declarative_operator_refiner",
 ]

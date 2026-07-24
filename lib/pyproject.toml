@@ -4,15 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops"
-version = "0.2.0"
+version = "2.0.0"
 description = "Blue Data Operators — self-contained operator library"
 readme = "README.md"
 requires-python = ">=3.10"
 # Pydantic provides lax attribute-type validation. blue-data provides the registry
 # integration behind blue_data_ops/data/, the package's only blue-data import boundary.
+# jsonmerge==1.9.2 backs the Blue-compatible merge_json; jsonpath-ng is imported
+# directly (llm.templating, utils.json_utils) so it is declared directly rather than
+# relied on transitively through blue-data.
 dependencies = [
     "blue-data>=0.1.0",
     "pydantic>=2",
+    "jsonmerge==1.9.2",
+    "jsonpath-ng",
 ]
 
 [project.optional-dependencies]

@@ -4,8 +4,17 @@ import json
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import LLMClient, resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 _PLAN_RESOLUTION_PROMPT = """## Task
 You are a data transformation planner. Analyze the input schema and output requirements to create a transformation plan.
@@ -668,10 +677,18 @@ class SemanticTransformOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         input_meta = cast(dict[str, dict[str, Any]], attributes.get("input_meta", {}))
         output_desc = cast(dict[str, dict[str, Any]], attributes.get("output_desc", {}))
         if not input_data or not input_data[0] or not output_desc:
-            return []
+            return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         client = resolve_llm_client(merged)
@@ -737,7 +754,7 @@ class SemanticTransformOperator(Operator):
                     merged,
                 )
             results.append(result)
-        return results
+        return FunctionResult(results, {})
 
     def validate(
         self,
@@ -745,15 +762,41 @@ class SemanticTransformOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply a valid semantic transform output description"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
         output_desc_value = attributes.get("output_desc", {})
         if not output_desc_value or not isinstance(output_desc_value, dict):
-            return False
+            return ValidationResult(False, reason)
         output_desc = cast(dict[Any, Any], output_desc_value)
         for field_name, field_info in output_desc.items():
             if not isinstance(field_name, str) or not isinstance(field_info, dict):
-                return False
+                return ValidationResult(False, reason)
             if "description" not in field_info or not isinstance(field_info["description"], str):
-                return False
-        return True
+                return ValidationResult(False, reason)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when records must be converted into requested target fields or values using "
+        "natural-language transformations."
+    ),
+    tags=(
+        "domain-semantic",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-transformation",
+        "requires-llm",
+    ),
+)

@@ -6,9 +6,21 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._multipart_plan import build_multipart_pipelines
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 from blue_data_ops.plan import PlanRecord, RefinableOperator
+from blue_data_ops.plan.refiner import (
+    _rewrite_plan_operator_version,  # pyright: ignore[reportPrivateUsage]
+    _selected_refinement_version,  # pyright: ignore[reportPrivateUsage]
+)
 
 _PROMPT = """
 Your task is to process a natural language query, and break it down to its subqueries.\x20\x20
@@ -142,6 +154,7 @@ class QueryBreakdownOperator(RefinableOperator):
             type="str",
             description="Optional schema to match",
             default=[],
+            materialize_default=False,
         ),
         "num_alternatives": AttributeSpec(
             type="int",
@@ -177,7 +190,18 @@ class QueryBreakdownOperator(RefinableOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
-        return query_breakdown_operator_function(input_data, attributes, properties)
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
+        return FunctionResult(
+            query_breakdown_operator_function(input_data, attributes, properties),
+            {},
+        )
 
     def refiner(
         self,
@@ -186,6 +210,30 @@ class QueryBreakdownOperator(RefinableOperator):
         properties: Properties | None = None,
     ) -> list[PlanRecord]:
         return query_breakdown_operator_refiner(input_data, attributes, properties)
+
+    def _refiner(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> list[PlanRecord]:
+        records = query_breakdown_operator_refiner(input_data, attributes, properties)
+        return _rewrite_plan_operator_version(
+            records,
+            _selected_refinement_version(self),
+        )
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties)
+        return ValidationResult(
+            valid,
+            None if valid else "supply valid query-breakdown attributes",
+        )
 
     def explain(
         self,
@@ -202,3 +250,20 @@ __all__ = [
     "query_breakdown_operator_function",
     "query_breakdown_operator_refiner",
 ]
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when a natural-language query must be decomposed into alternative "
+        "common-table-expression plans."
+    ),
+    tags=(
+        "domain-plan",
+        "flow-plan",
+        "accepts-none",
+        "produces-plan",
+        "produces-query",
+        "capability-query-decomposition",
+        "requires-llm",
+    ),
+)

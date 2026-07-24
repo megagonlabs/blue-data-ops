@@ -4,14 +4,17 @@ from collections.abc import Callable, Sequence
 from importlib import import_module
 from typing import Any, ClassVar, Protocol, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 _DEFAULT_MODEL = "all-MiniLM-L6-v2"
@@ -97,6 +100,14 @@ class VectorSearchOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         properties = properties or {}
         query = attributes.get("query")
         search_fields = cast(list[str], attributes.get("search_fields", []))
@@ -115,7 +126,7 @@ class VectorSearchOperator(Operator):
         if on_missing_fields not in {"raise", "use_empty"}:
             raise ValueError("on_missing_fields must be one of: raise, use_empty")
         if not input_data:
-            return []
+            return FunctionResult([], {})
 
         # Defer NumPy loading until after empty-input and policy checks.
         np = cast(Any, import_module("numpy"))
@@ -321,7 +332,7 @@ class VectorSearchOperator(Operator):
             for rank, record in enumerate(scored_records, start=1):
                 record["search.rank"] = rank
             output_data.append(scored_records)
-        return output_data
+        return FunctionResult(output_data, {})
 
     def validate(
         self,
@@ -329,34 +340,61 @@ class VectorSearchOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply a valid vector search query, attributes, and properties"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
 
         query = attributes.get("query")
         if query is None or not isinstance(query, (str, dict)):
-            return False
+            return ValidationResult(False, reason)
         search_fields = attributes.get("search_fields")
         if search_fields is not None and not isinstance(search_fields, list):
-            return False
+            return ValidationResult(False, reason)
         if search_fields and not all(
             isinstance(field, str) for field in cast(list[object], search_fields)
         ):
-            return False
+            return ValidationResult(False, reason)
         metric = attributes.get("metric", "cosine")
         if metric not in {"cosine", "dot", "l2"}:
-            return False
+            return ValidationResult(False, reason)
         if properties is not None:
             top_k = properties.get("top_k")
             if top_k is not None and (not isinstance(top_k, int) or top_k < 1):
-                return False
+                return ValidationResult(False, reason)
             normalize = properties.get("normalize")
             if normalize is not None and not isinstance(normalize, bool):
-                return False
+                return ValidationResult(False, reason)
             batch_size = properties.get("batch_size")
             if batch_size is not None and (not isinstance(batch_size, int) or batch_size < 1):
-                return False
+                return ValidationResult(False, reason)
         on_missing_embedding = attributes.get("on_missing_embedding", "embed_missing")
         if on_missing_embedding not in {"embed_missing", "raise"}:
-            return False
+            return ValidationResult(False, reason)
         on_missing_fields = attributes.get("on_missing_fields", "raise")
-        return on_missing_fields in {"raise", "use_empty"}
+        if on_missing_fields not in {"raise", "use_empty"}:
+            return ValidationResult(False, reason)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when records in each group must be ranked by similarity to a text or vector query."
+    ),
+    tags=(
+        "domain-vector",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-search",
+        "requires-vector",
+    ),
+)

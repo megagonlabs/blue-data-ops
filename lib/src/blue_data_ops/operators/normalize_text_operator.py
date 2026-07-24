@@ -5,14 +5,17 @@ import unicodedata
 from datetime import datetime
 from typing import ClassVar, Literal, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
     Record,
+    ValidationResult,
 )
 
 _BULLET_LINE_PATTERN = re.compile(
@@ -112,6 +115,14 @@ class NormalizeTextOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         text_fields = cast(list[str], attributes.get("text_field", []))
         delimiter = cast(str, attributes.get("delimiter", "\n"))
         normalize_unicode_mode = cast(str, attributes.get("normalize_unicode", "NFKC"))
@@ -143,7 +154,7 @@ class NormalizeTextOperator(Operator):
                 )
                 normalized_group.append(normalized_record)
             results.append(normalized_group)
-        return results
+        return FunctionResult(results, {})
 
     def validate(
         self,
@@ -151,25 +162,36 @@ class NormalizeTextOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        reason = "supply valid input attributes"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, reason)
 
         text_fields = attributes.get("text_field", [])
         unicode_mode = attributes.get("normalize_unicode", "NFKC")
         max_chars = attributes.get("max_chars")
         if not isinstance(text_fields, list) or not text_fields:
-            return False
+            return ValidationResult(False, reason)
         raw_text_fields = cast(list[object], text_fields)
         if any(not isinstance(field, str) or not field.strip() for field in raw_text_fields):
-            return False
+            return ValidationResult(False, reason)
         if unicode_mode not in {"NFC", "NFKC", "NFD", "NFKD"}:
-            return False
+            return ValidationResult(False, reason)
         try:
-            return max_chars is None or max_chars >= 0
+            valid = max_chars is None or max_chars >= 0
         except (TypeError, ValueError, AttributeError):
             # Lax attribute coercion can still produce values that cannot be compared
             # with an integer; validation reports them as invalid instead of raising.
-            return False
+            valid = False
+        return ValidationResult(valid, None if valid else reason)
 
 
 def _normalize_record_text(
@@ -294,3 +316,18 @@ def _keep_character(char: str, strip_newline: bool) -> bool:
     if char in {" ", "\t", "\n"}:
         return True
     return not unicodedata.category(char).startswith("C")
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when text needs canonical Unicode, whitespace, case, or recognized-date "
+        "normalization before later text work."
+    ),
+    tags=(
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-normalization",
+    ),
+)

@@ -3,8 +3,16 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from blue_data_ops.operators._coercion import coerce_numeric
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 
 class SumOperator(Operator):
@@ -29,11 +37,19 @@ class SumOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         sum_key = cast(str, attributes.get("sum_key"))
         output_key = attributes.get("output_key", "sum")
 
         if not input_data or not input_data[0]:
-            return [[{output_key: 0}]]
+            return FunctionResult([[{output_key: 0}]], {})
 
         total_sum: int | float = 0
         for record in input_data[0]:
@@ -41,7 +57,7 @@ class SumOperator(Operator):
             if val_to_add is not None:
                 total_sum += val_to_add
 
-        return [[{output_key: total_sum}]]
+        return FunctionResult([[{output_key: total_sum}]], {})
 
     def validate(
         self,
@@ -49,6 +65,29 @@ class SumOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
-        if not super().validate(input_data, attributes, properties):
-            return False
-        return bool(attributes.get("sum_key"))
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties) and bool(
+            attributes.get("sum_key")
+        )
+        return ValidationResult(valid, None if valid else "supply a non-empty sum_key")
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke="Use when a numeric key must be reduced to its total across records.",
+    tags=(
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-reduction",
+        "capability-sum",
+    ),
+)

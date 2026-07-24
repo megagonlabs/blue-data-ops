@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._record_matching import record_signature
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, Data, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    Data,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 
 class IntersectOperator(Operator):
@@ -31,14 +40,22 @@ class IntersectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         match_option = cast(str, attributes.get("match_option", "key_match"))
         if not input_data or len(input_data) < 2:
-            return []
+            return FunctionResult([], {})
 
         non_empty_data = [data for data in input_data if data]
         if len(non_empty_data) < 2:
-            return []
-        return [_find_intersect_records(non_empty_data, match_option)]
+            return FunctionResult([], {})
+        return FunctionResult([_find_intersect_records(non_empty_data, match_option)], {})
 
     def validate(
         self,
@@ -46,9 +63,22 @@ class IntersectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
-        if not super().validate(input_data, attributes, properties):
-            return False
-        return attributes.get("match_option", "key_match") in {"seq_match", "key_match"}
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties) and attributes.get(
+            "match_option", "key_match"
+        ) in {"seq_match", "key_match"}
+        return ValidationResult(
+            valid,
+            None if valid else "supply match_option as key_match or seq_match",
+        )
 
 
 def _find_intersect_records(data_sources: DataBundle, match_option: str) -> Data:
@@ -70,3 +100,12 @@ def _find_intersect_records(data_sources: DataBundle, match_option: str) -> Data
         if all(signature in signature_set for signature_set in other_signature_sets):
             intersect_records.append(record)
     return intersect_records
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when only records shared by all input groups should remain under the configured "
+        "match rule."
+    ),
+    tags=("domain-set", "flow-combine", "accepts-data", "produces-data", "capability-intersection"),
+)

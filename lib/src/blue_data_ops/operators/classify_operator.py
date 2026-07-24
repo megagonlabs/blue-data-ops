@@ -3,14 +3,21 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, ClassVar, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
+    ValidationResult,
 )
+
+
+class _ClassifyModelFailure(Exception):
+    pass
 
 
 class ClassifyOperator(Operator):
@@ -73,6 +80,17 @@ class ClassifyOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _ClassifyModelFailure:
+            return input_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         algorithm = properties.get("algorithm", "decision_tree") if properties else "decision_tree"
         vector_key = attributes.get("vector_key")
         label_key = attributes.get("label_key")
@@ -102,7 +120,7 @@ class ClassifyOperator(Operator):
         )
 
         if not input_data or not input_data[0]:
-            return input_data
+            return FunctionResult(input_data, {})
 
         vectors: list[list[Any]] = []
         labels: list[Any] = []
@@ -113,9 +131,9 @@ class ClassifyOperator(Operator):
                 vectors.append(cast(list[Any], vector))
                 labels.append(label)
         if algorithm == "decision_tree" and not vectors:
-            return input_data
+            return FunctionResult(input_data, {})
         if algorithm != "decision_tree":
-            return input_data
+            return FunctionResult(input_data, {})
 
         # The ml extra is optional; import only when a real model path is reached.
         np = cast(Any, import_module("numpy"))
@@ -160,9 +178,9 @@ class ClassifyOperator(Operator):
                             new_record[output_key] = None
                         subset_result.append(new_record)
                 result_data.append(subset_result)
-            return result_data
-        except Exception:
-            return input_data
+            return FunctionResult(result_data, {})
+        except Exception as error:
+            raise _ClassifyModelFailure from error
 
     def validate(
         self,
@@ -170,6 +188,35 @@ class ClassifyOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
-        if not super().validate(input_data, attributes, properties):
-            return False
-        return bool(attributes.get("vector_key")) and bool(attributes.get("label_key"))
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties)
+        if valid:
+            valid = bool(attributes.get("vector_key")) and bool(attributes.get("label_key"))
+        return ValidationResult(
+            valid,
+            None if valid else "supply non-empty vector_key and label_key values",
+        )
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when labeled numeric vectors are available and class labels are needed for input "
+        "samples."
+    ),
+    tags=(
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-classification",
+        "requires-ml",
+    ),
+)

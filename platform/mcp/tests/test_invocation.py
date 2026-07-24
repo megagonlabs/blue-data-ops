@@ -1,385 +1,579 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+import threading
+from collections.abc import Callable
+from typing import Any, ClassVar, cast
 
 import pytest
 from blue_data_ops.operators import (
-    DataDiscoverOperator,
-    MultipartQueryOperator,
-    NL2QueryRouterOperator,
-    NormalizeTextOperator,
+    AttributeSpec,
+    ExecMeta,
     Operator,
+    OperatorRegistry,
     PlanDiscoverOperator,
-    QueryBreakdownOperator,
+    ProjectOperator,
     SelectOperator,
-    SemanticFilterOperator,
-    VectorEmbedOperator,
+    versioned_registry,
 )
-from blue_data_ops.operators import data_discover_operator as data_discover_module
-from blue_data_ops.operators import query_breakdown_operator as query_breakdown_module
-from blue_data_ops.operators import semantic_filter_operator as semantic_filter_module
-from conftest import EncodeCall, SentenceTransformer
+from blue_data_ops.operators import query_breakdown_operator as qb_module
+from blue_data_ops.plan import RefinableOperator
+from blue_data_ops.plan import pipeline as pipeline_module
+from blue_data_ops.plan.types import PlanRecord
+from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
+from blue_data_ops_mcp.registration import refine_payload, run_payload
 from blue_data_ops_mcp.server import create_server
 
-SELECT_CASES: list[tuple[dict[str, Any], list[list[dict[str, Any]]]]] = [
-    ({"operand_key": "score", "operand": ">", "operand_val": 5}, [[{"id": 1, "score": 8}]]),
-    ({"operand_key": "score", "operand": "contains", "operand_val": 5}, [[]]),
-    ({"operand_key": "score", "operand": ">", "operand_val": 99}, [[]]),
+VALID_INPUT: list[list[dict[str, Any]]] = [[{"id": 1, "score": 8}, {"id": 2, "score": 2}]]
+GT5: dict[str, Any] = {"operand_key": "score", "operand": ">", "operand_val": 5}
+
+EMPTY_CASES: list[tuple[list[list[dict[str, Any]]], dict[str, Any]]] = [
+    ([[{"score": 8}]], {"operand_key": "score", "operand": ">", "operand_val": 99}),
+    ([[]], GT5),
+    ([[], []], GT5),
+]
+BAD_ARGUMENTS: list[dict[str, Any]] = [
+    {},  # input_data omitted
+    {"input_data": [{"not": "a group"}]},  # not list[list[dict]]
+    {"input_data": [[]], "properties": []},  # properties is not an object/null
 ]
 
 
-def _text(result: Any) -> str:
-    assert result.isError is False
-    assert result.structuredContent is None
-    assert len(result.content) == 1
-    assert result.content[0].type == "text"
-    return str(result.content[0].text)
+# ----------------------------- helpers --------------------------------------------------
 
 
-async def _call(name: str, arguments: dict[str, Any]) -> Any:
-    server = create_server(operator_ids=(f"{name}@1.0.0",))
+async def _call(server: FastMCP[Any], name: str, arguments: dict[str, Any]) -> Any:
     async with create_connected_server_and_client_session(server) as client:
         return await client.call_tool(name, arguments)
 
 
-@pytest.mark.parametrize(
-    "attributes,expected",
-    SELECT_CASES,
-)
-async def test_select_direct_and_mcp_w1_w2_w3(
-    attributes: dict[str, Any],
-    expected: list[list[dict[str, Any]]],
-) -> None:
-    input_data = [[{"id": 1, "score": 8}, {"id": 2, "score": 2}]]
-    direct = SelectOperator().apply(input_data, dict(attributes))
-    result = await _call("select", {"input_data": input_data, "attributes": attributes})
-    assert direct == expected
-    assert json.loads(_text(result)) == direct
+def _single_server(operator: Operator) -> FastMCP[Any]:
+    registry = OperatorRegistry()
+    registry.register(operator, "2.0.0")
+    return create_server(registry=registry, operator_ids=(f"{operator.name}@2.0.0",))
 
 
-async def test_normalize_text_preserves_two_groups_and_nested_values_w4() -> None:
-    input_data: list[list[dict[str, Any]]] = [
-        [{"id": 1, "text": "  Héllo  ", "meta": {"tags": ["x", "y"]}}],
-        [{"id": 2, "text": "World", "meta": {"tags": []}}],
-    ]
-    attributes = {"text_field": ["text"]}
-    expected: list[list[dict[str, Any]]] = [
-        [
-            {
-                "id": 1,
-                "text": "  Héllo  ",
-                "meta": {"tags": ["x", "y"]},
-                "text_norm": "Héllo",
-            }
-        ],
-        [{"id": 2, "text": "World", "meta": {"tags": []}, "text_norm": "World"}],
-    ]
-    direct = NormalizeTextOperator().apply(input_data, attributes)
-    result = await _call(
-        "normalize_text",
-        {"input_data": input_data, "attributes": attributes},
-    )
-    assert direct == expected
-    assert json.loads(_text(result)) == direct
+def _errors(result: Any) -> list[dict[str, Any]]:
+    return result.structuredContent["exec_meta"]["errors"]
 
 
-class RegistrySeamDouble:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-
-    def search_records_hierarchical(
-        self,
-        input_query: Any,
-        type: str | None = None,
-        scope: str | None = None,
-        page: int = 0,
-        page_size: int = 5,
-    ) -> list[dict[str, Any]]:
-        self.calls.append(
-            (
-                "search_records_hierarchical",
-                {
-                    "input_query": input_query,
-                    "type": type,
-                    "scope": scope,
-                    "page": page,
-                    "page_size": page_size,
-                },
-            )
-        )
-        return [
-            {
-                "name": "jobs_db",
-                "type": "source",
-                "scope": "/",
-                "id": "//source/jobs_db",
-                "score": 0.1,
-            },
-            {
-                "name": "jobs_far",
-                "type": "source",
-                "scope": "/",
-                "id": "//source/jobs_far",
-                "score": 0.9,
-            },
-        ]
-
-    def get_record(self, name: str, type: str, scope: str) -> dict[str, Any] | None:
-        self.calls.append(("get_record", {"name": name, "type": type, "scope": scope}))
-        if name == "jobs_db":
-            return {
-                "name": name,
-                "description": "job postings",
-                "properties": {"kind": "sql"},
-            }
-        return None
+def _first_error(result: Any) -> dict[str, Any]:
+    errors = _errors(result)
+    assert len(errors) == 1, errors
+    return errors[0]
 
 
-async def test_data_discover_injected_seam_w7(monkeypatch: pytest.MonkeyPatch) -> None:
-    seam = RegistrySeamDouble()
+def _id_sequence(prefix: str = "wire") -> Callable[[], str]:
+    current = 0
 
-    def resolve_registry(properties: dict[str, Any] | None) -> RegistrySeamDouble:
-        del properties
-        return seam
+    def next_id() -> str:
+        nonlocal current
+        current += 1
+        return f"{prefix}-{current:04d}"
 
-    monkeypatch.setattr(data_discover_module, "resolve_registry", resolve_registry)
-    attributes = {"search_query": "jobs", "approximate": True, "threshold": 0.5}
-    expected = [
-        [
-            {
-                "type": "source",
-                "name": "jobs_db",
-                "id": "//source/jobs_db",
-                "scope": "/",
-                "score": 0.1,
-                "description": "job postings",
-                "properties": {"kind": "sql"},
-            }
-        ]
-    ]
-    direct = DataDiscoverOperator().apply([[]], attributes)
-    direct_calls = list(seam.calls)
-    seam.calls.clear()
-    result = await _call(
-        "data_discover",
-        {"input_data": [[]], "attributes": attributes},
-    )
-    assert direct == expected
-    assert json.loads(_text(result)) == direct
-    assert seam.calls == direct_calls
-    assert direct_calls == [
-        (
-            "search_records_hierarchical",
-            {
-                "input_query": "jobs",
-                "type": "source",
-                "scope": None,
-                "page": 0,
-                "page_size": 10,
-            },
-        ),
-        ("get_record", {"name": "jobs_db", "type": "source", "scope": "/"}),
-        ("get_record", {"name": "jobs_far", "type": "source", "scope": "/"}),
-    ]
+    return next_id
 
 
-class QueueClient:
-    def __init__(self, values: list[Any]) -> None:
-        self.values = iter(values)
-        self.calls: list[dict[str, Any]] = []
-
-    def execute_api_call(
-        self,
-        input: Any,
-        properties: dict[str, Any] | None = None,
-        additional_data: dict[str, Any] | None = None,
-    ) -> Any:
-        self.calls.append(
-            {"input": input, "properties": properties, "additional_data": additional_data}
-        )
-        return next(self.values)
+def _cte(table: str, dependency: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "description": f"find {table}",
+        "sql": f"select * from {table}",
+        "table": table,
+        "columns": [{"name": "value", "type": "str"}],
+        "dependency": [] if dependency is None else dependency,
+        "generality": 0,
+    }
 
 
-async def test_semantic_filter_injected_queue_client_w8(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    input_data = [[{"id": 1, "score": 8}, {"id": 2, "score": 2}]]
-    attributes = {"filter_conditions": {"score": "high"}}
-
-    direct_client = QueueClient(["true", "false"])
-
-    def resolve_direct(properties: dict[str, Any]) -> QueueClient:
-        del properties
-        return direct_client
-
-    monkeypatch.setattr(semantic_filter_module, "resolve_llm_client", resolve_direct)
-    direct = SemanticFilterOperator().apply(input_data, attributes)
-
-    wire_client = QueueClient(["true", "false"])
-
-    def resolve_wire(properties: dict[str, Any]) -> QueueClient:
-        del properties
-        return wire_client
-
-    monkeypatch.setattr(semantic_filter_module, "resolve_llm_client", resolve_wire)
-    result = await _call(
-        "semantic_filter",
-        {"input_data": input_data, "attributes": attributes},
-    )
-    assert direct == [[input_data[0][0]]]
-    assert json.loads(_text(result)) == direct
-    assert len(direct_client.calls) == 2
-    assert len(wire_client.calls) == 2
+def _source(name: str, protocol: str = "sqlite") -> dict[str, Any]:
+    return {
+        "name": name,
+        "type": "source",
+        "scope": f"/source/{name}",
+        "properties": {"connection": {"protocol": protocol}, "owner": name},
+    }
 
 
-async def test_vector_embed_exact_stub_boundary_w9() -> None:
-    SentenceTransformer.reset()
-    input_data = [[{"id": "d1", "title": "alpha"}, {"id": "d2", "title": "beta"}]]
-    attributes = {"text_field": ["title"]}
-    properties = {"batch_size": 2}
-    expected = [
-        [
-            {
-                "id": "d1",
-                "embedding": [
-                    0.5568627450980392,
-                    0.8274509803921568,
-                    0.9647058823529412,
-                    0.6784313725490196,
-                ],
-            },
-            {
-                "id": "d2",
-                "embedding": [
-                    0.9568627450980393,
-                    0.3058823529411765,
-                    0.39215686274509803,
-                    0.9058823529411765,
-                ],
-            },
-        ]
-    ]
-    direct = VectorEmbedOperator().apply(input_data, attributes, properties)
-    direct_calls = list(SentenceTransformer.encode_calls)
-    SentenceTransformer.reset()
-    result = await _call(
-        "vector_embed",
-        {"input_data": input_data, "attributes": attributes, "properties": properties},
-    )
-    assert direct == expected
-    assert json.loads(_text(result)) == direct
-    assert direct_calls == [EncodeCall("all-MiniLM-L6-v2", ("alpha", "beta"), 2, False)]
-    assert SentenceTransformer.encode_calls == direct_calls
-
-
-class BreakdownClient:
-    def __init__(self, result: Any = None, error: Exception | None = None) -> None:
-        self.result = result
+class RecordingClient:
+    def __init__(self, result: Any = None, error: BaseException | None = None) -> None:
+        self.result: Any = [] if result is None else result
         self.error = error
+        self.calls: list[Any] = []
 
     def execute_api_call(
         self,
-        input: Any,
+        input: Any,  # noqa: A002
         properties: dict[str, Any] | None = None,
         additional_data: dict[str, Any] | None = None,
     ) -> Any:
-        del input, properties, additional_data
+        self.calls.append(input)
         if self.error is not None:
             raise self.error
         return self.result
 
 
-@pytest.mark.parametrize("attributes", [{}, {"query": ""}, {"query": "   "}])
-async def test_query_breakdown_blank_guards_w10a(attributes: dict[str, Any]) -> None:
-    direct = QueryBreakdownOperator().apply([[]], attributes)
+def _resolver(client: RecordingClient) -> Callable[[Any], RecordingClient]:
+    def resolve(properties: Any) -> RecordingClient:
+        del properties
+        return client
+
+    return resolve
+
+
+# ----------------------------- run() families ------------------------------------------
+
+
+async def test_run_success_direct_and_wire_agree_a14() -> None:
+    result = await _call(create_server(), "select", {"input_data": VALID_INPUT, "attributes": GT5})
+    direct = versioned_registry().resolve("select@2.0.0").run(VALID_INPUT, dict(GT5))
+    assert result.isError is False
+    assert result.structuredContent == run_payload(direct)
+    assert json.loads(result.content[0].text) == result.structuredContent
+    assert result.structuredContent["output_data"] == [[{"id": 1, "score": 8}]]
+    assert result.structuredContent["exec_meta"]["is_empty"] is False
+
+
+@pytest.mark.parametrize("input_data,attributes", EMPTY_CASES)
+async def test_run_successful_empty_is_canonical_a15(
+    input_data: list[list[dict[str, Any]]],
+    attributes: dict[str, Any],
+) -> None:
     result = await _call(
-        "query_breakdown",
-        {"input_data": [[]], "attributes": attributes},
+        create_server(), "select", {"input_data": input_data, "attributes": attributes}
     )
-    assert direct == []
-    assert json.loads(_text(result)) == direct
+    assert result.isError is False
+    assert result.structuredContent["output_data"] == [[]]
+    assert result.structuredContent["output_attributes"] == {}
+    assert result.structuredContent["exec_meta"]["is_empty"] is True
+    assert _errors(result) == []
 
 
-async def test_query_breakdown_provider_success_and_error_w10a(
+async def test_run_recoverable_invalid_attributes_a16() -> None:
+    # `select` without its required operands passes the open MCP container but fails canonical
+    # validation — a recoverable record, not a silent empty result, and no body call.
+    result = await _call(create_server(), "select", {"input_data": [[{"score": 8}]]})
+    assert result.isError is False
+    error = _first_error(result)
+    assert (error["category"], error["code"], error["stage"]) == (
+        "RECOVERABLE",
+        "INVALID_INPUT",
+        "VALIDATE",
+    )
+    assert error["operator_id"] == "select@2.0.0"
+    assert error["retryable"] is False
+    assert isinstance(error["suggestion"], str) and error["suggestion"]
+
+
+async def test_run_failed_is_contained_and_redacted_a17(monkeypatch: pytest.MonkeyPatch) -> None:
+    leak_marker = "opaque-provider-detail-xyz"
+    client = RecordingClient(error=RuntimeError(leak_marker))
+    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
+    result = await _call(
+        create_server(), "query_breakdown", {"input_data": [[]], "attributes": {"query": "q"}}
+    )
+    assert result.isError is False
+    error = _first_error(result)
+    assert (error["category"], error["code"], error["stage"]) == (
+        "FAILED",
+        "EXECUTION_FAILED",
+        "EXECUTE",
+    )
+    assert error["operator_id"] == "query_breakdown@2.0.0"
+    assert leak_marker not in json.dumps(result.structuredContent)
+    assert leak_marker not in result.content[0].text
+    assert len(client.calls) == 1  # one body call, no retry
+
+
+class BlockingOperator(Operator):
+    name: ClassVar[str] = "blocking"
+    description: ClassVar[str] = "Block until released."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def __init__(self) -> None:
+        self.release = threading.Event()
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        self.release.wait(timeout=5)
+        return [[{"done": True}]]
+
+
+async def test_run_timeout_is_contained_and_worker_discarded_a18() -> None:
+    operator = BlockingOperator()
+    try:
+        result = await _call(
+            _single_server(operator),
+            "blocking",
+            {"input_data": [[]], "properties": {"execution.timeout_seconds": 0.2}},
+        )
+        assert result.isError is False
+        error = _first_error(result)
+        assert (error["category"], error["code"], error["stage"]) == (
+            "TIMEOUT",
+            "OPERATOR_TIMEOUT",
+            "EXECUTE",
+        )
+        assert result.structuredContent["output_data"] == [[]]
+    finally:
+        operator.release.set()
+
+
+# ----------------------------- refine() families ---------------------------------------
+
+
+async def test_refine_multipart_direct_and_wire_agree_a19(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = [[{"table": "answer"}]]
-
-    def resolve_success(properties: dict[str, Any]) -> BreakdownClient:
-        del properties
-        return BreakdownClient(expected)
-
-    monkeypatch.setattr(
-        query_breakdown_module,
-        "resolve_llm_client",
-        resolve_success,
-    )
-    direct = QueryBreakdownOperator().apply([[]], {"query": "q"})
+    input_data = [[_cte("orders")]]
+    # The direct oracle must be the registry-selected 2.0.0 operator so its child pins match the
+    # wire (a selected v2 refinement emits @2.0.0 children; an unbound one keeps declared @1.0.0).
+    selected = versioned_registry().resolve("multipart_query@2.0.0")
+    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
+    direct = cast(RefinableOperator, selected).refine(input_data, {})
+    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
     result = await _call(
-        "query_breakdown",
-        {"input_data": [[]], "attributes": {"query": "q"}},
+        create_server(), "multipart_query__refine", {"input_data": input_data, "attributes": {}}
     )
-    assert direct is expected
-    assert json.loads(_text(result)) == direct
+    assert result.isError is False
+    assert result.structuredContent == refine_payload(direct)
+    assert len(result.structuredContent["plans"]) == 1
+    assert json.loads(result.content[0].text) == result.structuredContent
 
-    def resolve_error(properties: dict[str, Any]) -> BreakdownClient:
-        del properties
-        return BreakdownClient(error=LookupError("provider down"))
 
-    monkeypatch.setattr(
-        query_breakdown_module,
-        "resolve_llm_client",
-        resolve_error,
+async def test_refine_router_serializes_plan_a19() -> None:
+    attributes = {
+        "search_query": "find rows",
+        "columns": [{"name": "value"}],
+        "execute_query": False,
+        "protocol": "sqlite",
+        "sources": [_source("s")],
+    }
+    result = await _call(
+        create_server(), "nl2query_router__refine", {"input_data": [[]], "attributes": attributes}
     )
-    error = await _call(
-        "query_breakdown",
-        {"input_data": [[]], "attributes": {"query": "q"}},
-    )
-    assert error.isError is True
-    assert "Error executing tool query_breakdown: provider down" in str(error.content[0].text)
+    assert result.isError is False
+    plans = result.structuredContent["plans"]
+    assert len(plans) == 1
+    assert "nodes" in plans[0] and "entities" in plans[0]
 
 
-PLAN_CASES: list[tuple[str, Operator, dict[str, Any], dict[str, Any] | None]] = [
-    (
-        "plan_discover",
-        PlanDiscoverOperator(),
-        {"task": "find", "data": [[]], "approximate": True},
-        None,
-    ),
-    (
-        "plan_discover",
-        PlanDiscoverOperator(),
-        {
-            "task": "find",
-            "data": [[]],
-            "approximate": True,
-            "search_query": "q",
-        },
-        None,
-    ),
-    ("plan_discover", PlanDiscoverOperator(), {}, None),
-    ("multipart_query", MultipartQueryOperator(), {}, {}),
-    ("nl2query_router", NL2QueryRouterOperator(), {}, {}),
-]
-
-
-@pytest.mark.parametrize(
-    "name,operator,attributes,properties",
-    PLAN_CASES,
-)
-async def test_raw_plan_tools_return_placeholder_w10b_w10c_w10d(
-    name: str,
-    operator: Operator,
-    attributes: dict[str, Any],
-    properties: dict[str, Any] | None,
+async def test_refine_query_breakdown_serializes_plan_a19(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    direct = operator.apply([[]], attributes, properties)
-    arguments: dict[str, Any] = {"input_data": [[]], "attributes": attributes}
-    if properties is not None:
-        arguments["properties"] = properties
-    result = await _call(name, arguments)
-    assert direct == [[]]
-    assert json.loads(_text(result)) == direct
+    client = RecordingClient([[_cte("answer")]])
+    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
+    result = await _call(
+        create_server(),
+        "query_breakdown__refine",
+        {"input_data": [[]], "attributes": {"query": "q"}},
+    )
+    assert result.isError is False
+    assert len(result.structuredContent["plans"]) == 1
+
+
+def _plan_discover_server() -> FastMCP[Any]:
+    children = OperatorRegistry()
+    for operator, tags in ((ProjectOperator(), ("starter",)), (SelectOperator(), ("starter",))):
+        children.register(operator, "1.0.0", tags=tags)
+        children.register(operator, "2.0.0", tags=tags)
+    registry = OperatorRegistry()
+    registry.register(PlanDiscoverOperator(children), "2.0.0")
+    return create_server(registry=registry, operator_ids=("plan_discover@2.0.0",))
+
+
+async def test_refine_plan_discover_serializes_plans_a19(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
+    result = await _call(
+        _plan_discover_server(),
+        "plan_discover__refine",
+        {
+            "input_data": [[]],
+            "attributes": {"task": "starter", "data": "rows", "approximate": True},
+        },
+    )
+    assert result.isError is False
+    plans = result.structuredContent["plans"]
+    assert len(plans) == 2
+    assert all("nodes" in plan for plan in plans)
+
+
+async def test_refine_zero_plan_is_successful_empty_a20() -> None:
+    result = await _call(
+        create_server(), "multipart_query__refine", {"input_data": [], "attributes": {}}
+    )
+    assert result.isError is False
+    assert result.structuredContent["plans"] == []
+    assert result.structuredContent["exec_meta"]["is_empty"] is True
+    assert _errors(result) == []
+
+
+async def test_refine_invalid_input_is_recoverable_a20() -> None:
+    result = await _call(
+        create_server(),
+        "multipart_query__refine",
+        {"input_data": [[]], "attributes": {"plans": "bad"}},
+    )
+    assert result.isError is False
+    error = _first_error(result)
+    assert (error["category"], error["code"], error["stage"]) == (
+        "RECOVERABLE",
+        "INVALID_INPUT",
+        "VALIDATE",
+    )
+
+
+async def test_refine_raising_refiner_is_contained_a20(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = RecordingClient(error=RuntimeError("opaque-refiner-payload"))
+    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
+    result = await _call(
+        create_server(),
+        "query_breakdown__refine",
+        {"input_data": [[]], "attributes": {"query": "q"}},
+    )
+    assert result.isError is False
+    error = _first_error(result)
+    assert (error["category"], error["code"], error["stage"]) == (
+        "FAILED",
+        "REFINEMENT_FAILED",
+        "REFINE",
+    )
+    assert "opaque-refiner-payload" not in result.content[0].text
+
+
+class MalformedRefiner(RefinableOperator):
+    name: ClassVar[str] = "malformed_refiner"
+    description: ClassVar[str] = "Return a non-record refinement result."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        return [[]]
+
+    def refiner(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[PlanRecord]:
+        del input_data, attributes, properties
+        return cast(list[PlanRecord], [123])
+
+
+async def test_refine_malformed_result_is_normalize_error_a20() -> None:
+    result = await _call(
+        _single_server(MalformedRefiner()),
+        "malformed_refiner__refine",
+        {"input_data": [[]], "attributes": {}},
+    )
+    assert result.isError is False
+    error = _first_error(result)
+    assert (error["category"], error["code"], error["stage"]) == (
+        "FAILED",
+        "REFINEMENT_RESULT_INVALID",
+        "NORMALIZE",
+    )
+
+
+class BlockingRefiner(RefinableOperator):
+    name: ClassVar[str] = "blocking_refiner"
+    description: ClassVar[str] = "Block inside the refiner until released."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def __init__(self) -> None:
+        self.release = threading.Event()
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        return [[]]
+
+    def refiner(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[PlanRecord]:
+        del input_data, attributes, properties
+        self.release.wait(timeout=5)
+        return []
+
+
+async def test_refine_timeout_is_contained_a20() -> None:
+    operator = BlockingRefiner()
+    try:
+        result = await _call(
+            _single_server(operator),
+            "blocking_refiner__refine",
+            {"input_data": [[]], "properties": {"execution.timeout_seconds": 0.2}},
+        )
+        assert result.isError is False
+        error = _first_error(result)
+        assert (error["category"], error["code"], error["stage"]) == (
+            "TIMEOUT",
+            "OPERATOR_TIMEOUT",
+            "REFINE",
+        )
+    finally:
+        operator.release.set()
+
+
+# ----------------------------- dispatch boundary (A21) ---------------------------------
+
+
+class RunOnlySpy(Operator):
+    name: ClassVar[str] = "run_only_spy"
+    description: ClassVar[str] = "A primary that dispatches only through run()."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def __init__(self) -> None:
+        self.run_calls = 0
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        raise AssertionError("apply must not be called by the adapter")
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("invoke must not be called by the adapter")
+
+    def validate(self, *args: Any, **kwargs: Any) -> bool:
+        raise AssertionError("validate must not be called by the adapter")
+
+    def run(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> tuple[list[list[dict[str, Any]]], dict[str, Any], ExecMeta]:
+        del input_data, attributes, properties
+        self.run_calls += 1
+        return [[{"ok": True}]], {}, ExecMeta(is_empty=False, errors=[], logs=[], traces={})
+
+
+class RefineOnlySpy(RefinableOperator):
+    name: ClassVar[str] = "refine_only_spy"
+    description: ClassVar[str] = "A companion that dispatches only through refine()."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def __init__(self) -> None:
+        self.refine_calls = 0
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        return [[]]
+
+    def refiner(self, *args: Any, **kwargs: Any) -> list[PlanRecord]:
+        raise AssertionError("raw refiner must not be called by the adapter")
+
+    def refine(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> tuple[list[Any], ExecMeta]:
+        del input_data, attributes, properties
+        self.refine_calls += 1
+        return [], ExecMeta(is_empty=True, errors=[], logs=[], traces={})
+
+
+async def test_primary_dispatches_only_to_run_once_a21() -> None:
+    operator = RunOnlySpy()
+    result = await _call(_single_server(operator), "run_only_spy", {"input_data": [[]]})
+    assert result.isError is False
+    assert operator.run_calls == 1
+    assert result.structuredContent["output_data"] == [[{"ok": True}]]
+
+
+async def test_companion_dispatches_only_to_refine_once_a21() -> None:
+    operator = RefineOnlySpy()
+    result = await _call(_single_server(operator), "refine_only_spy__refine", {"input_data": [[]]})
+    assert result.isError is False
+    assert operator.refine_calls == 1
+    assert result.structuredContent["plans"] == []
+
+
+# ----------------------------- argument errors (A22) -----------------------------------
+
+
+class NoCallOperator(Operator):
+    name: ClassVar[str] = "no_call"
+    description: ClassVar[str] = "Fail loudly if any canonical call begins."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def apply(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("apply must not begin")
+
+    def run(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("run must not begin")
+
+
+@pytest.mark.parametrize("arguments", BAD_ARGUMENTS)
+async def test_argument_shape_errors_are_tool_errors_a22(arguments: dict[str, Any]) -> None:
+    result = await _call(_single_server(NoCallOperator()), "no_call", arguments)
+    assert result.isError is True
+
+
+# ----------------------------- encoding errors (A23) -----------------------------------
+
+
+class EncodingOperator(Operator):
+    name: ClassVar[str] = "encoding"
+    description: ClassVar[str] = "Return a chosen leaf in the canonical output."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    leaf: ClassVar[Any] = None
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        return [[{"v": type(self).leaf}]]
+
+
+class _StrLeaf:
+    def __str__(self) -> str:
+        return "python-only-leaf"
+
+
+@pytest.mark.parametrize("leaf", [float("nan"), float("inf"), float("-inf")])
+async def test_non_finite_floats_are_tool_errors_a23(leaf: float) -> None:
+    EncodingOperator.leaf = leaf
+    result = await _call(_single_server(EncodingOperator()), "encoding", {"input_data": [[]]})
+    assert result.isError is True
+    assert result.structuredContent is None  # a tool error, not a synthetic operator record
+
+
+async def test_python_only_leaf_follows_default_str_a23() -> None:
+    EncodingOperator.leaf = _StrLeaf()
+    result = await _call(_single_server(EncodingOperator()), "encoding", {"input_data": [[]]})
+    assert result.isError is False
+    assert result.structuredContent["output_data"] == [[{"v": "python-only-leaf"}]]
+    assert _errors(result) == []

@@ -3,14 +3,21 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, ClassVar, cast
 
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     Data,
     DataBundle,
+    FunctionResult,
     Properties,
+    ValidationResult,
 )
+
+
+class _ClusterModelFailure(Exception):
+    pass
 
 
 class ClusterOperator(Operator):
@@ -72,6 +79,17 @@ class ClusterOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _ClusterModelFailure:
+            return [input_data[0]]
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         algorithm = properties.get("algorithm", "kmeans") if properties else "kmeans"
         vector_key = attributes.get("vector_key")
         output_key = cast(str, attributes.get("output_key", "cluster_index"))
@@ -88,7 +106,7 @@ class ClusterOperator(Operator):
         covariance_type = cast(str, attributes.get("covariance_type", "full"))
 
         if not input_data or not input_data[0]:
-            return [[]]
+            return FunctionResult([[]], {})
 
         data = input_data[0]
         vectors: list[list[Any]] = []
@@ -102,9 +120,9 @@ class ClusterOperator(Operator):
         if algorithm in {"kmeans", "gaussian"} and (
             not vectors or len(vectors) < cast(int, cluster_count)
         ):
-            return [data]
+            return FunctionResult([data], {})
         if algorithm == "dbscan" and not vectors:
-            return [data]
+            return FunctionResult([data], {})
 
         # NumPy is first needed to materialize the vector matrix.
         np = cast(Any, import_module("numpy"))
@@ -117,7 +135,7 @@ class ClusterOperator(Operator):
         elif algorithm == "gaussian":
             model_constructor = getattr(import_module("sklearn.mixture"), "GaussianMixture")
         else:
-            return [data]
+            return FunctionResult([data], {})
 
         try:
             if algorithm == "kmeans":
@@ -163,9 +181,9 @@ class ClusterOperator(Operator):
                 else:
                     new_record[output_key] = None
                 result_data.append(new_record)
-            return [result_data]
-        except Exception:
-            return [data]
+            return FunctionResult([result_data], {})
+        except Exception as error:
+            raise _ClusterModelFailure from error
 
     def validate(
         self,
@@ -173,24 +191,47 @@ class ClusterOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        suggestion = "supply valid clustering attributes for the selected algorithm"
         if not super().validate(input_data, attributes, properties):
-            return False
+            return ValidationResult(False, suggestion)
 
         algorithm = properties.get("algorithm", "kmeans") if properties else "kmeans"
         vector_key = attributes.get("vector_key")
         cluster_count = attributes.get("n_cluster")
         if not vector_key:
-            return False
+            return ValidationResult(False, suggestion)
         if algorithm in {"kmeans", "gaussian"} and cluster_count is None:
-            return False
+            return ValidationResult(False, suggestion)
 
         init = attributes.get("init")
         init_centroids = attributes.get("init_centroids")
         if init == "specified" and algorithm in {"kmeans", "gaussian"}:
             if not init_centroids:
-                return False
+                return ValidationResult(False, suggestion)
             if cluster_count is None:
-                return False
+                return ValidationResult(False, suggestion)
             if len(cast(list[Any], init_centroids)) != int(cluster_count):
-                return False
-        return True
+                return ValidationResult(False, suggestion)
+        return ValidationResult(True, None)
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke="Use when unlabeled numeric vectors must be assigned to clusters.",
+    tags=(
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-clustering",
+        "requires-ml",
+    ),
+)

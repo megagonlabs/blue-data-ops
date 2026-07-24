@@ -3,8 +3,17 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from blue_data_ops.operators._coercion import coerce_numeric
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties, Record
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    Record,
+    ValidationResult,
+)
 
 
 class ArgminOperator(Operator):
@@ -33,13 +42,21 @@ class ArgminOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        return self._execute(input_data, attributes, properties).output_data
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         argmin_key = cast(str, attributes.get("argmin_key"))
         return_index = attributes.get("return_index", False)
 
         if not input_data or not input_data[0]:
             if return_index:
-                return [[{"indices": []}]]
-            return [[]]
+                return FunctionResult([[{"indices": []}]], {})
+            return FunctionResult([[]], {})
 
         min_val: int | float | None = None
         min_records_indices: list[tuple[int, Record]] = []
@@ -53,8 +70,11 @@ class ArgminOperator(Operator):
                     min_records_indices.append((i, record))
 
         if return_index:
-            return [[{"indices": [idx for idx, _ in min_records_indices]}]]
-        return [[rec for _, rec in min_records_indices]]
+            return FunctionResult(
+                [[{"indices": [idx for idx, _ in min_records_indices]}]],
+                {},
+            )
+        return FunctionResult([[rec for _, rec in min_records_indices]], {})
 
     def validate(
         self,
@@ -62,6 +82,32 @@ class ArgminOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> bool:
-        if not super().validate(input_data, attributes, properties):
-            return False
-        return bool(attributes.get("argmin_key"))
+        result = self._validate_input(input_data, attributes, properties)
+        return type(result) is ValidationResult and result.ok is True
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties) and bool(
+            attributes.get("argmin_key")
+        )
+        return ValidationResult(valid, None if valid else "supply a non-empty argmin_key")
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when the result must retain the input record or tied records with the smallest "
+        "value for one key."
+    ),
+    tags=(
+        "domain-arithmetic",
+        "flow-aggregate",
+        "accepts-data",
+        "produces-data",
+        "capability-extrema",
+        "capability-record-selection",
+    ),
+)

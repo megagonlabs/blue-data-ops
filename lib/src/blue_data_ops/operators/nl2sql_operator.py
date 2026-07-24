@@ -6,11 +6,24 @@ from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import resolve_registry
 from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._query_results import format_execution_result
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle, Properties
+from blue_data_ops.operators.types import (
+    Attributes,
+    AttributeSpec,
+    DataBundle,
+    FunctionResult,
+    Properties,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _MissingRegistryError(RuntimeError):
+    pass
+
 
 _PROMPT = """
 Your task is to translate a natural language question into a SQL query based on the provided database schema.
@@ -52,7 +65,7 @@ ${attr_names_section}
 class NL2SQLOperator(Operator):
     """Translate a natural language question into a SQL query and optionally run it."""
 
-    # Faithful to blue-dev's nl2sql operator: a blank question returns [[]] with no
+    # Faithful to Blue source's nl2sql operator: a blank question returns [[]] with no
     # provider call; protocol/database/collection are required while `source` is NOT
     # part of that check (upstream quirk, kept); a missing registry returns [[]];
     # the schema is ALWAYS fetched from the registry — the declared `schema`
@@ -140,6 +153,17 @@ class NL2SQLOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> DataBundle:
+        try:
+            return self._execute(input_data, attributes, properties).output_data
+        except _MissingRegistryError:
+            return [[]]
+
+    def _execute(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> FunctionResult:
         question = cast(str, attributes.get("question", ""))
         source = cast(str, attributes.get("source", ""))
         protocol = cast(str, attributes.get("protocol", "postgres"))
@@ -154,28 +178,26 @@ class NL2SQLOperator(Operator):
         attr_names = cast("list[str]", attributes.get("attr_names", []))
 
         if not question or not question.strip():
-            return [[]]
+            return FunctionResult([[]], {})
 
-        # protocol, database, collection are required
         if not protocol or not database or not collection:
             raise ValueError("Protocol, database, and collection are required")
 
         registry = resolve_registry(properties)
         if not registry:
-            return [[]]
+            raise _MissingRegistryError
 
         # get schema from data registry (unconditionally — the schema attribute is
         # accepted but not consulted, matching upstream)
         schema = registry.get_data_source_schema(source, database, collection)
         logger.debug("SCHEMA:")
         logger.debug(schema)
-        # convert schema to JSON string if it's a dictionary
         if isinstance(schema, dict):
             schema_str = json.dumps(schema, indent=2)
         else:
             schema_str = str(schema)
 
-        # Caller properties override the operator defaults (blue-dev merges the same
+        # Caller properties override the operator defaults (Blue source merges the same
         # values through its instance properties; same observable, different shell).
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
         execute_query = merged.get("execute_query", True)
@@ -190,7 +212,6 @@ class NL2SQLOperator(Operator):
 
         client = resolve_llm_client(merged)
 
-        # Create optional attr_names_section
         attr_names_section = ""
         if attr_names and len(attr_names) > 0:
             attr_names_list = ", ".join(attr_names)
@@ -213,7 +234,6 @@ class NL2SQLOperator(Operator):
         }
         sql_result = client.execute_api_call({}, properties=merged, additional_data=additional_data)
 
-        # Parse the result to get the query
         if isinstance(sql_result, str):
             try:
                 sql_data = json.loads(sql_result)
@@ -229,24 +249,32 @@ class NL2SQLOperator(Operator):
         if not generated_query:
             raise ValueError("No query found in LLM response")
 
-        # Validate query prefix
         if not any(
             generated_query.upper().startswith(prefix.upper()) for prefix in validate_query_prefixes
         ):
             raise ValueError(f"Invalid query prefix: {generated_query}")
 
-        # If execution is enabled, execute the generated SQL
         if execute_query and generated_query:
-            # use data registry to execute query
             logger.info("Generated Query: " + generated_query)
             result = registry.execute_query(generated_query, source, database, collection)
             logger.debug("Result: ")
             logger.debug(result)
             # The formatter's case-4 fallthrough can yield None at runtime (an upstream
             # quirk, kept and pinned); the cast keeps the declared operator contract.
-            return cast(DataBundle, format_execution_result(result))
-        # if execution is disabled, return the sql query only
-        return [[{"sql": generated_query}]]
+            return FunctionResult(cast(DataBundle, format_execution_result(result)), {})
+        return FunctionResult([[{"sql": generated_query}]], {})
+
+    def _validate_input(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> ValidationResult:
+        valid = super().validate(input_data, attributes, properties)
+        return ValidationResult(
+            valid,
+            None if valid else "supply valid natural-language SQL attributes",
+        )
 
     def explain(
         self,
@@ -258,3 +286,23 @@ class NL2SQLOperator(Operator):
             "output": output,
             "attributes": attributes,
         }
+
+
+DISCOVERY = DiscoverySpec(
+    when_to_invoke=(
+        "Use when a natural-language question must be translated into SQL, with optional execution."
+    ),
+    tags=(
+        "domain-query-compound",
+        "flow-head",
+        "accepts-none",
+        "produces-data",
+        "produces-query",
+        "capability-query-execution",
+        "capability-query-generation",
+        "capability-sql",
+        "requires-data-registry",
+        "requires-llm",
+        "requires-query-backend",
+    ),
+)

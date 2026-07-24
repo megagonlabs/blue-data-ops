@@ -1,29 +1,28 @@
 from __future__ import annotations
 
 import importlib.metadata
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 import blue_data_ops_mcp
-from blue_data_ops_mcp.registration import DEFAULT_OPERATOR_IDS, freeze_deployment, make_handler
+from blue_data_ops_mcp.registration import V2_OPERATOR_IDS, freeze_deployment
 from blue_data_ops_mcp.server import create_server
 
 ROOT = Path(__file__).parents[1]
 
 
-def test_distribution_metadata_and_public_surface() -> None:
+def test_distribution_metadata_and_public_surface_a33() -> None:
     metadata = importlib.metadata.metadata("blue-data-ops-mcp")
     requirements = metadata.get_all("Requires-Dist") or []
     assert metadata["Name"] == "blue-data-ops-mcp"
-    assert metadata["Version"] == "0.1.0"
+    assert metadata["Version"] == "0.2.0"
     assert metadata["Requires-Python"] == ">=3.10"
     runtime = {requirement for requirement in requirements if "extra ==" not in requirement}
     assert runtime == {
-        "blue-data-ops==0.2.0",
+        "blue-data-ops==2.0.0",
         "mcp==1.27.2",
         "pydantic<3,>=2.11",
     }
@@ -32,19 +31,29 @@ def test_distribution_metadata_and_public_surface() -> None:
         for forbidden in ("uvicorn", "anyio", "mcp[cli]", "registry-mcp")
         for requirement in runtime
     )
-    assert blue_data_ops_mcp.__all__ == ["DEFAULT_OPERATOR_IDS", "create_server", "serve"]
-    assert blue_data_ops_mcp.DEFAULT_OPERATOR_IDS == DEFAULT_OPERATOR_IDS
+    assert blue_data_ops_mcp.__all__ == ["V2_OPERATOR_IDS", "create_server", "serve"]
+    assert blue_data_ops_mcp.V2_OPERATOR_IDS == V2_OPERATOR_IDS
+    assert len(V2_OPERATOR_IDS) == 36
+    assert all(operator_id.endswith("@2.0.0") for operator_id in V2_OPERATOR_IDS)
 
 
-def test_source_tree_has_no_blue_import_or_v2_surface() -> None:
+def test_source_tree_has_no_blue_import() -> None:
     source = "\n".join(path.read_text() for path in (ROOT / "src").rglob("*.py"))
     assert "from blue." not in source
     assert "import blue." not in source
-    for symbol in ("ExecMeta", "ErrorRecord", "ErrorCategory", "structuredContent", "refine("):
-        assert symbol not in source
 
 
-def test_server_defaults_are_stateful_loopback_streamable_http() -> None:
+def test_pipeline_executor_stays_outside_the_mcp_adapter_d44() -> None:
+    from blue_data_ops.plan import DataPipeline, PipelineExecutor
+
+    for forbidden in ("run", "execute", "traverse"):
+        assert not hasattr(DataPipeline, forbidden)
+    assert callable(PipelineExecutor)
+    source = "\n".join(path.read_text() for path in (ROOT / "src").rglob("*.py"))
+    assert "PipelineExecutor" not in source
+
+
+def test_server_defaults_are_stateful_loopback_streamable_http_a24() -> None:
     server = create_server(operator_ids=())
     assert server.settings.host == "127.0.0.1"
     assert server.settings.port == 8000
@@ -53,9 +62,7 @@ def test_server_defaults_are_stateful_loopback_streamable_http() -> None:
     assert server.settings.stateless_http is False
 
 
-def test_serve_selects_streamable_http_without_opening_listener(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_serve_selects_streamable_http_without_opening_listener() -> None:
     from blue_data_ops_mcp import server as server_module
 
     calls: list[dict[str, Any]] = []
@@ -68,28 +75,44 @@ def test_serve_selects_streamable_http_without_opening_listener(
         del kwargs
         return ServerDouble()
 
-    monkeypatch.setattr(server_module, "create_server", create_server_double)
-    server_module.serve(operator_ids=())
+    original = server_module.create_server
+    server_module.create_server = create_server_double  # type: ignore[assignment]
+    try:
+        server_module.serve(operator_ids=())
+    finally:
+        server_module.create_server = original  # type: ignore[assignment]
     assert calls == [{"transport": "streamable-http"}]
 
 
-def test_every_default_handler_closes_over_exact_resolved_instance() -> None:
-    snapshot = freeze_deployment()
-    assert len(snapshot) == len(DEFAULT_OPERATOR_IDS)
+def test_every_default_binding_uses_the_exact_resolved_instance() -> None:
+    from blue_data_ops.operators import versioned_registry
+
+    registry = versioned_registry()
+    snapshot = freeze_deployment(registry)
     for binding in snapshot:
-        handler = make_handler(binding.operator)
-        closure_values = tuple(cell.cell_contents for cell in handler.__closure__ or ())
-        assert binding.operator in closure_values
+        assert binding.operator is registry.resolve(binding.card.operator_id)
 
 
-def test_source_import_smoke_in_python_310_subprocess() -> None:
+async def test_every_tool_meta_reports_operator_version_2_0_0_a25() -> None:
+    tools = await create_server().list_tools()
+    assert len(tools) == 40
+    for tool in tools:
+        assert (tool.meta or {})["version"] == "2.0.0"
+
+
+def test_source_import_smoke_in_subprocess_a32() -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).rstrip(
+        os.pathsep
+    )
     completed = subprocess.run(
         [
             sys.executable,
             "-c",
-            ("import blue_data_ops_mcp; assert len(blue_data_ops_mcp.DEFAULT_OPERATOR_IDS) == 36"),
+            "import blue_data_ops_mcp; assert len(blue_data_ops_mcp.V2_OPERATOR_IDS) == 36",
         ],
         cwd=ROOT,
+        env=env,
         check=False,
         capture_output=True,
         text=True,
