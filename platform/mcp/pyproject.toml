@@ -4,12 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP adapter for Blue Data Operators"
 readme = "README.md"
 requires-python = ">=3.10"
+# The core pin is exact and names the core release this adapter was verified against.
+# 0.3.0 moves it to 2.1.0. The adapter's own surface did not change: core 2.1.0 adds the
+# planner and keeps every operator card at @2.0.0, which is what the 40 tools are built on.
 dependencies = [
-    "blue-data-ops==2.0.0",
+    "blue-data-ops==2.1.0",
     "mcp==1.27.2",
     "pydantic>=2.11,<3",
 ]

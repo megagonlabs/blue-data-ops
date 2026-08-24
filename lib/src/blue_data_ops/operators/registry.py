@@ -61,6 +61,11 @@ class OperatorRegistry:
     def __init__(self) -> None:
         self._operators: dict[str, Operator] = {}
         self._cards: dict[str, OperatorCard] = {}
+        # Built-in origin: pinned ids registered through the built-in path below, never
+        # through public register(). It is a set on the registry rather than a field on
+        # the card: nothing serializes it, no caller can pass it, and no planning record
+        # exports it.
+        self._builtin_ids: set[str] = set()
 
     def register(
         self,
@@ -108,6 +113,23 @@ class OperatorRegistry:
         )
         self._operators[operator_id] = bound_operator
         self._cards[operator_id] = card
+        return card
+
+    def _register_builtin(
+        self,
+        operator: Operator,
+        version: str,
+        tags: Sequence[str] = (),
+        *,
+        when_to_invoke: str = "",
+    ) -> OperatorCard:
+        """Register through the package factory and record built-in provenance.
+
+        The only writer of `_builtin_ids`. Public `register()` stays permissive and
+        leaves a card unmarked, including when it is called on a factory-built registry.
+        """
+        card = self.register(operator, version, tags, when_to_invoke=when_to_invoke)
+        self._builtin_ids.add(card.operator_id)
         return card
 
     def resolve(self, operator_id: str) -> Operator:
@@ -185,6 +207,27 @@ class OperatorRegistry:
             self._cards.values(),
             key=lambda card: (card.name, tuple(-part for part in _semver_key(card.version))),
         )
+
+
+# No underscore because plan.openai_generator and plan.planner both import it; it stays
+# out of the blue_data_ops.operators surface, so it remains package-internal.
+def is_builtin_card(registry: object, card: object) -> bool:
+    """Whether `card` is the exact card this registry built from the package factory.
+
+    This is the one origin model every planning caller shares; nothing adds a second.
+    Both halves are load-bearing and neither implies the other. Identity proves the
+    caller holds *this* registry's card rather than an equal-looking one from another
+    `versioned_registry()` result, which matters because the generator goes on to read
+    live declarations out of this instance. The provenance set proves the package
+    factory registered it, because public `register()` accepts anything a caller hands
+    it and an equal-looking custom card would otherwise pass identity.
+    """
+
+    if type(registry) is not OperatorRegistry or type(card) is not OperatorCard:
+        return False
+    return (
+        registry.get_card(card.operator_id) is card and card.operator_id in registry._builtin_ids  # pyright: ignore[reportPrivateUsage]
+    )
 
 
 def _semver_key(version: str) -> tuple[int, int, int]:
@@ -366,7 +409,7 @@ def default_registry(**versions: Any) -> OperatorRegistry:
     for operator_class in _builtin_operator_classes():
         instance = operator_class()
         version = str(versions.get(instance.name, "1.0.0"))
-        registry.register(instance, version)
+        registry._register_builtin(instance, version)  # pyright: ignore[reportPrivateUsage]
     return registry
 
 
@@ -391,8 +434,10 @@ def versioned_registry() -> OperatorRegistry:
             if operator_class is PlanDiscoverOperator
             else operator_class()
         )
-        registry.register(v2_operator, "2.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke)
-        registry.register(
+        registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
+            v2_operator, "2.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
+        )
+        registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
             operator_class(), "1.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
         )
     return registry

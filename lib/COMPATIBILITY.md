@@ -93,6 +93,48 @@ Blue's Redis/pubsub synchronization, service clients, remote routing, recursive 
 retry, or replanning. Refinement remains a separate step because the portable node record does not
 carry an alternative-selection policy.
 
+## Planning boundaries
+
+`PipelinePlanner` (2.1.0) builds a compiled `DataPipeline` from a goal. It is not a local port of
+Blue's `DataPlanner` and does not grow into one: it plans once and stops. There is no refinement
+loop, no replanning after a failed node, no alternative selection, no remote dispatch, and no
+`plan_refinement()` call. A caller that wants a different plan builds a new `PlanningRequest`.
+
+Two boundaries are deliberate and should survive upgrades.
+
+The planner compiles only pinned `@2.0.0` operator ids that its own discovery returned, so a
+generator cannot introduce an operator the caller's discovery filters excluded. The compiler
+additionally requires an `nl2sql` step to address the same source, database, and collection the
+request scoped. That is an address-consistency check on the step's attributes, not a table
+authorization boundary: nothing constrains the tables the generated SQL reads, and
+`DataScope.entities` stays advisory planning context.
+
+Planning raises `PlanningError` where operator execution returns errors inside `ExecMeta`. This is
+the one place the package reports a recoverable outcome by raising, and it is deliberate: planning
+either produces a compiled pipeline or produces nothing, so there is no partial result to carry a
+record. `PlanningError` subclasses `ValueError` and exposes `record`. It carries the same fields as
+the operator `ErrorRecord` apart from `operator_id`, which planning has no value for, and its
+`stage` is a `PlanningStage` rather than an `ErrorStage`.
+
+## The OpenAI plan generator is a direct SDK seam
+
+`OpenAIPlanGenerator` calls the official `openai` SDK directly rather than going through this
+package's litellm-backed `LLMClient`. The two seams stay separate on purpose. Operator-level LLM
+calls remain provider-agnostic through `LLMClient` and its `properties["llm_client"]` injection,
+while plan generation needs the provider's Structured Outputs guarantee, which the shared client
+does not model. Nothing else in the package imports the SDK, and the `openai` extra stays optional.
+
+A data-context snapshot is disclosed to the provider only when the caller sets
+`send_data_context=True`. Absent that opt-in, a snapshot reaching `generate()` raises
+`DATA_CONTEXT_DISCLOSURE_REQUIRED` before the SDK import, the client, and any request. Preserve this
+failure rather than relaxing it to a silent drop: the caller asked for schema-aware planning, and
+quietly planning without the schema would answer a different question.
+
+Provider failures map to codes that name the planning outcome (`GENERATOR_TIMEOUT`,
+`GENERATOR_RATE_LIMITED`, `GENERATOR_UNAVAILABLE`, and the rest) by exception class and HTTP status.
+No provider exception text, response body, request payload, credential, or provider identifier is
+interpolated into a record, so the record shape does not change if the SDK's messages do.
+
 ## Utility functions
 
 `blue_data_ops.utils` provides the Blue helper functions operators depend on, under the same names
@@ -125,6 +167,8 @@ agent and service runtime, and the package reports failures through its own resu
   this way, not raised.
 - Resolving an unknown or malformed operator id raises `ResolveError` (from `blue_data_ops.operators`).
 - The LLM client raises `LLMError` (from `blue_data_ops.llm`) for transport and provider failures.
+- Planning raises `PlanningError` (from `blue_data_ops.plan`), which carries a structured `record`
+  in place of a returned metadata object.
 
 `run()` returns a `(output_data, output_attributes, meta)` tuple, so `except BlueError` becomes
 reading `meta.errors`:
@@ -139,7 +183,7 @@ for error in meta.errors:            # structured records instead of a raised Bl
     print(error.category, error.code, error.message)
 ```
 
-Catch `ResolveError` and `LLMError` at their boundaries. Classes that inherited `ErrorLoom` should
+Catch `ResolveError`, `LLMError`, and `PlanningError` at their boundaries. Classes that inherited `ErrorLoom` should
 adopt the same result-based reporting; there is no drop-in replacement for its automatic method
 wrapping.
 

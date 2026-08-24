@@ -1,11 +1,12 @@
 # blue-data-ops
 
-`blue-data-ops 2.0.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, and structured execution results. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.1.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
 - Python 3.10+
 - `blue-data` 0.1.0 or later. It is an eager import-time dependency and must be importable whenever `blue_data_ops` is imported. Registry-backed operators access it through the data seam.
+- `tenacity`, also an eager import-time dependency: the LLM client module is reached from the package root through both `utils` and `operators`, and it imports `tenacity` at module scope. It is a core dependency rather than part of the `llm` extra for that reason.
 
 ## Installation
 
@@ -26,10 +27,18 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.0.0"
+  "blue-data-ops[ml,vector,llm]==2.1.0"
 ```
 
-The resolver also obtains `blue-data>=0.1.0` from that index. For an offline source install, install the `blue-data` checkout or wheel first, then install `./lib`. The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, and `llm` for the `nl2*` and `semantic_*` operators plus `query_breakdown`.
+The resolver also obtains `blue-data>=0.1.0` from that index. For an offline source install, install the `blue-data` checkout or wheel first, then install `./lib`.
+
+The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, `llm` for the `nl2*` and `semantic_*` operators plus `query_breakdown`, and `openai` for `OpenAIPlanGenerator`. The `openai` extra is the only one the planner needs, and only for that one generator:
+
+```bash
+python -m pip install "./lib[openai]"
+```
+
+The `openai` extra pins `openai>=2.54,<3`. Nothing in the package imports that SDK until an `OpenAIPlanGenerator` has to build its own client, so every other path installs and runs without it.
 
 ## Usage
 
@@ -212,6 +221,142 @@ The executor resolves every pinned ID before it calls an operator, traverses the
 
 Only materialized plans are executable. Call `refine()` first, choose one returned plan, and pass that plan to the executor. An execution node that still resolves to a `RefinableOperator` is rejected during preflight. The executor does not retry, replan, select alternatives, dispatch remotely, or provide Redis/pubsub synchronization. Execution updates node values and statuses on the supplied plan; round-trip a copy first if the original record must remain unchanged.
 
+## Planning
+
+`PipelinePlanner` turns a goal and a set of discovery queries into a compiled `DataPipeline`, and optionally executes it. It runs discovery, data-context collection, generation, selection, and compilation, then hands the compiled plan to executor preflight. A plan generator supplies candidates; the planner owns every other stage.
+
+```python
+from blue_data_ops.operators import versioned_registry
+from blue_data_ops.plan import (
+    SELECT_THEN_AVERAGE_TEMPLATE,
+    DiscoveryQuery,
+    PipelinePlanner,
+    PlanningRequest,
+    RulePlanGenerator,
+)
+
+planner = PipelinePlanner(
+    versioned_registry(),
+    RulePlanGenerator([SELECT_THEN_AVERAGE_TEMPLATE]),
+)
+request = PlanningRequest(
+    goal="average total of orders above 100",
+    discovery_queries=(
+        DiscoveryQuery("filter", tags=("capability-filter",)),
+        DiscoveryQuery("average", tags=("capability-average",)),
+    ),
+    operator_attributes={
+        "select": {"operand_key": "total", "operand": ">", "operand_val": 100},
+        "avg": {"avg_key": "total", "output_key": "average_total"},
+    },
+)
+
+run = planner.run(request, [[{"total": 120.0}, {"total": 215.0}, {"total": 50.0}]])
+assert run.execution.output_data == [[{"average_total": 167.5}]]
+assert [step.operator_id for step in run.planning.selected.steps] == [
+    "select@2.0.0",
+    "avg@2.0.0",
+]
+```
+
+`plan(request)` returns a `PlanningResult` without executing anything: a copy of the `request`, the `discovery` snapshot, the generated `candidates`, the `selected` draft, the compiled `pipeline`, its `preflight`, and the `data_context` retained for the run. `run(request, input_data)` returns a `PlannerRun` holding that `PlanningResult` and the `PipelineRun` from executing it. `execute(planning, input_data)` executes a `PlanningResult` produced earlier; it runs a copy, so the result's own pipeline record stays unchanged.
+
+The planner compiles only `@2.0.0` operator ids, and only ones its own discovery returned. `RequireSinglePlan` is the shipped selector and accepts exactly one candidate; pass a `selector` of your own to choose among several. `PlanningRequest` carries the bounds: `max_discovery_cards`, `max_candidates`, `max_steps`, `max_nodes`, and `max_edges`.
+
+### Rule templates
+
+A `RulePlanTemplate` builds one linear candidate from exact discovered operators and caller-supplied attributes. Each `RuleTemplateStep` names the operator, the attributes the caller has to supply, and the exact tag tuple the discovered card must carry, so a template fails rather than planning against an operator whose metadata moved.
+
+`SELECT_THEN_AVERAGE_TEMPLATE` is the shipped filter-then-average template. `project_then_aggregate_template(name)` returns the project-to-aggregate template for `"avg"`, `"sum"`, `"min"`, or `"max"`:
+
+```python
+from blue_data_ops.plan import project_then_aggregate_template
+
+template = project_then_aggregate_template("sum")
+assert template.label == "project-then-sum"
+```
+
+`RulePlanGenerator(rules)` runs each rule in order and keeps the drafts that are not `None`. A rule is any callable taking `(request, discovery, data_context)` and returning `PlanDraft | None`, and a `RulePlanTemplate` is itself such a callable. Constructed with no argument, `RulePlanGenerator()` uses the built-in select-then-average rule, which recognizes its own goal wording and returns `None` for anything else.
+
+### Planning errors
+
+Planning raises `PlanningError` instead of reporting through `ExecMeta`. It is a `ValueError` subclass carrying a structured `record`:
+
+```python
+from blue_data_ops.plan import PlanningError
+
+try:
+    planner.plan(request)
+except PlanningError as error:
+    record = error.record
+    print(record.category, record.code, record.stage, record.retryable, record.suggestion)
+```
+
+`PlanningErrorRecord` has `category`, `code`, `stage`, `message`, `retryable`, and `suggestion`. `category` reuses the operator `ErrorCategory` (`RECOVERABLE`, `FAILED`, `TIMEOUT`). `PlanningStage` is `VALIDATION`, `DISCOVERY`, `DATA_CONTEXT`, `GENERATION`, `SELECTION`, `COMPILATION`, or `PREFLIGHT`. Each `PlanningErrorCode` names what happened to planning rather than which dependency caused it, so a code stays stable across generators and providers.
+
+Planning raises where execution returns metadata because there is no partial result to attach a record to: either a pipeline compiled or it did not.
+
+### Bounded data context
+
+A generator that needs to know the schema receives a `DataContextSnapshot`, never rows. `DataScope` names the exact registry address to plan against, with an optional entity projection:
+
+```python
+from blue_data_ops.plan import DataScope, PipelinePlanner, RegistryDataContextProvider
+
+scope = DataScope("demo_sqlite", "shop", "public", entities=("orders",))
+planner = PipelinePlanner(
+    registry,
+    generator,
+    data_context_provider=RegistryDataContextProvider(seam),  # seam is a RegistrySeam
+)
+```
+
+`RegistryDataContextProvider` uses three read-only registry operations: source properties, the collection's entity list, and each entity's attributes. It returns entity names, optional descriptions, and attribute names with declared types, where an unknown type is `null`. It reads no relations and no rows, and the snapshot's provenance records `raw_rows: 0`. Its limits are `max_entities` (32), `max_attributes_per_entity` (64), `max_total_attributes` (512), `max_description_chars` (512), and `max_serialized_bytes` (131072). A snapshot that exists already satisfies every limit it reports.
+
+A request carrying a `data_scope` needs a provider; without one the planner raises `DATA_CONTEXT_REQUIRED` rather than planning blind. A request without a scope never reaches the registry at all, configured provider or not.
+
+The planner hands the generator one snapshot and keeps a second, equal one on the `PlanningResult`. The two are distinct objects that serialize identically, both rebuilt from the provider's document into package-owned instances, so whatever a generator does to its copy cannot reach the recorded result.
+
+### The OpenAI plan generator
+
+`OpenAIPlanGenerator` is a `PlanGenerator` backed by one non-streaming Responses call per `generate()`. It needs the `openai` extra.
+
+```python
+from blue_data_ops.operators import versioned_registry
+from blue_data_ops.plan import OpenAIPlanGenerator, PipelinePlanner
+
+registry = versioned_registry()
+generator = OpenAIPlanGenerator(
+    "gpt-4o",
+    registry=registry,
+    allowed_operator_ids=["select@2.0.0", "avg@2.0.0"],
+)
+planner = PipelinePlanner(registry, generator)
+```
+
+`allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins `@2.0.0`, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set, and a conflicting value fails the candidate.
+
+Sending a data-context snapshot takes a second, explicit opt-in:
+
+```python
+generator = OpenAIPlanGenerator(
+    "gpt-4o",
+    registry=registry,
+    allowed_operator_ids=["nl2sql@2.0.0", "select@2.0.0", "avg@2.0.0"],
+    send_data_context=True,
+)
+```
+
+Without `send_data_context=True`, a snapshot reaching `generate()` raises `DATA_CONTEXT_DISCLOSURE_REQUIRED` before the SDK import, the client, and any provider traffic; the snapshot is never quietly dropped. An `nl2sql` step is refused unless a snapshot was both supplied and disclosed.
+
+Pass `client=` to inject a configured `OpenAI` instance, whether for a different base URL or for a test double. Left as `None`, the generator constructs `openai.OpenAI()` at first use, and the SDK reads the credential from the environment in its usual way; the generator neither reads nor records that value. Each call sets `store=False`, disables the SDK's retries, and makes none of its own. `timeout_seconds` (60.0) and `max_output_tokens` (4096) bound it, and `max_candidates` is 1 because the shipped selector accepts exactly one plan.
+
+Provider failures map to provider-independent codes chosen by exception class and HTTP status: `GENERATOR_DEPENDENCY_MISSING`, `GENERATOR_REQUEST_REJECTED`, `GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, `GENERATOR_UNAVAILABLE`, `GENERATOR_REFUSED`, and `GENERATOR_RESPONSE_INVALID`. No response body, request payload, credential, or provider identifier reaches a planning record.
+
+### What planning does not do in 2.1.0
+
+`plan_refinement()` is not part of this release. The planner plans once, compiles, and preflights; it has no refinement loop and no plan-revision call. A caller that wants a different plan submits a new `PlanningRequest`. Operator-level `refine()` on the four plan-producing operators is unaffected and works as it did in 2.0.0.
+
 ## Utility compatibility
 
 `blue_data_ops.utils` carries over the Blue helper functions that operators and tools rely on, so code moving off `blue.utils` keeps the same calls and only changes the import path. The functions match Blue's behavior, including its return types and edge cases.
@@ -266,7 +411,13 @@ lib/
 │       │   └── *_operator.py     # one module per operator
 │       ├── utils/                # Blue-compatible type, tool, JSON, uuid, string helpers
 │       ├── llm/                  # LLM client, templating, resolution (litellm-backed)
-│       ├── plan/                 # serializable plans, refinement, local executor
+│       ├── plan/
+│       │   ├── pipeline.py       # serializable DataPipeline record
+│       │   ├── refiner.py        # operator-level refinement
+│       │   ├── executor.py       # local PipelineExecutor
+│       │   ├── planner.py        # PipelinePlanner, rule templates, planning records
+│       │   ├── context.py        # DataScope, snapshots, planning error vocabulary
+│       │   └── openai_generator.py  # OpenAIPlanGenerator (extra: openai)
 │       └── data/
 │           ├── registry_seam.py  # facade over a blue-data DataRegistry
 │           └── provider.py       # registry resolution + default cached provider

@@ -2,9 +2,9 @@
 
 Pins the two delegate result shapes (wrapped keyword fallback, flat hybrid), the
 score inversion and derived-id rules, the dropped approximate/hybrid parameters,
-and the two upstream behaviors consumers must know: the hybrid hierarchical
-engine crash (its type parameter shadows the builtin) and the empty flat result
-under default thresholds when vector scores are zero.
+and the two upstream search behaviors consumers must know: the hierarchical
+engine now completes rather than crashing on a shadowed type parameter, and flat
+search now returns scored keyword matches on a registry with no vector source.
 """
 
 # blue-data ships no py.typed:
@@ -133,11 +133,16 @@ def test_blue_data_search_signature_pins() -> None:
 
 
 # --- the two upstream behaviors, pinned live ------------------------------------- #
-def test_vector_hierarchical_engine_crash_pinned() -> None:
-    # The wrapped registry's hybrid hierarchical engine shadows the type() builtin
-    # with its own parameter and crashes on the first record for ANY call (verified
-    # on this checkout). The facade does not paper over an engine defect one layer
-    # down; consumers reach it only through the discover operator's swallow.
+def test_vector_hierarchical_engine_returns_a_bounded_result() -> None:
+    # This test previously pinned a crash: the hybrid hierarchical engine shadowed the
+    # type() builtin with its own parameter and failed on the first record for any call.
+    # Upstream fixed that by renaming the parameter to record_type across
+    # prepare_parameters, _filter_records, search, and search_hierarchical, so the call
+    # now completes and the seam returns an ordinary result list.
+    #
+    # It is empty here for a threshold reason rather than an error reason: the stub
+    # embedding gives every record the same vector, so no record clears the engine's
+    # default vector threshold. What the seam guarantees is the shape.
     registry: Any = DataRegistry(
         name="crash_probe",
         rebuild=True,
@@ -147,14 +152,29 @@ def test_vector_hierarchical_engine_crash_pinned() -> None:
     )
     registry.register_record("jobs_db", "source", "/", description="job postings")
     seam = RegistrySeam(registry)
-    with pytest.raises(TypeError, match="object is not callable"):
-        seam.search_records_hierarchical("jobs", type="source", page=0, page_size=10)
+
+    results = seam.search_records_hierarchical("jobs", type="source", page=0, page_size=10)
+
+    assert type(results) is list
+    assert all(type(record) is dict for record in results)
+    assert len(results) <= 10
 
 
-def test_flat_search_empty_under_default_thresholds() -> None:
-    # Default engine thresholds (vector_threshold 0.5) filter every record whose
-    # vector score is 0 — a no-vector registry's flat search is empty even on an
-    # exact name match. Pinned so the discover operator's regular-search behavior
-    # on such registries is a documented upstream outcome, not a port defect.
+def test_flat_search_returns_scored_keyword_matches() -> None:
+    # This test previously pinned an empty result: default thresholds filtered every
+    # record whose vector score was 0, so a no-vector registry matched nothing even on
+    # an exact name match. Under the current pin a keyword match survives scoring, so
+    # the discover operator's regular-search path on such registries now yields records.
     seam = _keyword_registry()
-    assert seam.search_records("jobs", type="source", page=0, page_size=10) == []
+
+    results = seam.search_records("jobs", type="source", page=0, page_size=10)
+
+    assert results, "a no-vector registry now returns keyword matches"
+    assert all(record["type"] == "source" for record in results)
+    assert all(record["scope"] == "/" for record in results)
+    # The seam's derived id and inverted score rules still hold on every entry.
+    for record in results:
+        assert record["id"] == f"//source/{record['name']}"
+        assert type(record["score"]) is float
+        assert 0.0 < record["score"] <= 1.0
+    assert all("jobs" in record["name"] for record in results)

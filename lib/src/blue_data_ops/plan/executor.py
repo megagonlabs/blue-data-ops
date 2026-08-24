@@ -47,6 +47,12 @@ class PipelineRun:
 
 
 @dataclass(frozen=True)
+class PipelinePreflight:
+    node_order: tuple[str, ...]
+    operator_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class _PreparedNode:
     node_id: str
     operator_id: str
@@ -60,6 +66,20 @@ class PipelineExecutor:
 
     def __init__(self, registry: OperatorRegistry) -> None:
         self._registry = registry
+
+    def preflight(
+        self,
+        pipeline: DataPipeline,
+        properties: Properties | None = None,
+    ) -> PipelinePreflight:
+        """Validate and resolve a materialized pipeline without running operators."""
+        order, prepared = self._prepare(pipeline, properties)
+        return PipelinePreflight(
+            node_order=order,
+            operator_ids=tuple(
+                prepared[node_id].operator_id for node_id in order if node_id in prepared
+            ),
+        )
 
     def execute(
         self,

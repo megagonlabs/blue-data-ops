@@ -1,0 +1,65 @@
+{
+  "type": "json_schema",
+  "name": "plan_candidates",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["candidates"],
+    "properties": {
+      "candidates": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "steps"],
+          "properties": {
+            "label": {
+              "type": ["string", "null"]
+            },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "step_id",
+                  "operator_id",
+                  "attributes_json",
+                  "depends_on",
+                  "label"
+                ],
+                "properties": {
+                  "step_id": {
+                    "type": "string"
+                  },
+                  "operator_id": {
+                    "type": "string"
+                  },
+                  "attributes_json": {
+                    "type": "string"
+                  },
+                  "depends_on": {
+                    "type": "array",
+                    "minItems": 0,
+                    "maxItems": 15,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "label": {
+                    "type": ["string", "null"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

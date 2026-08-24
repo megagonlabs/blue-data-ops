@@ -1,7 +1,13 @@
 """Integration contract for RegistrySeam against blue-data.
 
 Covers indexing behavior and its negative control, delegation round-trips on a memory
-store, a temporary SQLite source, and the dependency methods used by the facade.
+store, a temporary SQLite source, the record listings the planning data context reads,
+and the dependency methods used by the facade.
+
+Source pin: blue-data `1b796fe911c1c94b683f72b8d0881e3252d4447c`. Against the previous
+`0eac5d3` pin the three direct-read methods are byte-identical; `execute_query_nl_tools`
+and `export_data` are new and deliberately unused here; `connect_source()` now requires
+stored `_class` provenance to rehydrate a persisted source.
 """
 
 # blue-data ships no py.typed:
@@ -166,6 +172,8 @@ EXPECTED_PARAMS = {
     "get_source_properties": ["source"],
     "connect_source": ["source"],
     "register_source": ["source"],
+    "list_collection_entities": ["source", "database", "collection"],
+    "list_entity_attributes": ["source", "database", "collection", "entity"],
 }
 
 
@@ -174,6 +182,168 @@ def test_blue_data_method_signatures(method_name: str) -> None:
     method = getattr(DataRegistry, method_name)
     parameters = [p for p in inspect.signature(method).parameters if p != "self"]
     assert parameters == EXPECTED_PARAMS[method_name]
+
+
+# --- Record listings used by the planning data context ------------------------------ #
+def test_record_listings_delegate_positionally(tmp_path: Path) -> None:
+    class _Recorder:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+        def list_collection_entities(self, *args: Any, **kwargs: Any) -> list[Any]:
+            self.calls.append(("list_collection_entities", args, kwargs))
+            return []
+
+        def list_entity_attributes(self, *args: Any, **kwargs: Any) -> list[Any]:
+            self.calls.append(("list_entity_attributes", args, kwargs))
+            return []
+
+    del tmp_path
+    recorder = _Recorder()
+    seam = RegistrySeam(cast(Any, recorder))
+
+    assert seam.list_collection_entities("src", "db", "col") == []
+    assert seam.list_entity_attributes("src", "db", "col", "ent") == []
+    assert recorder.calls == [
+        ("list_collection_entities", ("src", "db", "col"), {}),
+        ("list_entity_attributes", ("src", "db", "col", "ent"), {}),
+    ]
+
+
+def test_record_listings_return_registered_entity_and_attribute_records(tmp_path: Path) -> None:
+    # The direct-read path the planning data context uses. It returns the raw records,
+    # including the fields the context projection is required to drop.
+    seam = RegistrySeam(DataRegistry(name="listings", rebuild=True))
+    source = SQLiteDBSource(
+        "listing_src",
+        properties={"connection": {"database_directory": str(tmp_path)}},
+    )
+    seam.register_source(source)
+    seam.create_source_database("listing_src", "db", overwrite=True)
+    seam.create_source_database_collection_entity(
+        "listing_src",
+        "db",
+        "public",
+        "orders",
+        creation_properties={
+            "cols_definition": [
+                {"name": "order_id", "type": "INTEGER"},
+                {"name": "total", "type": "REAL"},
+            ],
+            "primary_key": ["order_id"],
+        },
+        overwrite=True,
+    )
+
+    entities = seam.list_collection_entities("listing_src", "db", "public")
+    attributes = seam.list_entity_attributes("listing_src", "db", "public", "orders")
+
+    assert [record["name"] for record in entities] == ["orders"]
+    assert {record["name"] for record in attributes} == {"order_id", "total"}
+    assert {record["properties"]["info"]["type"] for record in attributes} == {"INTEGER", "REAL"}
+    assert "created_by" in entities[0]
+    assert seam.list_collection_entities("listing_src", "db", "absent") == []
+
+
+def test_source_properties_report_the_protocol_the_source_declares() -> None:
+    # The planning data context copies connection.protocol verbatim, so what matters is
+    # that the seam reports exactly what the source declares. The literal itself is a
+    # blue-data detail that has changed across commits, so it is not pinned here.
+    seam = RegistrySeam(DataRegistry(name="protocol_probe", rebuild=True))
+    source = SQLiteDBSource("protocol_src", properties={"connection": {}})
+    properties: dict[str, Any] = getattr(source, "properties")
+    declared = properties["connection"]["protocol"]
+    seam.register_source(source)
+
+    assert isinstance(declared, str) and declared
+    assert seam.get_source_properties("protocol_src")["connection"]["protocol"] == declared
+
+
+# --- connect_source provenance: newly created versus previously persisted ----------- #
+def _store_of(registry: DataRegistry) -> Any:
+    return getattr(registry, "store")
+
+
+def _persisted_orders_registry(tmp_path: Path) -> DataRegistry:
+    registry = DataRegistry(name="seam_persisted", rebuild=True)
+    seam = RegistrySeam(registry)
+    seam.register_source(
+        SQLiteDBSource(
+            "persist_src", properties={"connection": {"database_directory": str(tmp_path)}}
+        )
+    )
+    seam.create_source_database("persist_src", "db", overwrite=True)
+    seam.create_source_database_collection_entity(
+        "persist_src",
+        "db",
+        "public",
+        "orders",
+        creation_properties={
+            "cols_definition": [{"name": "order_id", "type": "INTEGER"}],
+            "primary_key": ["order_id"],
+        },
+        overwrite=True,
+    )
+    return registry
+
+
+def test_connect_source_returns_the_live_object_for_a_newly_created_record(
+    tmp_path: Path,
+) -> None:
+    registry = _persisted_orders_registry(tmp_path)
+    seam = RegistrySeam(registry)
+
+    connected = seam.connect_source("persist_src")
+
+    assert connected is registry.sources["persist_src"]
+
+
+def test_connect_source_rehydrates_a_persisted_record_from_class_provenance(
+    tmp_path: Path,
+) -> None:
+    # A second registry over the same store models a previously persisted record: no
+    # source object exists until connect_source() instantiates one from `_class`.
+    registry = _persisted_orders_registry(tmp_path)
+    reopened = DataRegistry(name="seam_persisted", store=_store_of(registry), rebuild=False)
+    assert reopened.sources == {}
+    seam = RegistrySeam(reopened)
+
+    assert seam.get_source_properties("persist_src")["_class"].endswith("SQLiteDBSource")
+    connected = seam.connect_source("persist_src")
+
+    assert isinstance(connected, SQLiteDBSource)
+    assert list(reopened.sources) == ["persist_src"]
+
+
+def test_connect_source_fails_for_a_persisted_record_without_class_provenance(
+    tmp_path: Path,
+) -> None:
+    registry = _persisted_orders_registry(tmp_path)
+    reopened = DataRegistry(name="seam_persisted", store=_store_of(registry), rebuild=False)
+    seam = RegistrySeam(reopened)
+    cast("dict[str, Any]", seam.get_source_properties("persist_src")).pop("_class", None)
+
+    with pytest.raises(ValueError, match="_class"):
+        seam.connect_source("persist_src")
+
+    # The record listings the planning data context uses are unaffected either way.
+    assert [r["name"] for r in seam.list_collection_entities("persist_src", "db", "public")] == [
+        "orders"
+    ]
+
+
+def test_record_listings_agree_for_newly_created_and_persisted_records(tmp_path: Path) -> None:
+    registry = _persisted_orders_registry(tmp_path)
+    fresh = RegistrySeam(registry)
+    persisted = RegistrySeam(DataRegistry(name="seam_persisted", store=_store_of(registry)))
+
+    for seam in (fresh, persisted):
+        assert [
+            r["name"] for r in seam.list_collection_entities("persist_src", "db", "public")
+        ] == ["orders"]
+        assert [
+            r["name"] for r in seam.list_entity_attributes("persist_src", "db", "public", "orders")
+        ] == ["order_id"]
 
 
 # --- Query argument translation ----------------------------------------------------- #

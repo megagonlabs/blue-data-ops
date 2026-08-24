@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops"
-version = "2.0.0"
+version = "2.1.0"
 description = "Blue Data Operators — self-contained operator library"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,23 +13,35 @@ requires-python = ">=3.10"
 # jsonmerge==1.9.2 backs the Blue-compatible merge_json; jsonpath-ng is imported
 # directly (llm.templating, utils.json_utils) so it is declared directly rather than
 # relied on transitively through blue-data.
+# tenacity is core rather than part of the llm extra because llm/client.py imports it at
+# module scope, and two eager paths reach that module from the package root: utils/ through
+# string_utils, and operators/ through the nine LLM-backed operator modules. With tenacity
+# in the extra, `pip install blue-data-ops` produced a package that could not be imported
+# at all. It is the only member of that extra imported at import time; litellm, diskcache,
+# and jinja2 are all reached inside function bodies and stay optional.
 dependencies = [
     "blue-data>=0.1.0",
     "pydantic>=2",
     "jsonmerge==1.9.2",
     "jsonpath-ng",
+    "tenacity",
 ]
 
 [project.optional-dependencies]
 ml = ["numpy", "scikit-learn"]
 vector = ["numpy", "sentence-transformers"]
 llm = ["litellm", "tenacity", "diskcache", "jinja2"]
+# Planner-only OpenAI SDK seam. Upper-bounded at 3 deliberately: 2.x is the audited
+# httpx transport and Responses surface, and 3.x moves to HTTPX2. Revisit the major
+# in a separately tested dependency update.
+openai = ["openai>=2.54,<3"]
 dev = [
     "numpy",
     "scikit-learn",
     "tenacity",
     "diskcache",
     "jinja2",
+    "openai>=2.54,<3",
     "pytest",
     "pytest-asyncio",
     "pytest-recording",
@@ -44,7 +56,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-blue_data_ops = ["py.typed"]
+blue_data_ops = ["py.typed", "plan/_schemas/*.json"]
 
 [tool.ruff]
 line-length = 100

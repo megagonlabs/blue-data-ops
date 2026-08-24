@@ -1,0 +1,57 @@
+{
+  "format": "blue-data-ops/data-context@1",
+  "scope": {
+    "source": "demo_sqlite",
+    "database": "shop",
+    "collection": "public",
+    "entities": [
+      "orders"
+    ]
+  },
+  "resolved_entities": [
+    "orders"
+  ],
+  "protocol": "sql/sqlite",
+  "schema": {
+    "entities": [
+      {
+        "name": "orders",
+        "attributes": [
+          {
+            "name": "currency",
+            "type": "TEXT"
+          },
+          {
+            "name": "customer_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "order_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "total",
+            "type": "REAL"
+          }
+        ],
+        "description": "Sample customer purchase orders with totals and currencies"
+      }
+    ]
+  },
+  "provenance": {
+    "provider": "blue-data-registry",
+    "source_properties_method": "get_source_properties",
+    "entity_method": "list_collection_entities",
+    "attribute_method": "list_entity_attributes",
+    "raw_rows": 0
+  },
+  "limits": {
+    "max_entities": 32,
+    "max_attributes_per_entity": 64,
+    "max_total_attributes": 512,
+    "max_description_chars": 512,
+    "max_name_or_type_codepoints": 128,
+    "max_serialized_bytes": 131072,
+    "max_raw_rows": 0
+  }
+}

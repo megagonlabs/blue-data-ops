@@ -1,0 +1,62 @@
+{
+  "format": "blue-data-ops/data-context@1",
+  "scope": {
+    "source": "opaque_catalog",
+    "database": "warehouse",
+    "collection": "curated",
+    "entities": []
+  },
+  "resolved_entities": [
+    "t_017",
+    "t_042"
+  ],
+  "protocol": "sql/sqlite",
+  "schema": {
+    "entities": [
+      {
+        "name": "t_017",
+        "attributes": [
+          {
+            "name": "c_01",
+            "type": "INTEGER"
+          },
+          {
+            "name": "c_02",
+            "type": "REAL"
+          }
+        ],
+        "description": "Customer purchase orders with totals and currencies"
+      },
+      {
+        "name": "t_042",
+        "attributes": [
+          {
+            "name": "c_01",
+            "type": "INTEGER"
+          },
+          {
+            "name": "c_02",
+            "type": "REAL"
+          }
+        ],
+        "description": "Warehouse inventory counts and storage locations"
+      }
+    ]
+  },
+  "provenance": {
+    "provider": "blue-data-registry",
+    "source_properties_method": "get_source_properties",
+    "entity_method": "list_collection_entities",
+    "attribute_method": "list_entity_attributes",
+    "raw_rows": 0
+  },
+  "limits": {
+    "max_entities": 32,
+    "max_attributes_per_entity": 64,
+    "max_total_attributes": 512,
+    "max_description_chars": 512,
+    "max_name_or_type_codepoints": 128,
+    "max_serialized_bytes": 131072,
+    "max_raw_rows": 0
+  }
+}
