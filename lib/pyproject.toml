@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops"
-version = "2.1.0"
+version = "2.2.0"
 description = "Blue Data Operators — self-contained operator library"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -56,7 +56,13 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-blue_data_ops = ["py.typed", "plan/_schemas/*.json"]
+blue_data_ops = [
+    "py.typed",
+    "plan/_schemas/*.json",
+    "operator_skills/_index.json",
+    "operator_skills/*/*/*.json",
+    "operator_skills/*/*/*.md",
+]
 
 [tool.ruff]
 line-length = 100

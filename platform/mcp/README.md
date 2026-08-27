@@ -1,8 +1,8 @@
 # Blue Data Operators MCP
 
-This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.1.0`, followed by four `<name>__refine` companions for the operators that build plans.
+This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.2.0`, followed by four `<name>__refine` companions for the operators that build plans.
 
-The two version numbers differ on purpose. `2.1.0` is the core distribution this adapter pins; `@2.0.0` is the operator card version, which core 2.1.0 does not change. Tool names, arguments, and results are the same as in `0.2.0`.
+The two version numbers differ on purpose. `2.2.0` is the core distribution this adapter pins; `@2.0.0` is the operator card version, which core 2.2.0 does not change. Tool names, arguments, and results are the same as in `0.3.0`.
 
 ## Install
 
@@ -17,8 +17,8 @@ If your artifact index is configured separately:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.1.0" \
-  "blue-data-ops-mcp==0.3.0"
+  "blue-data-ops[ml,vector,llm]==2.2.0" \
+  "blue-data-ops-mcp==0.4.0"
 ```
 
 The `nl2*` and `semantic_*` operators plus `query_breakdown` resolve a provider client at call time. Supply the provider credential through its environment variable. The `openai.model` property selects the model (default `gpt-4o`); the default OpenAI client reads `OPENAI_API_KEY` for authentication.
@@ -206,7 +206,7 @@ Values are serialized with `default=str` for leaves JSON does not represent nati
 - An unknown tool name, an argument-shape error (missing or malformed `input_data`, `attributes`, or `properties`), or a projection or encoding failure is a tool error (`isError` true) with no operator error record added.
 - Malformed JSON-RPC and transport failures follow the MCP SDK's own behavior.
 
-The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.3.0`; each tool's operator version is in its `_meta`.
+The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.4.0`; each tool's operator version is in its `_meta`.
 
 ## Refinement companions and plans
 
@@ -214,21 +214,21 @@ The four refinement operators (`multipart_query`, `nl2query_router`, `plan_disco
 
 An MCP refinement result is a serialized plan, not an execution. `DataPipeline` records the operators, their pinned ids, and their edges; it has no execution method. A caller with the core `blue-data-ops` package installed can load a chosen materialized plan with `DataPipeline.from_dict()` and execute it with `PipelineExecutor` and a registry that resolves its pinned ids. The MCP server itself does not run returned plans.
 
-## Migrating from 0.2.0
+## Migrating from 0.3.0
 
-`0.3.0` moves the core pin from `blue-data-ops==2.0.0` to `==2.1.0` and changes nothing else. Tool names, descriptions, `_meta`, arguments, results, the structured envelope, error surfacing, and the transport are all unchanged, and every operator id is still `@2.0.0`.
+`0.4.0` moves the core pin from `blue-data-ops==2.1.0` to `==2.2.0` and changes nothing else. Tool names, descriptions, `_meta`, arguments, results, the structured envelope, error surfacing, and the transport are unchanged, and every operator id is still `@2.0.0`.
 
-Every behavioral test passes unchanged. The only test edit in `0.3.0` is the metadata assertion that pins this package's own version and core requirement, which the version bump necessarily changes.
+Every behavioral test passes unchanged. The only test edit in `0.4.0` is the metadata assertion that pins this package's own version and core requirement.
 
-Update both distributions together. The exact pin means one environment holds one pair, so a `0.2.0` adapter cannot run against core `2.1.0` and `0.3.0` cannot run against core `2.0.0`:
+Update both distributions together. The exact pin means one environment holds one pair, so a `0.3.0` adapter cannot run against core `2.2.0` and `0.4.0` cannot run against core `2.1.0`:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.1.0" \
-  "blue-data-ops-mcp==0.3.0"
+  "blue-data-ops[ml,vector,llm]==2.2.0" \
+  "blue-data-ops-mcp==0.4.0"
 ```
 
-Core `2.1.0` adds a local pipeline planner and moves `tenacity` into its core dependencies. Neither reaches this adapter's surface: the planner is not exposed as an MCP tool, and the dependency change only means a base core install is importable on its own.
+Core `2.2.0` adds one-level refinement planning and a Python-only operator skill loader. Neither reaches this adapter's surface: planner entry points are not MCP tools, and skill resources are not added to tool descriptions, `_meta`, arguments, or results.
 
 ## Migrating from 0.1.0
 

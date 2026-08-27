@@ -7,7 +7,7 @@ from itertools import islice
 from math import isfinite
 from typing import Any, Literal, Protocol, cast
 
-from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry
+from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, is_builtin_card
 from blue_data_ops.operators.types import DataBundle, ErrorCategory, Properties
 from blue_data_ops.plan.context import (
     DataContextProvider,
@@ -29,6 +29,7 @@ from blue_data_ops.plan.executor import (
     PipelineRun,
 )
 from blue_data_ops.plan.pipeline import DataPipeline, Node
+from blue_data_ops.plan.types import PlanRecord
 
 _PLANNER_OPERATOR_VERSION = "2.0.0"
 # The one built-in operator whose attributes name a data-source address.
@@ -312,6 +313,321 @@ def _normalize_draft(
             )
         )
     return PlanDraft(steps=tuple(steps), label=draft.label)
+
+
+# The built-in refiners whose returned plan properties have a known projection contract.
+_REFINABLE_SOURCE_IDS = frozenset(
+    {
+        "multipart_query@2.0.0",
+        "nl2query_router@2.0.0",
+        "plan_discover@2.0.0",
+        "query_breakdown@2.0.0",
+    }
+)
+_PRODUCES_PLAN_TAG = "produces-plan"
+
+
+def _refinement_error(
+    code: PlanningErrorCode,
+    message: str,
+    *,
+    category: ErrorCategory,
+    suggestion: str,
+    stage: PlanningStage = PlanningStage.GENERATION,
+) -> PlanningError:
+    return planning_error(stage, code, message, category=category, suggestion=suggestion)
+
+
+def _ineligible_source() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.GENERATION_RESULT_INVALID,
+        "refinement source is not eligible",
+        category=ErrorCategory.RECOVERABLE,
+        suggestion="Choose one discovered v2 plan-producing operator.",
+    )
+
+
+def _source_resolution_failed() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.DISCOVERY_FAILED,
+        "refinement source resolution failed",
+        category=ErrorCategory.FAILED,
+        suggestion="Check the operator registry and discovery filters.",
+        stage=PlanningStage.DISCOVERY,
+    )
+
+
+def _refinement_input_copy_failed() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.GENERATION_FAILED,
+        "refinement input could not be copied",
+        category=ErrorCategory.FAILED,
+        suggestion="Use refinement input and attributes containing copyable data.",
+    )
+
+
+def _refinement_result_invalid() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.GENERATION_RESULT_INVALID,
+        "operator refinement returned an invalid plan result",
+        category=ErrorCategory.FAILED,
+        suggestion=(
+            "Check the refinement operator output and materialize nested refiners separately."
+        ),
+    )
+
+
+def _refinement_conversion_failed() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.GENERATION_FAILED,
+        "refinement plan conversion failed",
+        category=ErrorCategory.FAILED,
+        suggestion="Check the refinement operator and returned plan.",
+    )
+
+
+def _refinement_child_failed() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.GENERATION_FAILED,
+        "refinement plan resolution failed",
+        category=ErrorCategory.FAILED,
+        suggestion="Check the operator registry and refinement output.",
+    )
+
+
+def _refinement_limit() -> PlanningError:
+    return _refinement_error(
+        PlanningErrorCode.CANDIDATE_LIMIT_EXCEEDED,
+        "operator refinement exceeded a planning limit",
+        category=ErrorCategory.RECOVERABLE,
+        suggestion="Return fewer alternatives or raise the corresponding planning limit.",
+    )
+
+
+# One operator failure maps to one planning record, so several operator errors collapse by
+# severity: a failure outranks a timeout, which outranks a recoverable error.
+_OPERATOR_FAILURE_SUGGESTIONS = {
+    ErrorCategory.FAILED: "Check the refinement operator and its runtime dependencies.",
+    ErrorCategory.TIMEOUT: "Increase the bounded timeout or simplify refinement.",
+    ErrorCategory.RECOVERABLE: "Correct the refinement input and try again.",
+}
+
+
+def _operator_refinement_failed(categories: tuple[ErrorCategory, ...]) -> PlanningError:
+    for category in (ErrorCategory.FAILED, ErrorCategory.TIMEOUT, ErrorCategory.RECOVERABLE):
+        if category in categories:
+            chosen = category
+            break
+    else:
+        chosen = ErrorCategory.FAILED
+    return _refinement_error(
+        PlanningErrorCode.GENERATION_FAILED,
+        "operator refinement failed",
+        category=chosen,
+        suggestion=_OPERATOR_FAILURE_SUGGESTIONS[chosen],
+    )
+
+
+def _exact_str_keyed_dict(value: object) -> dict[str, Any]:
+    """Return an exact dict with exact string keys."""
+
+    if type(value) is not dict:
+        raise _refinement_result_invalid()
+    exact = cast("dict[Any, Any]", value)
+    for key in exact:
+        if type(key) is not str:
+            raise _refinement_result_invalid()
+    return cast("dict[str, Any]", exact)
+
+
+def _exact_str(value: object) -> str:
+    """Require an exact string before anything compares it to one."""
+
+    if type(value) is not str:
+        raise _refinement_result_invalid()
+    return value
+
+
+def _require_representable_record(
+    record: PlanRecord,
+    *,
+    max_steps: int,
+    max_nodes: int,
+    max_edges: int,
+) -> dict[str, dict[str, Any]]:
+    """Validate the returned graph before projecting it to a draft."""
+
+    # Establish every structural container and key before interrogating a value.
+    top = _exact_str_keyed_dict(record)
+    node_records = _exact_str_keyed_dict(top.get("nodes"))
+    if len(node_records) > max_nodes:
+        raise _refinement_limit()
+    # Every node record, completely, before any edge or membership question is asked of
+    # the node map: a key validated late is a key some earlier lookup already trusted.
+    for node_id in node_records:
+        _exact_str_keyed_dict(node_records[node_id])
+    entity_sections = _exact_str_keyed_dict(top.get("entities"))
+    operator_entities = _exact_str_keyed_dict(entity_sections.get("OPERATOR"))
+    for entity_key in operator_entities:
+        _exact_str_keyed_dict(operator_entities[entity_key])
+
+    kinds: dict[str, list[str]] = {"INPUT": [], "OUTPUT": [], "OPERATOR": []}
+    adjacency_counts = {"prev": 0, "next": 0}
+    for node_id in node_records:
+        node = cast("dict[str, Any]", node_records[node_id])
+        kind = _exact_str(node.get("type"))
+        if kind not in kinds:
+            raise _refinement_result_invalid()
+        kinds[kind].append(node_id)
+        for direction in ("prev", "next"):
+            neighbours = node.get(direction)
+            if type(neighbours) is not list:
+                raise _refinement_result_invalid()
+            entries = cast("list[Any]", neighbours)
+            adjacency_counts[direction] += len(entries)
+            if adjacency_counts[direction] > max_edges:
+                raise _refinement_limit()
+            for other in entries:
+                if type(other) is not str:
+                    raise _refinement_result_invalid()
+            exact_entries = cast("list[str]", entries)
+            if len(exact_entries) != len(set(exact_entries)):
+                raise _refinement_result_invalid()
+            for other in exact_entries:
+                if other not in node_records:
+                    raise _refinement_result_invalid()
+
+    if len(kinds["INPUT"]) != 1 or len(kinds["OUTPUT"]) != 1 or not kinds["OPERATOR"]:
+        raise _refinement_result_invalid()
+    if len(kinds["OPERATOR"]) > max_steps:
+        raise _refinement_limit()
+    source, sink = kinds["INPUT"][0], kinds["OUTPUT"][0]
+
+    if _exact_str(top.get("input")) != source:
+        raise _refinement_result_invalid()
+    if _exact_str(top.get("output")) != sink:
+        raise _refinement_result_invalid()
+
+    # Other entity sections carry state that a PlanDraft cannot preserve.
+    if set(entity_sections) != {"OPERATOR"}:
+        raise _refinement_result_invalid()
+
+    # The entity and node hold independently writable links; both must agree.
+    by_node: dict[str, dict[str, Any]] = {}
+    for key in operator_entities:
+        entity_record = cast("dict[str, Any]", operator_entities[key])
+        if _exact_str(entity_record.get("id")) != key:
+            raise _refinement_result_invalid()
+        if _exact_str(entity_record.get("type")) != "OPERATOR":
+            raise _refinement_result_invalid()
+        owned = entity_record.get("nodes")
+        if type(owned) is not list:
+            raise _refinement_result_invalid()
+        entries = cast("list[Any]", owned)
+        if len(entries) != 1:
+            raise _refinement_result_invalid()
+        node_id = _exact_str(entries[0])
+        if node_id not in node_records:
+            raise _refinement_result_invalid()
+        node = cast("dict[str, Any]", node_records[node_id])
+        if _exact_str(node.get("type")) != "OPERATOR" or node_id in by_node:
+            raise _refinement_result_invalid()
+        # The reverse link, to the same entity, by exact key.
+        if _exact_str(node.get("OPERATOR")) != key:
+            raise _refinement_result_invalid()
+        # Dropping child properties could change execution semantics.
+        properties = entity_record.get("properties")
+        if type(properties) is not dict:
+            raise _refinement_result_invalid()
+        if len(cast("dict[Any, Any]", properties)) != 0:
+            raise _refinement_result_invalid()
+        by_node[node_id] = entity_record
+    if set(by_node) != set(kinds["OPERATOR"]):
+        raise _refinement_result_invalid()
+    # An input or output node claiming an operator entity is a link the projection would
+    # never follow, so it would otherwise pass unexamined.
+    for node_id in kinds["INPUT"] + kinds["OUTPUT"]:
+        if cast("dict[str, Any]", node_records[node_id]).get("OPERATOR") is not None:
+            raise _refinement_result_invalid()
+
+    # Unique adjacency plus reciprocal membership establishes one-for-one edges.
+    for node_id in node_records:
+        node = cast("dict[str, Any]", node_records[node_id])
+        for other in cast("list[str]", node.get("next")):
+            back = cast("dict[str, Any]", node_records[other])
+            if node_id not in cast("list[str]", back.get("prev")):
+                raise _refinement_result_invalid()
+        for other in cast("list[str]", node.get("prev")):
+            back = cast("dict[str, Any]", node_records[other])
+            if node_id not in cast("list[str]", back.get("next")):
+                raise _refinement_result_invalid()
+    if cast("dict[str, Any]", node_records[source]).get("prev"):
+        raise _refinement_result_invalid()
+    if cast("dict[str, Any]", node_records[sink]).get("next"):
+        raise _refinement_result_invalid()
+
+    def reachable(start: str, direction: str) -> set[str]:
+        seen: set[str] = set()
+        stack = [start]
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            stack.extend(
+                cast("list[str]", cast("dict[str, Any]", node_records[current]).get(direction))
+            )
+        return seen
+
+    if reachable(source, "next") != set(node_records):
+        raise _refinement_result_invalid()
+    if reachable(sink, "prev") != set(node_records):
+        raise _refinement_result_invalid()
+
+    remaining = {
+        node_id: len(cast("dict[str, Any]", raw).get("prev", []))
+        for node_id, raw in node_records.items()
+    }
+    ready = [node_id for node_id, count in remaining.items() if count == 0]
+    settled = 0
+    while ready:
+        current = ready.pop()
+        settled += 1
+        for other in cast("list[str]", cast("dict[str, Any]", node_records[current]).get("next")):
+            remaining[other] -= 1
+            if remaining[other] == 0:
+                ready.append(other)
+    if settled != len(node_records):
+        raise _refinement_result_invalid()
+
+    roots = [
+        n for n in kinds["OPERATOR"] if "OPERATOR" not in _neighbour_kinds(node_records, n, "prev")
+    ]
+    tails = [
+        n for n in kinds["OPERATOR"] if "OPERATOR" not in _neighbour_kinds(node_records, n, "next")
+    ]
+    if len(roots) != 1 or len(tails) != 1:
+        raise _refinement_result_invalid()
+    root, tail = roots[0], tails[0]
+
+    # Compilation can preserve only these endpoint edges. This rejects direct
+    # input-to-output bypasses and endpoint edges to non-root or non-terminal steps.
+    source_next = cast("list[str]", cast("dict[str, Any]", node_records[source]).get("next"))
+    sink_previous = cast("list[str]", cast("dict[str, Any]", node_records[sink]).get("prev"))
+    if source_next != [root] or sink_previous != [tail]:
+        raise _refinement_result_invalid()
+    return by_node
+
+
+def _neighbour_kinds(nodes: dict[str, Any], node_id: str, direction: str) -> set[str]:
+    # Every type here was established as an exact string by the caller, so this reads
+    # them rather than converting them: str() on an unestablished value would be one
+    # more place a replaced field gets to answer for itself.
+    node = cast("dict[str, Any]", nodes[node_id])
+    return {
+        cast(str, cast("dict[str, Any]", nodes[other]).get("type"))
+        for other in cast("list[str]", node.get(direction))
+    }
 
 
 @dataclass(frozen=True)
@@ -1031,6 +1347,394 @@ class PipelinePlanner:
             stage=PlanningStage.SELECTION,
             code=PlanningErrorCode.SELECTION_RESULT_INVALID,
         )
+
+    def plan_refinement(
+        self,
+        request: PlanningRequest,
+        source_operator_id: str,
+        input_data: DataBundle,
+        attributes: Mapping[str, Any],
+        properties: Properties | None = None,
+    ) -> PlanningResult:
+        """Plan from one built-in refiner's normalized alternatives.
+
+        The caller names the source because eligible refiners take different inputs and
+        may reach an LLM or registry. Returned pipelines are projected into drafts,
+        selected, freshly compiled, and preflighted.
+        """
+
+        typed_request = _validate_request_data(request)
+        scope_anchor = _scope_anchor(typed_request)
+        discovery = self.discover(typed_request)
+        self._require_anchor(typed_request, scope_anchor)
+        resolved = self._eligible_refinement_source(typed_request, discovery, source_operator_id)
+        self._require_anchor(typed_request, scope_anchor)
+        alternatives, categories = self._refine_once(resolved, input_data, attributes, properties)
+        # The refiner is caller-reachable code that just ran with caller-owned input, so
+        # the request is revalidated exactly as it is after a generator call.
+        _validate_request_data(typed_request)
+        self._require_anchor(typed_request, scope_anchor)
+        if categories:
+            raise _operator_refinement_failed(categories)
+
+        drafts, child_ids = self._convert_alternatives(typed_request, alternatives)
+        extended = self._extend_discovery(typed_request, discovery, child_ids)
+        self._require_anchor(typed_request, scope_anchor)
+        selected = self._select_candidate(drafts)
+        self._require_anchor(typed_request, scope_anchor)
+        pipeline = self._compile(typed_request, selected, extended, scope_anchor)
+        try:
+            preflight = self._executor.preflight(pipeline)
+        except PlanningError:
+            raise
+        except PipelineError as error:
+            raise planning_error(
+                PlanningStage.PREFLIGHT,
+                PlanningErrorCode.PREFLIGHT_FAILED,
+                str(error),
+                category=ErrorCategory.RECOVERABLE,
+                suggestion="Check operator resolution and materialize refinable steps.",
+            ) from None
+        except Exception:
+            raise planning_error(
+                PlanningStage.PREFLIGHT,
+                PlanningErrorCode.PREFLIGHT_FAILED,
+                "plan preflight failed",
+                category=ErrorCategory.FAILED,
+                suggestion="Check the planner registry and compiled pipeline.",
+            ) from None
+        self._require_anchor(typed_request, scope_anchor)
+        try:
+            request_snapshot = deepcopy(typed_request)
+        except Exception:
+            raise planning_error(
+                PlanningStage.COMPILATION,
+                PlanningErrorCode.RESULT_COPY_FAILED,
+                "planning request could not be copied",
+                category=ErrorCategory.FAILED,
+                suggestion="Use a planning request containing portable data.",
+            ) from None
+        return PlanningResult(
+            request=request_snapshot,
+            discovery=extended,
+            candidates=drafts,
+            selected=selected,
+            pipeline=pipeline,
+            preflight=preflight,
+        )
+
+    def _eligible_refinement_source(
+        self,
+        request: PlanningRequest,
+        discovery: DiscoverySnapshot,
+        source_operator_id: object,
+    ) -> Any:
+        """Resolve an eligible package-built refinement source.
+
+        Provenance and exact bound callables exclude public-registration lookalikes.
+        This is an API boundary, not in-process tamper resistance.
+        """
+
+        if type(source_operator_id) is not str:
+            raise _ineligible_source()
+        if not source_operator_id.endswith(f"@{_PLANNER_OPERATOR_VERSION}"):
+            raise _ineligible_source()
+        if source_operator_id not in _REFINABLE_SOURCE_IDS:
+            raise _ineligible_source()
+        if source_operator_id not in discovery.operator_ids:
+            raise _ineligible_source()
+        # Refinement requires explicit admission for the source and every child.
+        allowed = request.allowed_operator_ids
+        if type(allowed) is not tuple or not allowed:
+            raise _ineligible_source()
+        if source_operator_id not in allowed:
+            raise _ineligible_source()
+
+        try:
+            card = self._registry.get_card(source_operator_id)
+            resolved = self._registry.resolve(source_operator_id)
+        except Exception:
+            raise _source_resolution_failed() from None
+        if card is None or not is_builtin_card(self._registry, card):
+            raise _ineligible_source()
+        if _PRODUCES_PLAN_TAG not in card.tags:
+            raise _ineligible_source()
+
+        from blue_data_ops.operators.multipart_query_operator import MultipartQueryOperator
+        from blue_data_ops.operators.nl2query_router_operator import NL2QueryRouterOperator
+        from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
+        from blue_data_ops.operators.query_breakdown_operator import QueryBreakdownOperator
+        from blue_data_ops.plan.refiner import RefinableOperator
+
+        expected_types = {
+            "multipart_query@2.0.0": MultipartQueryOperator,
+            "nl2query_router@2.0.0": NL2QueryRouterOperator,
+            "plan_discover@2.0.0": PlanDiscoverOperator,
+            "query_breakdown@2.0.0": QueryBreakdownOperator,
+        }
+        expected_type = expected_types[source_operator_id]
+        if type(resolved) is not expected_type:
+            raise _ineligible_source()
+        expected_functions = {
+            "refine": RefinableOperator.refine,
+            "refiner": expected_type.refiner,
+            "_refiner": expected_type._refiner,  # pyright: ignore[reportPrivateUsage]
+        }
+        for name, expected_function in expected_functions.items():
+            bound = getattr(resolved, name, None)
+            if (
+                getattr(bound, "__self__", None) is not resolved
+                or getattr(bound, "__func__", None) is not expected_function
+            ):
+                raise _ineligible_source()
+        return resolved
+
+    def _refine_once(
+        self,
+        resolved: Any,
+        input_data: DataBundle,
+        attributes: Mapping[str, Any],
+        properties: Properties | None,
+    ) -> tuple[tuple[object, ...], tuple[ErrorCategory, ...]]:
+        """Call `refine()` exactly once and validate the transient result shape."""
+
+        try:
+            call_input = deepcopy(input_data)
+            call_attributes = deepcopy(dict(attributes))
+        except Exception:
+            raise _refinement_input_copy_failed() from None
+        try:
+            outcome = resolved.refine(call_input, call_attributes, properties)
+        except PlanningError:
+            raise
+        except Exception:
+            raise _refinement_error(
+                PlanningErrorCode.GENERATION_FAILED,
+                "operator refinement failed",
+                category=ErrorCategory.FAILED,
+                suggestion="Check the refinement operator and its runtime dependencies.",
+            ) from None
+
+        if type(outcome) is not tuple:
+            raise _refinement_result_invalid()
+        pair = cast("tuple[object, ...]", outcome)
+        if len(pair) != 2:
+            raise _refinement_result_invalid()
+        plans, meta = pair
+        if type(plans) is not list:
+            raise _refinement_result_invalid()
+        alternatives: tuple[object, ...] = tuple(cast("list[object]", plans))
+        # Lookalikes do not carry the normalized refinement contract.
+        from blue_data_ops.operators.types import ErrorCode, ErrorRecord, ErrorStage, ExecMeta
+
+        if type(meta) is not ExecMeta:
+            raise _refinement_result_invalid()
+        errors = meta.errors
+        if type(errors) is not list:
+            raise _refinement_result_invalid()
+        categories: list[ErrorCategory] = []
+        for record in cast("list[object]", errors):
+            if type(record) is not ErrorRecord:
+                raise _refinement_result_invalid()
+            if (
+                type(record.category) is not ErrorCategory
+                or type(record.code) is not ErrorCode
+                or type(record.stage) is not ErrorStage
+                or type(record.operator_id) is not str
+                or type(record.message) is not str
+                or type(record.retryable) is not bool
+                or (record.suggestion is not None and type(record.suggestion) is not str)
+            ):
+                raise _refinement_result_invalid()
+            categories.append(record.category)
+        # A refiner reporting errors must not also hand back plans; accepting both would
+        # leave the planner deciding which half of a contradictory result to believe.
+        if categories and alternatives:
+            raise _refinement_result_invalid()
+        is_empty = meta.is_empty
+        if type(is_empty) is not bool:
+            raise _refinement_result_invalid()
+        if not categories and is_empty != (len(alternatives) == 0):
+            raise _refinement_result_invalid()
+        return alternatives, tuple(categories)
+
+    def _convert_alternatives(
+        self,
+        request: PlanningRequest,
+        alternatives: tuple[object, ...],
+    ) -> tuple[tuple[PlanDraft, ...], tuple[str, ...]]:
+        """Project each returned pipeline into an isolated draft, in returned order.
+
+        The whole batch fails on the first bad alternative. Dropping one and keeping the
+        rest would hand the selector a silently narrowed candidate set, which is the one
+        outcome a caller could not detect from the result.
+        """
+
+        if len(alternatives) > request.max_candidates:
+            raise _refinement_limit()
+        drafts: list[PlanDraft] = []
+        child_ids: list[str] = []
+        for alternative in alternatives:
+            draft, ids = self._project_alternative(request, alternative)
+            drafts.append(draft)
+            for operator_id in ids:
+                if operator_id not in child_ids:
+                    child_ids.append(operator_id)
+        return tuple(drafts), tuple(child_ids)
+
+    def _project_alternative(
+        self,
+        request: PlanningRequest,
+        alternative: object,
+    ) -> tuple[PlanDraft, tuple[str, ...]]:
+        if type(alternative) is not DataPipeline:
+            raise _refinement_result_invalid()
+        try:
+            # Class dispatch, and only the graph containers are read. Plan properties,
+            # values, provenance, sync state, status, and statuses are all discarded, so
+            # an object that raises on copy or comparison in one of them cannot affect a
+            # conversion that never touches it.
+            record = DataPipeline.to_dict(alternative)
+        except Exception:
+            raise _refinement_conversion_failed() from None
+        if type(record) is not dict:
+            raise _refinement_result_invalid()
+
+        # The whole record, before anything is projected out of it.
+        by_node = _require_representable_record(
+            record,
+            max_steps=request.max_steps,
+            max_nodes=request.max_nodes,
+            max_edges=request.max_edges,
+        )
+        node_records = cast("dict[str, Any]", record["nodes"])
+        ordered = self._operator_order(node_records, by_node)
+        steps: list[PlanStep] = []
+        child_ids: list[str] = []
+        position = {node_id: index for index, node_id in enumerate(ordered)}
+        for index, node_id in enumerate(ordered, start=1):
+            entity_record = by_node[node_id]
+            operator_id = entity_record.get("operator_id")
+            if type(operator_id) is not str:
+                raise _refinement_result_invalid()
+            attributes = entity_record.get("attributes")
+            if type(attributes) is not dict or not _is_portable_plan_data(
+                cast("object", attributes)
+            ):
+                raise _refinement_result_invalid()
+            node = node_records.get(node_id)
+            if type(node) is not dict:
+                raise _refinement_result_invalid()
+            previous = cast("dict[str, Any]", node).get("prev")
+            if type(previous) is not list:
+                raise _refinement_result_invalid()
+            depends = tuple(
+                f"step-{position[str(other)] + 1:03d}"
+                for other in cast("list[Any]", previous)
+                if type(other) is str and other in position
+            )
+            label = cast("dict[str, Any]", node).get("label")
+            if label is not None and type(label) is not str:
+                raise _refinement_result_invalid()
+            steps.append(
+                PlanStep(
+                    step_id=f"step-{index:03d}",
+                    operator_id=operator_id,
+                    attributes=deepcopy(cast("dict[str, Any]", attributes)),
+                    depends_on=depends,
+                    label=label,
+                )
+            )
+            if operator_id not in child_ids:
+                child_ids.append(operator_id)
+        if not steps:
+            raise _refinement_result_invalid()
+        if len(steps) > request.max_steps:
+            raise _refinement_limit()
+        draft = _normalize_draft(
+            PlanDraft(steps=tuple(steps)),
+            stage=PlanningStage.GENERATION,
+            code=PlanningErrorCode.GENERATION_RESULT_INVALID,
+        )
+        return draft, tuple(child_ids)
+
+    def _operator_order(
+        self,
+        nodes: dict[str, Any],
+        operator_nodes: dict[str, dict[str, Any]],
+    ) -> list[str]:
+        """Stable topological order over operator nodes only."""
+
+        remaining = dict.fromkeys(operator_nodes)
+        ordered: list[str] = []
+        while remaining:
+            ready: list[str] = []
+            for node_id in remaining:
+                node = nodes.get(node_id)
+                if type(node) is not dict:
+                    raise _refinement_result_invalid()
+                previous = cast("dict[str, Any]", node).get("prev")
+                if type(previous) is not list:
+                    raise _refinement_result_invalid()
+                pending = [
+                    other
+                    for other in cast("list[Any]", previous)
+                    if type(other) is str and other in remaining
+                ]
+                if not pending:
+                    ready.append(node_id)
+            if not ready:
+                # A cycle among operator nodes: not representable as a PlanDraft.
+                raise _refinement_result_invalid()
+            for node_id in ready:
+                ordered.append(node_id)
+                del remaining[node_id]
+        return ordered
+
+    def _extend_discovery(
+        self,
+        request: PlanningRequest,
+        discovery: DiscoverySnapshot,
+        child_ids: tuple[str, ...],
+    ) -> DiscoverySnapshot:
+        """Add first-seen child cards by exact id, never by text discovery.
+
+        Refinement legitimately introduces operators the request's query never named, so
+        the snapshot has to grow. It grows only by exact pinned id resolved in this same
+        registry, so it cannot pull in a v1 card, a rewritten id, or a "latest".
+        """
+
+        cards = list(discovery.cards)
+        known = {card.operator_id for card in cards}
+        allowed = request.allowed_operator_ids
+        if type(allowed) is not tuple or not allowed:
+            raise _ineligible_source()
+        from blue_data_ops.plan.refiner import RefinableOperator
+
+        for operator_id in child_ids:
+            # Check every child, including one already present in the snapshot.
+            if operator_id not in allowed:
+                raise _refinement_result_invalid()
+            try:
+                card = self._registry.get_card(operator_id)
+            except Exception:
+                raise _refinement_child_failed() from None
+            if card is None or card.version != _PLANNER_OPERATOR_VERSION:
+                raise _refinement_result_invalid()
+            try:
+                resolved = self._registry.resolve(operator_id)
+            except Exception:
+                raise _refinement_child_failed() from None
+            # Recursive refinement has no materialization contract here.
+            if isinstance(resolved, RefinableOperator):
+                raise _refinement_result_invalid()
+            if operator_id in known:
+                continue
+            cards.append(card)
+            known.add(operator_id)
+        if len(cards) > request.max_discovery_cards:
+            raise _refinement_limit()
+        return DiscoverySnapshot(tuple(cards))
 
     def execute(
         self,

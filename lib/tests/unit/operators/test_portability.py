@@ -284,83 +284,162 @@ def _filename_component_hits(path: Path) -> list[str]:
     return hits
 
 
-def test_no_internal_checkpoint_leaks_in_shipped_sources() -> None:
-    """Regression: shipped sources/docs/fixtures must not leak internal audit vocabulary.
+def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
+    """Return every release path owned by the portability scan."""
 
-    Core roots (must exist): src/blue_data_ops, tests/, pyproject.toml, README.md,
-    COMPATIBILITY.md. MCP roots (optional -- only present when the sibling ``v1.2-mcp``
-    package is checked out alongside this one): src/, tests/, pyproject.toml, README.md.
-
-    Scans: internal D-number/C-number/K-number identifiers in Python comments/docstrings
-    and in TOML/Markdown prose; checkpoint-derived fixture schema values and filename
-    components; internal repo paths/vocabulary anywhere in the scanned text. Ordinary
-    quoted data values are not flagged because they live in code, not in a comment/docstring
-    or doc/fixture value.
-    """
-    lib_root = Path(PACKAGE_DIR).parents[1]
-    mcp_root = lib_root.parents[1] / "v1.2-mcp" / "platform" / "mcp"
-
-    core_src = Path(PACKAGE_DIR)
+    core_src = lib_root / "src" / "blue_data_ops"
     core_tests = lib_root / "tests"
-    core_pyproject = lib_root / "pyproject.toml"
-    core_readme = lib_root / "README.md"
-    core_compat = lib_root / "COMPATIBILITY.md"
+    mcp_root = lib_root.parent / "platform" / "mcp"
+    mcp_src = mcp_root / "src"
+    mcp_tests = mcp_root / "tests"
+    required_directories = (
+        core_src,
+        core_tests,
+        mcp_src,
+        mcp_tests,
+    )
+    required_files = (
+        lib_root / "pyproject.toml",
+        lib_root / "README.md",
+        lib_root / "COMPATIBILITY.md",
+        mcp_root / "pyproject.toml",
+        mcp_root / "README.md",
+    )
+    for path in required_directories:
+        assert path.is_dir(), f"expected shipped portability directory is missing: {path}"
+    for path in required_files:
+        assert path.is_file(), f"expected shipped portability file is missing: {path}"
 
-    for required in (core_src, core_tests, core_pyproject, core_readme, core_compat):
-        assert required.exists(), f"expected shipped core path is missing: {required}"
+    paths = set(required_files)
+    for root in (core_src, core_tests, mcp_src, mcp_tests):
+        paths.update(
+            path
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix in {".py", ".json", ".md"}
+        )
+    return tuple(sorted(paths))
 
+
+def _scan_shipped_portability(lib_root: Path) -> dict[str, list[str]]:
     violations: dict[str, list[str]] = {}
-
-    def _record(path: Path, hits: list[str]) -> None:
+    for path in _shipped_portability_paths(lib_root):
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise AssertionError(f"cannot read {path}: {exc}") from exc
+        if path.suffix == ".py":
+            hits = _scan_python_source(content, str(path))
+        elif path.suffix == ".json":
+            hits = _scan_json_fixture(content, str(path))
+        else:
+            hits = _scan_prose_text(content)
+        hits.extend(_filename_component_hits(path))
         if hits:
             violations[str(path)] = hits
+    return violations
 
-    def _scan_py_tree(root: Path) -> None:
-        for py_file in sorted(root.rglob("*.py")):
-            try:
-                content = py_file.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as exc:
-                raise AssertionError(f"cannot read {py_file}: {exc}") from exc
-            hits = _scan_python_source(content, str(py_file))
-            hits.extend(_filename_component_hits(py_file))
-            _record(py_file, hits)
 
-    def _scan_json_tree(root: Path) -> None:
-        for json_file in sorted(root.rglob("*.json")):
-            try:
-                content = json_file.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as exc:
-                raise AssertionError(f"cannot read {json_file}: {exc}") from exc
-            hits = _scan_json_fixture(content, str(json_file))
-            hits.extend(_filename_component_hits(json_file))
-            _record(json_file, hits)
+def test_no_internal_checkpoint_leaks_in_shipped_sources() -> None:
+    """Scan core and MCP source, resources, metadata, docs, and tests."""
 
-    def _scan_doc(doc_path: Path) -> None:
-        if not doc_path.is_file():
-            return
-        try:
-            content = doc_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise AssertionError(f"cannot read {doc_path}: {exc}") from exc
-        hits = _scan_prose_text(content)
-        hits.extend(_filename_component_hits(doc_path))
-        _record(doc_path, hits)
-
-    _scan_py_tree(core_src)
-    _scan_py_tree(core_tests)
-    _scan_json_tree(core_tests)
-    _scan_doc(core_pyproject)
-    _scan_doc(core_readme)
-    _scan_doc(core_compat)
-
-    if mcp_root.is_dir():
-        _scan_py_tree(mcp_root / "src")
-        _scan_py_tree(mcp_root / "tests")
-        _scan_json_tree(mcp_root / "tests")
-        _scan_doc(mcp_root / "pyproject.toml")
-        _scan_doc(mcp_root / "README.md")
-
+    lib_root = Path(PACKAGE_DIR).parents[1]
+    violations = _scan_shipped_portability(lib_root)
     assert not violations, f"internal process tokens leaked in shipped sources: {violations}"
+
+
+def _minimal_release_tree(root: Path) -> Path:
+    lib_root = root / "lib"
+    mcp_root = root / "platform" / "mcp"
+    for directory in (
+        lib_root / "src" / "blue_data_ops",
+        lib_root / "tests",
+        mcp_root / "src" / "blue_data_ops_mcp",
+        mcp_root / "tests",
+    ):
+        directory.mkdir(parents=True)
+    for path in (
+        lib_root / "pyproject.toml",
+        lib_root / "README.md",
+        lib_root / "COMPATIBILITY.md",
+        mcp_root / "pyproject.toml",
+        mcp_root / "README.md",
+    ):
+        path.write_text("ordinary package text\n", encoding="utf-8")
+    return lib_root
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "content"),
+    [
+        (
+            "lib/src/blue_data_ops/operator_skills/guide.md",
+            "see decision " + "D" + "39\n",
+        ),
+        (
+            "lib/src/blue_data_ops/operator_skills/manifest.json",
+            '{"schema_version": "' + "k" + '3-review"}\n',
+        ),
+        ("platform/mcp/README.md", "see decision " + "D" + "39\n"),
+        ("platform/mcp/pyproject.toml", "# see decision " + "D" + "39\n"),
+        (
+            "platform/mcp/src/blue_data_ops_mcp/leak.py",
+            "# see decision " + "D" + "39\n",
+        ),
+        (
+            "platform/mcp/tests/leak.py",
+            "# see decision " + "D" + "39\n",
+        ),
+    ],
+    ids=[
+        "core-markdown",
+        "core-json",
+        "mcp-readme",
+        "mcp-metadata",
+        "mcp-source",
+        "mcp-test",
+    ],
+)
+def test_shipped_portability_scanner_reaches_new_release_paths(
+    tmp_path: Path,
+    relative_path: str,
+    content: str,
+) -> None:
+    lib_root = _minimal_release_tree(tmp_path)
+    target = tmp_path / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+    violations = _scan_shipped_portability(lib_root)
+
+    assert str(target) in violations
+
+
+def test_shipped_portability_scanner_refuses_a_file_in_place_of_a_required_root(
+    tmp_path: Path,
+) -> None:
+    lib_root = _minimal_release_tree(tmp_path)
+    mcp_tests = tmp_path / "platform" / "mcp" / "tests"
+    mcp_tests.rmdir()
+    mcp_tests.write_text("ordinary package text\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError, match="expected shipped portability directory is missing"):
+        _scan_shipped_portability(lib_root)
+
+
+def test_shipped_portability_scanner_allows_ordinary_product_terms(tmp_path: Path) -> None:
+    lib_root = _minimal_release_tree(tmp_path)
+    resources = lib_root / "src" / "blue_data_ops" / "operator_skills"
+    resources.mkdir(parents=True)
+    (resources / "guide.md").write_text(
+        "An operator returns candidate plans for an internal source.\n",
+        encoding="utf-8",
+    )
+    (resources / "manifest.json").write_text(
+        '{"schema_version": "2.0.0", "source": "internal", "kind": "candidate"}\n',
+        encoding="utf-8",
+    )
+
+    assert _scan_shipped_portability(lib_root) == {}
 
 
 def test_checkpoint_leak_scanner_is_mutation_sensitive() -> None:

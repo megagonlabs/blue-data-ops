@@ -462,8 +462,12 @@ def test_a_conflicting_overlapping_attribute_fails(conflict: dict[str, Any]) -> 
     payload = candidates(step("filter", "select@2.0.0", {**SELECT_ATTRIBUTES, **conflict}))
     generator, registry, _ = build(client=RecordingClient(completed(payload)))
 
-    with pytest.raises(PlanningError, match="conflicted with a caller-supplied attribute"):
+    with pytest.raises(
+        PlanningError, match="conflicted with a caller-supplied attribute"
+    ) as caught:
         generate(generator, registry)
+
+    assert caught.value.record.code is PlanningErrorCode.GENERATION_RESULT_INVALID
 
 
 def test_an_agreeing_overlapping_attribute_is_accepted() -> None:

@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 2.1.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.2.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.1.0"
+  "blue-data-ops[ml,vector,llm]==2.2.0"
 ```
 
 The resolver also obtains `blue-data>=0.1.0` from that index. For an offline source install, install the `blue-data` checkout or wheel first, then install `./lib`.
@@ -121,6 +121,23 @@ cards = catalog.find("filter", tags=["domain-relational"])
 latest = catalog.find_latest("nl2sql")
 op = catalog.resolve(latest.operator_id) if latest is not None else None
 ```
+
+### Operator skill resources
+
+`blue_data_ops.operator_skills` loads reviewed, versioned guidance for exact package-owned operators. The first package covers `nl2sql@2.0.0`. Its level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+
+```python
+from blue_data_ops.operator_skills import OperatorSkillLoader
+from blue_data_ops.operators import versioned_registry
+
+registry = versioned_registry()
+skill = OperatorSkillLoader(registry).load("nl2sql@2.0.0", level=3)
+
+assert skill.card is registry.get_card("nl2sql@2.0.0")
+assert skill.io.attributes["question"].required
+```
+
+The loader has no latest-version fallback and does not accept custom registrations. Optional optimization, issue, and history resources are absent from this pilot and fail with `NOT_AVAILABLE` when requested.
 
 ### Structured execution
 
@@ -334,7 +351,7 @@ generator = OpenAIPlanGenerator(
 planner = PipelinePlanner(registry, generator)
 ```
 
-`allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins `@2.0.0`, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set, and a conflicting value fails the candidate.
+`allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins `@2.0.0`, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set. A conflicting value raises `GENERATION_RESULT_INVALID` and fails the whole generator or planner call before any drafts are returned.
 
 Sending a data-context snapshot takes a second, explicit opt-in:
 
@@ -353,9 +370,13 @@ Pass `client=` to inject a configured `OpenAI` instance, whether for a different
 
 Provider failures map to provider-independent codes chosen by exception class and HTTP status: `GENERATOR_DEPENDENCY_MISSING`, `GENERATOR_REQUEST_REJECTED`, `GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, `GENERATOR_UNAVAILABLE`, `GENERATOR_REFUSED`, and `GENERATOR_RESPONSE_INVALID`. No response body, request payload, credential, or provider identifier reaches a planning record.
 
-### What planning does not do in 2.1.0
+### Planning from refinement candidates
 
-`plan_refinement()` is not part of this release. The planner plans once, compiles, and preflights; it has no refinement loop and no plan-revision call. A caller that wants a different plan submits a new `PlanningRequest`. Operator-level `refine()` on the four plan-producing operators is unaffected and works as it did in 2.0.0.
+`plan_refinement()` accepts one explicit package-built `@2.0.0` refinement source and its call input. The request must have a nonempty exact-ID allowlist that admits the source and every child. The planner calls normalized `refine()` once, rejects an error-bearing, over-limit, or invalid batch as a whole, projects each complete portable graph into a draft, and then uses the configured selector before fresh compilation and preflight.
+
+The eligible sources are `multipart_query@2.0.0`, `nl2query_router@2.0.0`, `plan_discover@2.0.0`, and `query_breakdown@2.0.0`. The default `RequireSinglePlan` selector still rejects a batch with more than one candidate. A scoped request remains anchored throughout projection and compilation, including a matching `nl2query_router` to `nl2sql` path.
+
+Planning remains one pass. There is no refinement loop, retry, or replanning after execution. This path does not load operator skill resources, collect a data-context snapshot, or send skill text to a planner, provider, or MCP response.
 
 ## Utility compatibility
 
@@ -411,6 +432,7 @@ lib/
 │       │   └── *_operator.py     # one module per operator
 │       ├── utils/                # Blue-compatible type, tool, JSON, uuid, string helpers
 │       ├── llm/                  # LLM client, templating, resolution (litellm-backed)
+│       ├── operator_skills/      # reviewed resources keyed by exact operator id
 │       ├── plan/
 │       │   ├── pipeline.py       # serializable DataPipeline record
 │       │   ├── refiner.py        # operator-level refinement

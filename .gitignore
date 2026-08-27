@@ -54,3 +54,7 @@ Thumbs.db
 # User database files
 *.userdb
 ~/.userdb/
+
+# temp files
+*.tmp
+.tmp.driveupload

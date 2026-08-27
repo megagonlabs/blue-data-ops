@@ -1,0 +1,6 @@
+{
+  "format": "blue-data-ops/operator-skill-index@1",
+  "packages": {
+    "nl2sql@2.0.0": "nl2sql/2.0.0/manifest.json"
+  }
+}
