@@ -97,7 +97,7 @@ def test_validate_parameter_type_matches_blue(
 
 
 def test_malformed_union_returns_false_not_indexerror() -> None:
-    # Known repair: the earlier staged helper raised IndexError; Blue returns False.
+    # Blue returns False for a malformed union spec instead of raising.
     assert validate_parameter_type("x", "union[]") is False
 
 

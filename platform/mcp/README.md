@@ -23,6 +23,14 @@ python -m pip install --index-url "$PIP_INDEX_URL" \
 
 The `nl2*` and `semantic_*` operators plus `query_breakdown` resolve a provider client at call time. Supply the provider credential through its environment variable. The `openai.model` property selects the model (default `gpt-4o`); the default OpenAI client reads `OPENAI_API_KEY` for authentication.
 
+After installation, read the adapter version from distribution metadata:
+
+```python
+from importlib.metadata import version
+
+assert version("blue-data-ops-mcp") == "0.4.0"
+```
+
 ## Embed or serve
 
 `create_server()` returns a configured `FastMCP` server. To initialize a client, list tools, and call `select` without opening a listener:
@@ -212,13 +220,57 @@ The MCP initialization response's `serverInfo.version` is the MCP SDK version, n
 
 The four refinement operators (`multipart_query`, `nl2query_router`, `plan_discover`, `query_breakdown`) each expose two tools. Every primary runs its function body through `run()`. The `multipart_query`, `nl2query_router`, and `plan_discover` primary bodies return a successful-empty result. The `query_breakdown` primary calls the configured LLM provider. All four `__refine` companions run normalized `refine()` and return serialized candidate plans.
 
+Pass one of these mappings as the `arguments` to `client.call_tool()`:
+
+```python
+multipart_arguments = {
+    "input_data": [[{
+        "description": "find orders",
+        "sql": "select * from orders",
+        "table": "orders",
+        "columns": [{"name": "total", "type": "float"}],
+        "dependency": [],
+        "generality": 0,
+    }]],
+    "attributes": {},
+}
+
+router_arguments = {
+    "input_data": [[{
+        "name": "warehouse",
+        "type": "source",
+        "scope": "/source/warehouse",
+        "properties": {
+            "connection": {"protocol": "sqlite"},
+            "owner": "warehouse",
+        },
+    }]],
+    "attributes": {
+        "search_query": "find orders",
+        "columns": [{"name": "total"}],
+        "execute_query": False,
+        "protocol": "sqlite",
+    },
+}
+
+discover_arguments = {
+    "input_data": [[]],
+    "attributes": {"task": "select", "data": "rows", "approximate": True},
+}
+
+breakdown_arguments = {
+    "input_data": [[]],
+    "attributes": {"query": "compare monthly order totals"},
+}
+```
+
+Use these with `multipart_query__refine`, `nl2query_router__refine`, `plan_discover__refine`, and `query_breakdown__refine`, respectively. The router reads source records from the first input group. `query_breakdown__refine` calls the configured LLM provider; the other three shapes above are credential-free.
+
 An MCP refinement result is a serialized plan, not an execution. `DataPipeline` records the operators, their pinned ids, and their edges; it has no execution method. A caller with the core `blue-data-ops` package installed can load a chosen materialized plan with `DataPipeline.from_dict()` and execute it with `PipelineExecutor` and a registry that resolves its pinned ids. The MCP server itself does not run returned plans.
 
 ## Migrating from 0.3.0
 
 `0.4.0` moves the core pin from `blue-data-ops==2.1.0` to `==2.2.0` and changes nothing else. Tool names, descriptions, `_meta`, arguments, results, the structured envelope, error surfacing, and the transport are unchanged, and every operator id is still `@2.0.0`.
-
-Every behavioral test passes unchanged. The only test edit in `0.4.0` is the metadata assertion that pins this package's own version and core requirement.
 
 Update both distributions together. The exact pin means one environment holds one pair, so a `0.3.0` adapter cannot run against core `2.2.0` and `0.4.0` cannot run against core `2.1.0`:
 

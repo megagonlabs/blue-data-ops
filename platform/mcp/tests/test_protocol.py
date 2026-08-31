@@ -78,7 +78,7 @@ async def test_stateful_session_lists_and_calls() -> None:
     assert _output(result) == [[{"a": 5}]]
 
 
-async def test_server_info_version_is_the_sdk_version_a25() -> None:
+async def test_server_info_version_is_the_sdk_version() -> None:
     server = create_server(operator_ids=("select@2.0.0",))
     async with create_connected_server_and_client_session(server) as client:
         init = await client.initialize()
@@ -104,7 +104,7 @@ async def test_concurrent_thread_bridged_calls_do_not_block_loop() -> None:
     assert _output(slow_result) == [[{"label": "slow"}]]
 
 
-async def test_unknown_tool_is_sdk_tool_error_a24() -> None:
+async def test_unknown_tool_is_sdk_tool_error() -> None:
     async with create_connected_server_and_client_session(
         create_server(operator_ids=("select@2.0.0",))
     ) as client:
@@ -115,7 +115,7 @@ async def test_unknown_tool_is_sdk_tool_error_a24() -> None:
     assert "Unknown tool: not_registered" in block.text
 
 
-async def test_malformed_asgi_requests_are_http_jsonrpc_errors_a24() -> None:
+async def test_malformed_asgi_requests_are_http_jsonrpc_errors() -> None:
     app = create_server(operator_ids=()).streamable_http_app()
     headers = {
         "accept": "application/json, text/event-stream",
@@ -137,7 +137,7 @@ async def test_malformed_asgi_requests_are_http_jsonrpc_errors_a24() -> None:
     assert bad_message.json()["error"]["message"].startswith("Validation error:")
 
 
-async def test_protocol_cancellation_is_code_zero_and_worker_continues_a24() -> None:
+async def test_protocol_cancellation_is_code_zero_and_worker_continues() -> None:
     operator = GateOperator()
     async with create_connected_server_and_client_session(_gate_server(operator)) as client:
         request_id = client._request_id  # pyright: ignore[reportPrivateUsage]
@@ -162,7 +162,7 @@ async def test_protocol_cancellation_is_code_zero_and_worker_continues_a24() -> 
     assert operator.completion_order == ["slow"]
 
 
-async def test_server_down_is_transport_exception_a24() -> None:
+async def test_server_down_is_transport_exception() -> None:
     async with httpx.AsyncClient(timeout=0.25) as http_client:
         with pytest.raises(_EXCEPTION_GROUP_TYPE) as exc_info:
             async with streamable_http_client(

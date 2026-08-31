@@ -111,7 +111,7 @@ def _select_deployment(
 
 
 # --- 36-card v1 inventory and resolution identity -----------------------------------
-def test_proof01_default_registry_v1_inventory_and_resolution_identity() -> None:
+def test_default_registry_v1_inventory_and_resolution_identity() -> None:
     registry = default_registry()
     cards = registry.list_cards()
 
@@ -126,7 +126,7 @@ def test_proof01_default_registry_v1_inventory_and_resolution_identity() -> None
 
 
 # --- 72-card dual inventory and deterministic order ---------------------------------
-def test_proof02_versioned_registry_dual_inventory_and_order() -> None:
+def test_versioned_registry_dual_inventory_and_order() -> None:
     cards = versioned_registry().list_cards()
     ids = [card.operator_id for card in cards]
 
@@ -138,7 +138,7 @@ def test_proof02_versioned_registry_dual_inventory_and_order() -> None:
 
 
 # --- unrelated exported subclasses do not change inventory --------------------------
-def test_proof03_bogus_export_cannot_change_either_inventory(
+def test_bogus_export_cannot_change_either_inventory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _BogusOperator(Operator):
@@ -169,7 +169,7 @@ def test_proof03_bogus_export_cannot_change_either_inventory(
 
 # --- selected v2 identity through run() ---------------------------------------------
 @pytest.mark.parametrize("name", BUILTIN_NAMES)
-def test_proof04_v2_card_reports_selected_id_through_run(name: str) -> None:
+def test_v2_card_reports_selected_id_through_run(name: str) -> None:
     operator_id = f"{name}@2.0.0"
     resolved = versioned_registry().resolve(operator_id)
 
@@ -188,7 +188,7 @@ def test_proof04_v2_card_reports_selected_id_through_run(name: str) -> None:
 
 # --- selected v2 identity through refine() ------------------------------------------
 @pytest.mark.parametrize("name", REFINABLE_NAMES)
-def test_proof05_refinable_v2_card_reports_selected_id_through_refine(name: str) -> None:
+def test_refinable_v2_card_reports_selected_id_through_refine(name: str) -> None:
     operator_id = f"{name}@2.0.0"
     resolved = cast(RefinableOperator, versioned_registry().resolve(operator_id))
 
@@ -202,7 +202,7 @@ def test_proof05_refinable_v2_card_reports_selected_id_through_refine(name: str)
 
 # --- v1 compatibility paths ---------------------------------------------------------
 @pytest.mark.parametrize("name", BUILTIN_NAMES)
-def test_proof06_v1_card_keeps_compatibility_path(name: str) -> None:
+def test_v1_card_keeps_compatibility_path(name: str) -> None:
     operator_id = f"{name}@1.0.0"
     versioned = versioned_registry().resolve(operator_id)
     compat = default_registry().resolve(operator_id)
@@ -216,7 +216,7 @@ def test_proof06_v1_card_keeps_compatibility_path(name: str) -> None:
 
 
 # --- default selection from the dual-version catalog --------------------------------
-def test_proof07_default_selection_yields_exactly_the_36_v2_ids() -> None:
+def test_default_selection_yields_exactly_the_36_v2_ids() -> None:
     snapshot = _select_deployment(versioned_registry())
     ids = tuple(card.operator_id for card in snapshot)
 
@@ -226,7 +226,7 @@ def test_proof07_default_selection_yields_exactly_the_36_v2_ids() -> None:
 
 
 # --- explicit empty and subset selections -------------------------------------------
-def test_proof08_empty_and_subset_selections_remain_valid() -> None:
+def test_empty_and_subset_selections_remain_valid() -> None:
     registry = versioned_registry()
 
     assert _select_deployment(registry, ()) == ()
@@ -241,17 +241,17 @@ def test_proof08_empty_and_subset_selections_remain_valid() -> None:
 
 
 # --- invalid selections and ids -----------------------------------------------------
-def test_proof09_duplicate_ids_fail() -> None:
+def test_duplicate_ids_fail() -> None:
     with pytest.raises(ValueError, match="repeated operator id"):
         _select_deployment(versioned_registry(), ("select@2.0.0", "select@2.0.0"))
 
 
-def test_proof09_two_versions_of_one_name_fail() -> None:
+def test_two_versions_of_one_name_fail() -> None:
     with pytest.raises(ValueError, match="multiple versions of one tool name"):
         _select_deployment(versioned_registry(), ("select@2.0.0", "select@1.0.0"))
 
 
-def test_proof09_missing_id_fails() -> None:
+def test_missing_id_fails() -> None:
     with pytest.raises(ResolveError):
         _select_deployment(versioned_registry(), ("ghost@2.0.0",))
 
@@ -260,12 +260,12 @@ def test_proof09_missing_id_fails() -> None:
     "bad_id",
     ["select", "select@", "select@1.0", "select@01.0.0", "@2.0.0", "select@latest"],
 )
-def test_proof09_bare_malformed_and_leading_zero_ids_fail(bad_id: str) -> None:
+def test_bare_malformed_and_leading_zero_ids_fail(bad_id: str) -> None:
     with pytest.raises(ResolveError):
         versioned_registry().resolve(bad_id)
 
 
-def test_proof09_incomplete_default_catalog_fails() -> None:
+def test_incomplete_default_catalog_fails() -> None:
     complete = versioned_registry()
     incomplete = OperatorRegistry()
     for card in complete.list_cards():
@@ -278,7 +278,7 @@ def test_proof09_incomplete_default_catalog_fails() -> None:
 
 
 # --- v1 MCP registry isolation ------------------------------------------------------
-def test_proof10_mcp_gets_v1_registry_and_no_root_versioned_export() -> None:
+def test_mcp_gets_v1_registry_and_no_root_versioned_export() -> None:
     # The surface the v1 MCP adapter consumes is the unchanged 36-card v1 catalog.
     cards = default_registry().list_cards()
     assert len(cards) == 36
@@ -387,7 +387,7 @@ def _valid_refinement(
 
 @pytest.mark.parametrize("version", ["2.0.0", "1.0.0"])
 @pytest.mark.parametrize("name", REFINABLE_NAMES)
-def test_repair01_catalog_refinement_is_nonempty_single_version_and_resolvable(
+def test_catalog_refinement_is_nonempty_single_version_and_resolvable(
     name: str,
     version: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -412,7 +412,7 @@ def test_repair01_catalog_refinement_is_nonempty_single_version_and_resolvable(
             assert registry.resolve(child_id).name == child_id.partition("@")[0]
 
 
-def test_repair02_v2_plan_discover_discovers_from_the_product_catalog() -> None:
+def test_v2_plan_discover_discovers_from_the_product_catalog() -> None:
     registry = versioned_registry()
     operator = cast(RefinableOperator, registry.resolve("plan_discover@2.0.0"))
 
@@ -430,7 +430,7 @@ def test_repair02_v2_plan_discover_discovers_from_the_product_catalog() -> None:
     ]
 
 
-def test_repair03_v1_plan_discover_raw_refiner_stays_v1_and_matches_default_view(
+def test_v1_plan_discover_raw_refiner_stays_v1_and_matches_default_view(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     catalog_operator = cast(RefinableOperator, versioned_registry().resolve("plan_discover@1.0.0"))
@@ -453,7 +453,7 @@ def test_repair03_v1_plan_discover_raw_refiner_stays_v1_and_matches_default_view
         assert {child_id.rpartition("@")[2] for child_id in child_ids} == {"1.0.0"}
 
 
-def test_repair04_catalog_plan_discover_instances_stay_separate_and_isolated() -> None:
+def test_catalog_plan_discover_instances_stay_separate_and_isolated() -> None:
     registry = versioned_registry()
     v2_operator = registry.resolve("plan_discover@2.0.0")
     v1_operator = registry.resolve("plan_discover@1.0.0")

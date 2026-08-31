@@ -41,7 +41,7 @@ _NAMES: list[str] = sorted({card["name"] for card in _FIXTURE["cards"]})
 
 
 # --------------------------------------------------------------------------------------------------
-# Catalog provenance (canonical formatting + source manifest + negative controls)
+# Catalog provenance: canonical formatting, source manifest, and catalog size
 # --------------------------------------------------------------------------------------------------
 def test_fixture_is_canonical_json_with_expected_structure() -> None:
     checked_in = _FIXTURE_PATH.read_text()
@@ -215,7 +215,7 @@ def _catalog(**cards: tuple[str, tuple[str, ...], str]) -> OperatorRegistry:
     return registry
 
 
-def test_runtime_text_weights_are_the_ratified_10_8_6_5() -> None:
+def test_runtime_text_weights_are_the_expected_10_8_6_5() -> None:
     from blue_data_ops.operators.registry import (
         _DESCRIPTION_HIT,  # pyright: ignore[reportPrivateUsage]
         _NAME_HIT,  # pyright: ignore[reportPrivateUsage]

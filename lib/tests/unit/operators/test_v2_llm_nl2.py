@@ -146,7 +146,7 @@ def _assert_error(
         ),
     ],
 )
-def test_l3_c01_native_hooks_and_public_adapters_keep_exact_types(
+def test_common_native_hooks_and_public_adapters_keep_exact_types(
     operator: Operator,
     attributes: Attributes,
     properties: Properties,
@@ -163,7 +163,7 @@ def test_l3_c01_native_hooks_and_public_adapters_keep_exact_types(
     assert type(operator.apply(INPUT, attributes, properties)) is list
 
 
-def test_l3_c02_caller_defaults_and_results_are_isolated() -> None:
+def test_common_caller_defaults_and_results_are_isolated() -> None:
     operator = NL2LLMOperator()
     attributes: Attributes = {"query": "list roles"}
     original = deepcopy(attributes)
@@ -199,7 +199,7 @@ def test_l3_c02_caller_defaults_and_results_are_isolated() -> None:
 
 
 @pytest.mark.parametrize("operator", [NL2LLMOperator(), NL2BNOperator(), NL2SQLOperator()])
-def test_l3_c03_selected_registry_version_owns_error_identity(operator: Operator) -> None:
+def test_common_selected_registry_version_owns_error_identity(operator: Operator) -> None:
     registry = OperatorRegistry()
     registry.register(operator, "1.0.0")
     registry.register(operator, "2.0.0")
@@ -223,7 +223,7 @@ def test_l3_c03_selected_registry_version_owns_error_identity(operator: Operator
         (NL2SQLOperator(), {**SQL_ATTRIBUTES, "question": 7}),
     ],
 )
-def test_l3_c04_invalid_structured_input_suppresses_dependencies(
+def test_common_invalid_structured_input_suppresses_dependencies(
     operator: Operator,
     attributes: Attributes,
 ) -> None:
@@ -243,7 +243,7 @@ def test_l3_c04_invalid_structured_input_suppresses_dependencies(
 
 
 @pytest.mark.parametrize("operator", [NL2LLMOperator(), NL2BNOperator(), NL2SQLOperator()])
-def test_l3_c05_body_exception_is_contained_without_payload(operator: Operator) -> None:
+def test_common_body_exception_is_contained_without_payload(operator: Operator) -> None:
     sensitive_text = "opaque-provider-detail"
     with patch.object(operator, "_execute", side_effect=RuntimeError(sensitive_text)) as execute:
         _, _, meta = operator.run(INPUT, {})
@@ -275,7 +275,7 @@ def test_l3_c05_body_exception_is_contained_without_payload(operator: Operator) 
         (NL2SQLOperator(), SQL_ATTRIBUTES),
     ],
 )
-def test_l3_c06_timeout_calls_body_once_and_discards_late_result(
+def test_common_timeout_calls_body_once_and_discards_late_result(
     operator: Operator,
     attributes: Attributes,
 ) -> None:
@@ -310,7 +310,7 @@ def test_l3_c06_timeout_calls_body_once_and_discards_late_result(
         (NL2SQLOperator(), SQL_ATTRIBUTES),
     ],
 )
-def test_l3_c07_malformed_native_result_is_rejected(
+def test_common_malformed_native_result_is_rejected(
     operator: Operator,
     attributes: Attributes,
 ) -> None:
@@ -326,7 +326,7 @@ def test_l3_c07_malformed_native_result_is_rejected(
     )
 
 
-def test_l3_n01_valid_result_matches_raw_and_pins_exact_prompt_data() -> None:
+def test_nl2llm_valid_result_matches_raw_and_pins_exact_prompt_data() -> None:
     operator = NL2LLMOperator()
     attributes: Attributes = {
         "query": "rank languages",
@@ -352,7 +352,7 @@ def test_l3_n01_valid_result_matches_raw_and_pins_exact_prompt_data() -> None:
 
 
 @pytest.mark.parametrize("query", ["", "   "])
-def test_l3_n02_blank_query_is_successful_empty_without_provider(query: str) -> None:
+def test_nl2llm_blank_query_is_successful_empty_without_provider(query: str) -> None:
     operator = NL2LLMOperator()
     client = ScriptedClient([])
     assert operator.apply(INPUT, {"query": query}, _properties(client)) == []
@@ -363,14 +363,14 @@ def test_l3_n02_blank_query_is_successful_empty_without_provider(query: str) -> 
     assert client.calls == []
 
 
-def test_l3_n03_missing_query_is_invalid_without_provider() -> None:
+def test_nl2llm_missing_query_is_invalid_without_provider() -> None:
     client = ScriptedClient([])
     _, _, meta = NL2LLMOperator().run(INPUT, {}, _properties(client))
     assert meta.errors[0].code is ErrorCode.INVALID_INPUT
     assert client.calls == []
 
 
-def test_l3_n04_invalid_attribute_descriptor_is_invalid_without_provider() -> None:
+def test_nl2llm_invalid_attribute_descriptor_is_invalid_without_provider() -> None:
     client = ScriptedClient([])
     _, _, meta = NL2LLMOperator().run(
         INPUT,
@@ -381,7 +381,7 @@ def test_l3_n04_invalid_attribute_descriptor_is_invalid_without_provider() -> No
     assert client.calls == []
 
 
-def test_l3_n05_cleanup_contract_remains_in_provider_properties() -> None:
+def test_nl2llm_cleanup_contract_remains_in_provider_properties() -> None:
     client = ScriptedClient([[{"ish": 1}]])
     result = NL2LLMOperator().run(INPUT, {"query": "q"}, _properties(client))
     assert result[0] == [[{"ish": 1}]]
@@ -393,7 +393,7 @@ def test_l3_n05_cleanup_contract_remains_in_provider_properties() -> None:
     assert client.calls[0][1]["output_cast"] == "json"
 
 
-def test_l3_n06_provider_empty_list_is_successful_empty() -> None:
+def test_nl2llm_provider_empty_list_is_successful_empty() -> None:
     output, _, meta = NL2LLMOperator().run(
         INPUT,
         {"query": "q"},
@@ -404,7 +404,7 @@ def test_l3_n06_provider_empty_list_is_successful_empty() -> None:
     assert meta.errors == []
 
 
-def test_l3_n07_malformed_bundle_shape_is_raw_but_not_canonical() -> None:
+def test_nl2llm_malformed_bundle_shape_is_raw_but_not_canonical() -> None:
     operator = NL2LLMOperator()
     client = ScriptedClient([{"bad": True}, {"bad": True}])
     properties = _properties(client)
@@ -414,7 +414,7 @@ def test_l3_n07_malformed_bundle_shape_is_raw_but_not_canonical() -> None:
     assert meta.errors[0].stage is ErrorStage.NORMALIZE
 
 
-def test_l3_n08_provider_failure_propagates_raw_and_is_contained_canonically() -> None:
+def test_nl2llm_provider_failure_propagates_raw_and_is_contained_canonically() -> None:
     operator = NL2LLMOperator()
     sensitive_text = "opaque-nl2llm-provider-detail"
     with pytest.raises(RuntimeError, match=sensitive_text):
@@ -439,7 +439,7 @@ def test_l3_n08_provider_failure_propagates_raw_and_is_contained_canonically() -
 
 
 @pytest.mark.parametrize("question", ["", "  "])
-def test_l3_b01_blank_question_is_successful_empty_without_calls(question: str) -> None:
+def test_nl2bn_blank_question_is_successful_empty_without_calls(question: str) -> None:
     seam = _seam()
     client = ScriptedClient([])
     attributes = {**BN_ATTRIBUTES, "question": question}
@@ -451,7 +451,7 @@ def test_l3_b01_blank_question_is_successful_empty_without_calls(question: str) 
     assert seam.calls == []
 
 
-def test_l3_b02_missing_or_invalid_required_attribute_stops_calls() -> None:
+def test_nl2bn_missing_or_invalid_required_attribute_stops_calls() -> None:
     seam = _seam()
     client = ScriptedClient([])
     for attributes in ({"question": "q"}, {**BN_ATTRIBUTES, "question": 4}):
@@ -461,13 +461,13 @@ def test_l3_b02_missing_or_invalid_required_attribute_stops_calls() -> None:
     assert seam.calls == []
 
 
-def test_l3_b03_blank_required_value_reaches_body_failure() -> None:
+def test_nl2bn_blank_required_value_reaches_body_failure() -> None:
     _, _, meta = NL2BNOperator().run(INPUT, {**BN_ATTRIBUTES, "source": ""})
     assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
     assert meta.errors[0].stage is ErrorStage.EXECUTE
 
 
-def test_l3_b04_unsupported_protocol_is_execution_failure_without_calls() -> None:
+def test_nl2bn_unsupported_protocol_is_execution_failure_without_calls() -> None:
     seam = _seam()
     client = ScriptedClient([])
     _, _, meta = NL2BNOperator().run(
@@ -480,7 +480,7 @@ def test_l3_b04_unsupported_protocol_is_execution_failure_without_calls() -> Non
     assert seam.calls == []
 
 
-def test_l3_b05_missing_registry_is_raw_empty_but_canonical_failure() -> None:
+def test_nl2bn_missing_registry_is_raw_empty_but_canonical_failure() -> None:
     operator = NL2BNOperator()
     client = ScriptedClient([])
     assert operator.apply(INPUT, BN_ATTRIBUTES, _properties(client)) == [[]]
@@ -490,7 +490,7 @@ def test_l3_b05_missing_registry_is_raw_empty_but_canonical_failure() -> None:
     assert client.calls == []
 
 
-def test_l3_b06_provided_schema_skips_lookup_and_executes_query() -> None:
+def test_nl2bn_provided_schema_skips_lookup_and_executes_query() -> None:
     seam = _seam()
     client = ScriptedClient([BN_RESPONSE])
     output, _, meta = NL2BNOperator().run(
@@ -515,7 +515,7 @@ def test_l3_b06_provided_schema_skips_lookup_and_executes_query() -> None:
     ],
     ids=["top-level-graph", "metadata-graph", "unstructured", "empty"],
 )
-def test_l3_b07_registry_schema_variants_keep_call_order(schema: dict[str, Any]) -> None:
+def test_nl2bn_registry_schema_variants_keep_call_order(schema: dict[str, Any]) -> None:
     seam = _seam()
     seam.schema_result = schema
     client = ScriptedClient([BN_RESPONSE])
@@ -524,7 +524,7 @@ def test_l3_b07_registry_schema_variants_keep_call_order(schema: dict[str, Any])
     assert len(client.calls) == 1
 
 
-def test_l3_b08_valid_query_returns_probability_query_and_explanation() -> None:
+def test_nl2bn_valid_query_returns_probability_query_and_explanation() -> None:
     seam = _seam()
     seam.query_result = [{"probability": 0.75, "explanation": "rain causes wetness"}]
     client = ScriptedClient([BN_RESPONSE])
@@ -544,7 +544,7 @@ def test_l3_b08_valid_query_returns_probability_query_and_explanation() -> None:
     assert meta.errors == []
 
 
-def test_l3_b09_initial_provider_failure_recovers_on_correction() -> None:
+def test_nl2bn_initial_provider_failure_recovers_on_correction() -> None:
     seam = _seam()
     client = ScriptedClient([RuntimeError("initial"), BN_RESPONSE])
     output, _, meta = NL2BNOperator().run(INPUT, BN_ATTRIBUTES, _properties(client, seam))
@@ -555,7 +555,7 @@ def test_l3_b09_initial_provider_failure_recovers_on_correction() -> None:
     assert "previously generated" in client.calls[1][1]["input_template"]
 
 
-def test_l3_b10_invalid_initial_response_recovers_on_correction() -> None:
+def test_nl2bn_invalid_initial_response_recovers_on_correction() -> None:
     seam = _seam()
     client = ScriptedClient([{"target_state": "yes"}, BN_RESPONSE])
     output, _, meta = NL2BNOperator().run(INPUT, BN_ATTRIBUTES, _properties(client, seam))
@@ -564,7 +564,7 @@ def test_l3_b10_invalid_initial_response_recovers_on_correction() -> None:
     assert len(client.calls) == 2
 
 
-def test_l3_b11_local_non_json_decode_error_propagates_raw_and_is_contained() -> None:
+def test_nl2bn_local_non_json_decode_error_propagates_raw_and_is_contained() -> None:
     operator = NL2BNOperator()
     seam = _seam()
     client = ScriptedClient(["deep", "deep"])
@@ -594,7 +594,7 @@ def test_l3_b11_local_non_json_decode_error_propagates_raw_and_is_contained() ->
     assert "parser-payload" not in str(meta.errors[0])
 
 
-def test_l3_b12_correction_failure_and_exhaustion_keep_exact_calls() -> None:
+def test_nl2bn_correction_failure_and_exhaustion_keep_exact_calls() -> None:
     operator = NL2BNOperator()
     seam = _seam()
     failing = ScriptedClient([{"target_state": "yes"}, RuntimeError("correction")])
@@ -612,7 +612,7 @@ def test_l3_b12_correction_failure_and_exhaustion_keep_exact_calls() -> None:
     assert len(exhausted.calls) == 2
 
 
-def test_l3_b13_empty_registry_result_is_successful_null_probability() -> None:
+def test_nl2bn_empty_registry_result_is_successful_null_probability() -> None:
     seam = _seam()
     seam.query_result = []
     output, _, meta = NL2BNOperator().run(
@@ -624,7 +624,7 @@ def test_l3_b13_empty_registry_result_is_successful_null_probability() -> None:
     assert meta.errors == []
 
 
-def test_l3_b14_formatter_fallthrough_is_successful_null_probability() -> None:
+def test_nl2bn_formatter_fallthrough_is_successful_null_probability() -> None:
     seam = _seam()
     seam.query_result = [["not-a-record"]]
     output, _, meta = NL2BNOperator().run(
@@ -636,7 +636,7 @@ def test_l3_b14_formatter_fallthrough_is_successful_null_probability() -> None:
     assert meta.errors == []
 
 
-def test_l3_b15_registry_exception_propagates_raw_and_is_contained() -> None:
+def test_nl2bn_registry_exception_propagates_raw_and_is_contained() -> None:
     class FailingSeam(RecordingSeam):
         def get_data_source_schema(self, *args: Any, **kwargs: Any) -> Any:
             del args, kwargs
@@ -652,7 +652,7 @@ def test_l3_b15_registry_exception_propagates_raw_and_is_contained() -> None:
 
 
 @pytest.mark.parametrize("question", ["", "  "])
-def test_l3_s01_blank_question_is_successful_empty_without_calls(question: str) -> None:
+def test_nl2sql_blank_question_is_successful_empty_without_calls(question: str) -> None:
     seam = _seam()
     client = ScriptedClient([])
     attributes = {**SQL_ATTRIBUTES, "question": question}
@@ -664,7 +664,7 @@ def test_l3_s01_blank_question_is_successful_empty_without_calls(question: str) 
     assert seam.calls == []
 
 
-def test_l3_s02_missing_or_invalid_required_attribute_stops_calls() -> None:
+def test_nl2sql_missing_or_invalid_required_attribute_stops_calls() -> None:
     seam = _seam()
     client = ScriptedClient([])
     for attributes in ({"question": "q"}, {**SQL_ATTRIBUTES, "question": 4}):
@@ -674,7 +674,7 @@ def test_l3_s02_missing_or_invalid_required_attribute_stops_calls() -> None:
     assert seam.calls == []
 
 
-def test_l3_s03_absent_source_is_invalid_but_explicit_empty_reaches_body() -> None:
+def test_nl2sql_absent_source_is_invalid_but_explicit_empty_reaches_body() -> None:
     absent = dict(SQL_ATTRIBUTES)
     del absent["source"]
     seam = _seam()
@@ -692,7 +692,7 @@ def test_l3_s03_absent_source_is_invalid_but_explicit_empty_reaches_body() -> No
     assert seam.calls_to("get_data_source_schema")[0]["source"] == ""
 
 
-def test_l3_s04_missing_registry_is_raw_empty_but_canonical_failure() -> None:
+def test_nl2sql_missing_registry_is_raw_empty_but_canonical_failure() -> None:
     operator = NL2SQLOperator()
     client = ScriptedClient([])
     assert operator.apply(INPUT, SQL_ATTRIBUTES, _properties(client)) == [[]]
@@ -701,7 +701,7 @@ def test_l3_s04_missing_registry_is_raw_empty_but_canonical_failure() -> None:
     assert client.calls == []
 
 
-def test_l3_s05_execute_path_matches_raw_with_exact_calls() -> None:
+def test_nl2sql_execute_path_matches_raw_with_exact_calls() -> None:
     operator = NL2SQLOperator()
     seam = _seam()
     client = ScriptedClient([SQL_RESPONSE, SQL_RESPONSE])
@@ -720,7 +720,7 @@ def test_l3_s05_execute_path_matches_raw_with_exact_calls() -> None:
     assert client.calls[0][2]["question"] == SQL_ATTRIBUTES["question"]
 
 
-def test_l3_s06_sql_only_path_skips_registry_execution() -> None:
+def test_nl2sql_sql_only_path_skips_registry_execution() -> None:
     seam = _seam()
     client = ScriptedClient([SQL_RESPONSE])
     output, _, meta = NL2SQLOperator().run(
@@ -734,7 +734,7 @@ def test_l3_s06_sql_only_path_skips_registry_execution() -> None:
     assert seam.calls_to("execute_query") == []
 
 
-def test_l3_s07_supplied_schema_is_ignored_and_registry_schema_is_used() -> None:
+def test_nl2sql_supplied_schema_is_ignored_and_registry_schema_is_used() -> None:
     seam = _seam()
     client = ScriptedClient([SQL_RESPONSE])
     NL2SQLOperator().run(
@@ -757,7 +757,7 @@ def test_l3_s07_supplied_schema_is_ignored_and_registry_schema_is_used() -> None
     ],
     ids=["provider", "parser", "missing-query", "prefix"],
 )
-def test_l3_s08_provider_and_parser_failures_are_contained(response: Any) -> None:
+def test_nl2sql_provider_and_parser_failures_are_contained(response: Any) -> None:
     seam = _seam()
     _, _, meta = NL2SQLOperator().run(
         INPUT,
@@ -781,7 +781,7 @@ def test_l3_s08_provider_and_parser_failures_are_contained(response: Any) -> Non
     ],
     ids=["dict", "empty", "none", "list", "nested"],
 )
-def test_l3_s09_formatter_success_shapes(
+def test_nl2sql_formatter_success_shapes(
     query_result: Any,
     expected: DataBundle,
     is_empty: bool,
@@ -798,7 +798,7 @@ def test_l3_s09_formatter_success_shapes(
     assert meta.errors == []
 
 
-def test_l3_s10_formatter_none_is_raw_none_but_canonical_invalid_result() -> None:
+def test_nl2sql_formatter_none_is_raw_none_but_canonical_invalid_result() -> None:
     operator = NL2SQLOperator()
     seam = _seam()
     seam.query_result = [["not-a-record"]]
@@ -820,13 +820,13 @@ def test_l3_s10_formatter_none_is_raw_none_but_canonical_invalid_result() -> Non
 
 
 @pytest.mark.parametrize("field", ["protocol", "database", "collection"])
-def test_l3_s11_blank_required_value_is_execution_failure(field: str) -> None:
+def test_nl2sql_blank_required_value_is_execution_failure(field: str) -> None:
     _, _, meta = NL2SQLOperator().run(INPUT, {**SQL_ATTRIBUTES, field: ""})
     assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
     assert meta.errors[0].stage is ErrorStage.EXECUTE
 
 
-def test_l3_s12_protocol_check_occurs_after_schema_lookup() -> None:
+def test_nl2sql_protocol_check_occurs_after_schema_lookup() -> None:
     seam = _seam()
     client = ScriptedClient([])
     _, _, meta = NL2SQLOperator().run(
@@ -840,7 +840,7 @@ def test_l3_s12_protocol_check_occurs_after_schema_lookup() -> None:
     assert client.calls == []
 
 
-def test_l3_s13_registry_exception_propagates_raw_and_is_contained() -> None:
+def test_nl2sql_registry_exception_propagates_raw_and_is_contained() -> None:
     class FailingSeam(RecordingSeam):
         def execute_query(self, *args: Any, **kwargs: Any) -> Any:
             del args, kwargs
@@ -863,7 +863,7 @@ def test_l3_s13_registry_exception_propagates_raw_and_is_contained() -> None:
     assert "opaque-query-detail" not in str(meta.errors[0])
 
 
-def test_l3_registry_default_remains_exactly_36_v1_cards() -> None:
+def test_registry_default_remains_exactly_36_v1_cards() -> None:
     cards = default_registry().list_cards()
     assert len(cards) == 36
     assert len({card.operator_id for card in cards}) == 36

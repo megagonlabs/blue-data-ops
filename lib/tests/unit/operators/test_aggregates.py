@@ -41,21 +41,21 @@ OPS: dict[str, Operator] = {
 }
 
 
-# --- A. argmax / argmin ---
-def test_a1_argmax_records_tie() -> None:
+# argmax / argmin
+def test_argmax_records_tie() -> None:
     assert OPS["argmax"].apply(INPUT, {"argmax_key": "salary"}) == [[R2, R4]]
 
 
-def test_a2_argmax_indices() -> None:
+def test_argmax_indices() -> None:
     out = OPS["argmax"].apply(INPUT, {"argmax_key": "salary", "return_index": True})
     assert out == [[{"indices": [1, 3]}]]
 
 
-def test_a3_argmin_records() -> None:
+def test_argmin_records() -> None:
     assert OPS["argmin"].apply(INPUT, {"argmin_key": "salary"}) == [[R6]]
 
 
-def test_a4_argmin_indices() -> None:
+def test_argmin_indices() -> None:
     out = OPS["argmin"].apply(INPUT, {"argmin_key": "salary", "return_index": True})
     assert out == [[{"indices": [5]}]]
 
@@ -70,7 +70,7 @@ TIE_CASES: dict[str, tuple[list[list[dict[str, object]]], list[dict[str, object]
 
 
 @pytest.mark.parametrize("op_name", ["argmax", "argmin"])
-def test_a5_tie_symmetric(op_name: str) -> None:
+def test_tie_symmetric(op_name: str) -> None:
     data, tied_records, tied_indices = TIE_CASES[op_name]
     assert OPS[op_name].apply(data, {KEY_ATTR[op_name]: "k"}) == [tied_records]
     out = OPS[op_name].apply(data, {KEY_ATTR[op_name]: "k", "return_index": True})
@@ -78,48 +78,46 @@ def test_a5_tie_symmetric(op_name: str) -> None:
 
 
 @pytest.mark.parametrize("op_name", ["argmax", "argmin"])
-def test_a6_arg_non_coercible_and_missing_key(op_name: str) -> None:
+def test_arg_non_coercible_and_missing_key(op_name: str) -> None:
     assert OPS[op_name].apply(INPUT, {KEY_ATTR[op_name]: "dept"}) == [[]]
     assert OPS[op_name].apply(INPUT, {KEY_ATTR[op_name]: "nonexistent"}) == [[]]
 
 
 @pytest.mark.parametrize("op_name", ["argmax", "argmin"])
 @pytest.mark.parametrize("empty_input", [[], [[]]])
-def test_a7_arg_empty_input_guards(
-    op_name: str, empty_input: list[list[dict[str, object]]]
-) -> None:
+def test_arg_empty_input_guards(op_name: str, empty_input: list[list[dict[str, object]]]) -> None:
     # The empty result is [[]], unlike select's [] guard.
     assert OPS[op_name].apply(empty_input, {KEY_ATTR[op_name]: "salary"}) == [[]]
     out = OPS[op_name].apply(empty_input, {KEY_ATTR[op_name]: "salary", "return_index": True})
     assert out == [[{"indices": []}]]
 
 
-# --- M. max / min ---
-def test_m1_max_int_wins_over_equal_float() -> None:
+# max / min
+def test_max_int_wins_over_equal_float() -> None:
     out = OPS["max"].apply(INPUT, {"max_key": "salary"})
     assert out == [[{"max": 95000}]]
     value = out[0][0]["max"]
     assert type(value) is int  # 95000 (int) seen first; 95000.0 does not replace it
 
 
-def test_m2_min_coerced_str_int() -> None:
+def test_min_coerced_str_int() -> None:
     out = OPS["min"].apply(INPUT, {"min_key": "salary"})
     assert out == [[{"min": 70000}]]
     assert type(out[0][0]["min"]) is int
 
 
-def test_m3_max_custom_output_key() -> None:
+def test_max_custom_output_key() -> None:
     assert OPS["max"].apply(INPUT, {"max_key": "salary", "output_key": "top"}) == [[{"top": 95000}]]
 
 
 @pytest.mark.parametrize("op_name", ["max", "min"])
-def test_m4_scalar_extremum_non_coercible_none(op_name: str) -> None:
+def test_scalar_extremum_non_coercible_none(op_name: str) -> None:
     assert OPS[op_name].apply(INPUT, {KEY_ATTR[op_name]: "dept"}) == [[{op_name: None}]]
 
 
 @pytest.mark.parametrize("op_name", ["max", "min"])
 @pytest.mark.parametrize("empty_input", [[], [[]]])
-def test_m5_scalar_extremum_empty_input_guards(
+def test_scalar_extremum_empty_input_guards(
     op_name: str, empty_input: list[list[dict[str, object]]]
 ) -> None:
     assert OPS[op_name].apply(empty_input, {KEY_ATTR[op_name]: "salary"}) == [[{op_name: None}]]
@@ -130,40 +128,40 @@ def test_max_first_value_non_coercible_returns_null() -> None:
     assert OPS["max"].apply([[{"k": "N/A"}]], {"max_key": "k"}) == [[{"max": None}]]
 
 
-# --- S. avg / sum ---
-def test_s1_sum() -> None:
+# avg / sum
+def test_sum() -> None:
     assert OPS["sum"].apply(INPUT, {"sum_key": "salary"}) == [[{"sum": 415000.0}]]
 
 
-def test_s2_avg() -> None:
+def test_avg() -> None:
     assert OPS["avg"].apply(INPUT, {"avg_key": "salary"}) == [[{"avg": 83000.0}]]
 
 
 @pytest.mark.parametrize("op_name", ["avg", "sum"])
-def test_s3_aggregate_non_coercible_zero(op_name: str) -> None:
+def test_aggregate_non_coercible_zero(op_name: str) -> None:
     assert OPS[op_name].apply(INPUT, {KEY_ATTR[op_name]: "dept"}) == [[{op_name: 0}]]
 
 
 @pytest.mark.parametrize("op_name", ["avg", "sum"])
 @pytest.mark.parametrize("empty_input", [[], [[]]])
-def test_s4_aggregate_empty_input_guards(
+def test_aggregate_empty_input_guards(
     op_name: str, empty_input: list[list[dict[str, object]]]
 ) -> None:
     assert OPS[op_name].apply(empty_input, {KEY_ATTR[op_name]: "salary"}) == [[{op_name: 0}]]
 
 
-def test_s5_sum_bools_are_ints() -> None:
+def test_sum_bools_are_ints() -> None:
     data = [[{"f": True}, {"f": False}, {"f": 3}]]
     assert OPS["sum"].apply(data, {"sum_key": "f"}) == [[{"sum": 4}]]
 
 
-def test_s6_coercion_is_general_not_str_only() -> None:
+def test_coercion_is_general_not_str_only() -> None:
     # Integer-first conversion lets bytes coerce and truncates Decimal before summing.
     data = [[{"k": b"4"}, {"k": Decimal("3.9")}]]
     assert OPS["sum"].apply(data, {"sum_key": "k"}) == [[{"sum": 7}]]
 
 
-def test_s7_uncaught_coercion_exception_propagates() -> None:
+def test_uncaught_coercion_exception_propagates() -> None:
     # Only conversion failures are caught; unrelated exceptions propagate.
     class Boom:
         def __int__(self) -> int:
@@ -173,7 +171,7 @@ def test_s7_uncaught_coercion_exception_propagates() -> None:
         OPS["sum"].apply([[{"k": Boom()}]], {"sum_key": "k"})
 
 
-# --- C. validators (total; per-op key attribute) ---
+# Validators
 KEY_ATTR = {
     "argmax": "argmax_key",
     "argmin": "argmin_key",
@@ -185,22 +183,22 @@ KEY_ATTR = {
 
 
 @pytest.mark.parametrize("op_name", sorted(OPS))
-def test_v1_valid(op_name: str) -> None:
+def test_validator_accepts_valid_attributes(op_name: str) -> None:
     assert OPS[op_name].validate(INPUT, {KEY_ATTR[op_name]: "salary"}) is True
 
 
 @pytest.mark.parametrize("op_name", sorted(OPS))
-def test_v2_missing_required_key(op_name: str) -> None:
+def test_validator_rejects_missing_required_key(op_name: str) -> None:
     assert OPS[op_name].validate(INPUT, {}) is False
 
 
 @pytest.mark.parametrize("op_name", sorted(OPS))
-def test_v3_falsy_key(op_name: str) -> None:
+def test_validator_rejects_falsy_key(op_name: str) -> None:
     assert OPS[op_name].validate(INPUT, {KEY_ATTR[op_name]: ""}) is False
 
 
 @pytest.mark.parametrize("op_name", sorted(OPS))
-def test_v4_key_wrong_type(op_name: str) -> None:
+def test_validator_rejects_non_string_key(op_name: str) -> None:
     assert OPS[op_name].validate(INPUT, {KEY_ATTR[op_name]: 123}) is False
 
 
@@ -222,7 +220,7 @@ def test_v4_key_wrong_type(op_name: str) -> None:
         (2, False),
     ],
 )
-def test_v5a_return_index_pydantic_lax_bool(op_name: str, value: object, expected: bool) -> None:
+def test_return_index_uses_pydantic_lax_bool(op_name: str, value: object, expected: bool) -> None:
     attrs: Attributes = {KEY_ATTR[op_name]: "salary", "return_index": value}
     assert OPS[op_name].validate(INPUT, attrs) is expected
 
@@ -235,12 +233,12 @@ def test_truthy_string_return_index_takes_index_path() -> None:
 
 
 @pytest.mark.parametrize("op_name", ["max", "min", "avg", "sum"])
-def test_v5b_output_key_wrong_type(op_name: str) -> None:
+def test_output_key_rejects_non_string_value(op_name: str) -> None:
     attrs: Attributes = {KEY_ATTR[op_name]: "salary", "output_key": 123}
     assert OPS[op_name].validate(INPUT, attrs) is False
 
 
-# --- Invocation and interface contract ---
+# Invocation and interface contract
 @pytest.mark.parametrize("op_name", sorted(OPS))
 def test_invoke_invalid_returns_none(op_name: str) -> None:
     assert OPS[op_name].invoke(INPUT, {}) is None

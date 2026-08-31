@@ -96,10 +96,10 @@ def _single_server(
     return create_server(registry=registry, operator_ids=(f"{operator.name}@2.0.0",))
 
 
-# ----------------------------- tool metadata (A08) --------------------------------------
+# Tool metadata
 
 
-async def test_meta_is_operator_id_version_tags_only_a08() -> None:
+async def test_meta_is_operator_id_version_tags_only() -> None:
     tools = await create_server().list_tools()
     by_name = {tool.name: tool for tool in tools}
     for tool in tools:
@@ -121,10 +121,10 @@ async def test_meta_is_operator_id_version_tags_only_a08() -> None:
     assert by_name["multipart_query__refine"].meta == by_name["multipart_query"].meta
 
 
-# ----------------------------- tool description (A09) -----------------------------------
+# Tool description
 
 
-async def test_description_composes_invocation_and_refinement_prefix_a09() -> None:
+async def test_description_composes_invocation_and_refinement_prefix() -> None:
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     cards = {card.operator_id: card for card in versioned_registry().list_cards()}
     select_card = cards["select@2.0.0"]
@@ -139,10 +139,10 @@ async def test_description_composes_invocation_and_refinement_prefix_a09() -> No
     )
 
 
-# ----------------------------- input schema (A10) ---------------------------------------
+# Input schema
 
 
-async def test_every_input_schema_requires_only_input_data_a10() -> None:
+async def test_every_input_schema_requires_only_input_data() -> None:
     tools = await create_server().list_tools()
     assert len(tools) == 40
     for tool in tools:
@@ -157,7 +157,7 @@ async def test_every_input_schema_requires_only_input_data_a10() -> None:
         assert properties["default"] is None
 
 
-async def test_capture_input_schema_shape_a10() -> None:
+async def test_capture_input_schema_shape() -> None:
     [tool] = await _single_server(CaptureOperator()).list_tools()
     attributes = tool.inputSchema["properties"]["attributes"]
     assert attributes["additionalProperties"] is True
@@ -165,10 +165,10 @@ async def test_capture_input_schema_shape_a10() -> None:
     assert all("type" not in entry for entry in attributes["properties"].values())
 
 
-# ----------------------------- default omission (A11) -----------------------------------
+# Default omission
 
 
-def test_required_and_unmaterialized_attributes_omit_defaults_a11() -> None:
+def test_required_and_unmaterialized_attributes_omit_defaults() -> None:
     snapshot = freeze_deployment(versioned_registry())
     unmaterialized = 0
     for binding in snapshot:
@@ -187,7 +187,7 @@ def test_required_and_unmaterialized_attributes_omit_defaults_a11() -> None:
     assert unmaterialized == 7
 
 
-def test_named_seven_publish_no_default_a11() -> None:
+def test_named_seven_publish_no_default() -> None:
     tools = {tool.name: tool for tool in _sync_list(create_server())}
     create_db = _attrs_of(tools["create_database"])
     create_table = _attrs_of(tools["create_table"])
@@ -200,7 +200,7 @@ def test_named_seven_publish_no_default_a11() -> None:
     assert len(scope_components) >= 4
 
 
-def test_ordinary_optional_default_is_copied_without_aliasing_a11() -> None:
+def test_ordinary_optional_default_is_copied_without_aliasing() -> None:
     operator = CaptureOperator()
     CaptureOperator.shared_default.clear()
     [tool] = _sync_list(_single_server(operator))
@@ -211,10 +211,10 @@ def test_ordinary_optional_default_is_copied_without_aliasing_a11() -> None:
     assert operator.attributes["items"].default == []
 
 
-# ----------------------------- output schema (A12/A13) ----------------------------------
+# Output schema
 
 
-async def test_primary_output_schema_matches_run_result_vocabulary_a12() -> None:
+async def test_primary_output_schema_matches_run_result_vocabulary() -> None:
     tools = [tool for tool in await create_server().list_tools() if tool.name not in REFINE_NAMES]
     expected = RunResult.model_json_schema()
     for tool in tools:
@@ -224,7 +224,7 @@ async def test_primary_output_schema_matches_run_result_vocabulary_a12() -> None
     _assert_error_record_vocabulary(expected)
 
 
-async def test_companion_output_schema_matches_refine_result_vocabulary_a13() -> None:
+async def test_companion_output_schema_matches_refine_result_vocabulary() -> None:
     tools = [tool for tool in await create_server().list_tools() if tool.name in REFINE_NAMES]
     assert len(tools) == 4
     expected = RefineResult.model_json_schema()
@@ -239,7 +239,7 @@ async def test_companion_output_schema_matches_refine_result_vocabulary_a13() ->
     _assert_error_record_vocabulary(expected)
 
 
-# ----------------------------- preserved v1.2 argument rows -----------------------------
+# v1.2 argument rows
 
 
 async def test_omitted_attributes_are_fresh_per_call() -> None:
@@ -269,7 +269,7 @@ async def test_json_string_preparse_keeps_boolean_string_and_ignores_unknown() -
     assert result.structuredContent["output_data"] == [[{"enabled": "true"}]]
 
 
-# ----------------------------- helpers --------------------------------------------------
+# Helpers
 
 
 def _sync_list(server: FastMCP[Any]) -> list[Any]:

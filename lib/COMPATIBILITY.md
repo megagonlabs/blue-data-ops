@@ -92,6 +92,7 @@ This package does not provide `BlueError` or the `ErrorLoom` catching mixin. Bot
 - `run()` (and `refine()` for plan-producing operators) returns execution metadata whose `errors` list holds structured records with a stable category, code, operator id, stage, message, retryability flag, and optional suggestion. A recoverable problem such as invalid input is reported this way, not raised.
 - Resolving an unknown or malformed operator id raises `ResolveError` (from `blue_data_ops.operators`).
 - The LLM client raises `LLMError` (from `blue_data_ops.llm`) for transport and provider failures.
+- Pipeline preflight and invalid execution input raise `PipelineError` (from `blue_data_ops.plan`). An operator failure after preflight is returned in `PipelineRun` instead.
 - Planning raises `PlanningError` (from `blue_data_ops.plan`), which carries a structured `record` in place of a returned metadata object.
 
 `run()` returns a `(output_data, output_attributes, meta)` tuple, so `except BlueError` becomes reading `meta.errors`:
@@ -106,7 +107,7 @@ for error in meta.errors:            # structured records instead of a raised Bl
     print(error.category, error.code, error.message)
 ```
 
-Catch `ResolveError`, `LLMError`, and `PlanningError` at their boundaries. Classes that inherited `ErrorLoom` should adopt the same result-based reporting; there is no drop-in replacement for its automatic method wrapping.
+Catch `ResolveError`, `LLMError`, `PipelineError`, and `PlanningError` at their boundaries. Classes that inherited `ErrorLoom` should adopt the same result-based reporting; there is no drop-in replacement for its automatic method wrapping.
 
 ## Service client
 

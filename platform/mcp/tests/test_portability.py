@@ -14,7 +14,7 @@ from blue_data_ops_mcp.server import create_server
 ROOT = Path(__file__).parents[1]
 
 
-def test_distribution_metadata_and_public_surface_a33() -> None:
+def test_distribution_metadata_and_public_surface() -> None:
     metadata = importlib.metadata.metadata("blue-data-ops-mcp")
     requirements = metadata.get_all("Requires-Dist") or []
     assert metadata["Name"] == "blue-data-ops-mcp"
@@ -45,7 +45,7 @@ def test_source_tree_has_no_blue_import() -> None:
     assert "import blue." not in source
 
 
-def test_pipeline_executor_stays_outside_the_mcp_adapter_d44() -> None:
+def test_pipeline_executor_stays_outside_the_mcp_adapter() -> None:
     from blue_data_ops.plan import DataPipeline, PipelineExecutor
 
     for forbidden in ("run", "execute", "traverse"):
@@ -55,7 +55,7 @@ def test_pipeline_executor_stays_outside_the_mcp_adapter_d44() -> None:
     assert "PipelineExecutor" not in source
 
 
-def test_server_defaults_are_stateful_loopback_streamable_http_a24() -> None:
+def test_server_defaults_are_stateful_loopback_streamable_http() -> None:
     server = create_server(operator_ids=())
     assert server.settings.host == "127.0.0.1"
     assert server.settings.port == 8000
@@ -95,14 +95,14 @@ def test_every_default_binding_uses_the_exact_resolved_instance() -> None:
         assert binding.operator is registry.resolve(binding.card.operator_id)
 
 
-async def test_every_tool_meta_reports_operator_version_2_0_0_a25() -> None:
+async def test_every_tool_meta_reports_operator_version_2_0_0() -> None:
     tools = await create_server().list_tools()
     assert len(tools) == 40
     for tool in tools:
         assert (tool.meta or {})["version"] == "2.0.0"
 
 
-def test_source_import_smoke_in_subprocess_a32() -> None:
+def test_source_import_smoke_in_subprocess() -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).rstrip(
         os.pathsep

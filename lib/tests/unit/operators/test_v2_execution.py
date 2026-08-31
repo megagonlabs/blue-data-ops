@@ -149,7 +149,7 @@ def test_default_materialization_can_preserve_omission_but_not_explicit_values()
     assert "required" not in first
 
 
-def test_only_ratified_incompatible_defaults_defer_materialization() -> None:
+def test_only_incompatible_defaults_defer_materialization() -> None:
     deferred = {
         CreateDatabaseOperator.name: {
             name

@@ -129,7 +129,7 @@ def _tool_names(snapshot: DeploymentSnapshot) -> list[str]:
     ]
 
 
-async def test_default_inventory_is_40_tools_in_pinned_order_a01() -> None:
+async def test_default_inventory_is_40_tools_in_pinned_order() -> None:
     server = create_server()
     first = await server.list_tools()
     second = await server.list_tools()
@@ -142,7 +142,7 @@ async def test_default_inventory_is_40_tools_in_pinned_order_a01() -> None:
     assert len(names) == 40
 
 
-def test_default_snapshot_binds_the_36_v2_ids_without_inventory_equality_a02() -> None:
+def test_default_snapshot_binds_the_36_v2_ids_without_inventory_equality() -> None:
     snapshot = freeze_deployment(versioned_registry())
     primaries, companions = _split(snapshot)
     assert tuple(binding.card.operator_id for binding in primaries) == tuple(
@@ -158,7 +158,7 @@ def test_default_snapshot_binds_the_36_v2_ids_without_inventory_equality_a02() -
         assert binding.operator is by_name[binding.card.name]
 
 
-def test_registry_superset_is_accepted_a03() -> None:
+def test_registry_superset_is_accepted() -> None:
     registry = versioned_registry()
     registry.register(EchoOperator(), "3.0.0")  # an unrelated later version
     snapshot = freeze_deployment(registry)
@@ -168,7 +168,7 @@ def test_registry_superset_is_accepted_a03() -> None:
     assert all(binding.card.operator_id in V2_OPERATOR_IDS for binding in snapshot)
 
 
-def test_explicit_selection_replaces_default_and_sorts_a04() -> None:
+def test_explicit_selection_replaces_default_and_sorts() -> None:
     assert freeze_deployment(operator_ids=()) == ()
     snapshot = freeze_deployment(operator_ids=("select@2.0.0", "argmax@2.0.0"))
     primaries, companions = _split(snapshot)
@@ -176,7 +176,7 @@ def test_explicit_selection_replaces_default_and_sorts_a04() -> None:
     assert companions == []  # neither is refinable → no companion
 
 
-def test_selection_adds_companions_only_for_selected_refinables_a04() -> None:
+def test_selection_adds_companions_only_for_selected_refinables() -> None:
     snapshot = freeze_deployment(
         operator_ids=("select@2.0.0", "multipart_query@2.0.0", "avg@2.0.0")
     )
@@ -192,7 +192,7 @@ def test_selection_adds_companions_only_for_selected_refinables_a04() -> None:
         (("select@01.0.0",), ResolveError),  # leading-zero version
     ],
 )
-def test_malformed_or_repeated_selections_fail_before_construction_a05(
+def test_malformed_or_repeated_selections_fail_before_construction(
     operator_ids: tuple[str, ...],
     error_type: type[Exception],
 ) -> None:
@@ -203,26 +203,26 @@ def test_malformed_or_repeated_selections_fail_before_construction_a05(
         create_server(operator_ids=operator_ids)
 
 
-def test_two_versions_of_one_name_fail_a05() -> None:
+def test_two_versions_of_one_name_fail() -> None:
     # Two distinct 2.0.0 ids that resolve to one logical name are rejected. (A 1.0.0 duplicate is
     # rejected earlier by the v2-only check, so the name-uniqueness branch needs same-version ids.)
     with pytest.raises(ValueError, match="multiple versions"):
         freeze_deployment(DuplicateNameRegistry(), ("select@2.0.0", "select_alt@2.0.0"))
 
 
-def test_non_v2_selection_is_rejected_a06() -> None:
+def test_non_v2_selection_is_rejected() -> None:
     with pytest.raises(ValueError, match="2.0.0 only"):
         freeze_deployment(operator_ids=("select@1.0.0",))
     with pytest.raises(ValueError, match="2.0.0 only"):
         create_server(operator_ids=("select@1.0.0",))
 
 
-def test_card_operator_mismatch_fails_before_server_a07() -> None:
+def test_card_operator_mismatch_fails_before_server() -> None:
     with pytest.raises(ValueError, match="mismatch"):
         freeze_deployment(MismatchRegistry(), ("select@2.0.0",))
 
 
-def test_selected_v2_id_cannot_be_served_a_different_v2_card_a08() -> None:
+def test_selected_v2_id_cannot_be_served_a_different_v2_card() -> None:
     # A registry returns the real avg@2.0.0 card for a select@2.0.0 lookup. The substitute is itself
     # a valid 2.0.0 card, so only the requested-id binding — not the version or malformed gate — can
     # catch the swap. It must be rejected before any server is built (no avg tool under `select`).
@@ -236,7 +236,7 @@ def test_selected_v2_id_cannot_be_served_a_different_v2_card_a08() -> None:
         create_server(registry=registry, operator_ids=("select@2.0.0",))
 
 
-def test_selected_non_v2_id_cannot_be_served_a_v2_card_a08() -> None:
+def test_selected_non_v2_id_cannot_be_served_a_v2_card() -> None:
     # A selected 1.0.0 id is served a valid 2.0.0 card. Without the requested-id binding the 2.0.0
     # substitute would pass the version gate and smuggle a v2 tool in under a v1 selection; the
     # binding check rejects it atomically, before FastMCP construction.

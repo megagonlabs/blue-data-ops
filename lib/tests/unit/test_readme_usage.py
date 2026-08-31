@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from importlib.metadata import version
 from typing import Any
 
 import pytest
@@ -12,10 +14,14 @@ from blue_data_ops import CreateDatabaseOperator, SelectOperator, resolve_regist
 from blue_data_ops.operators import versioned_registry  # noqa: E402
 from blue_data_ops.plan import (  # noqa: E402
     SELECT_THEN_AVERAGE_TEMPLATE,
+    DataPipeline,
     DiscoveryQuery,
+    PipelineError,
+    PipelineExecutor,
     PipelinePlanner,
     PlanningError,
     PlanningRequest,
+    RefinableOperator,
     RulePlanGenerator,
     project_then_aggregate_template,
 )
@@ -28,6 +34,10 @@ def test_readme_select_example() -> None:
     assert out == [[{"name": "b", "score": 9}]]
     assert "operand_key" in op.attributes
     assert op.validate(data, {}) is False
+
+
+def test_readme_installed_distribution_version() -> None:
+    assert version("blue-data-ops") == "2.2.0"
 
 
 def test_readme_registry_example() -> None:
@@ -65,22 +75,15 @@ def test_readme_registry_example() -> None:
 
 
 def test_the_package_imports_with_no_optional_extra_installed() -> None:
-    """A base install must be importable, which is the claim `Requirements` makes.
+    """A base install must remain importable without optional dependencies.
 
-    This is the gate that was missing when `tenacity` sat in the `llm` extra: every suite
-    ran with the dev extra present, so nothing exercised `pip install blue-data-ops` on
-    its own and the package was unimportable for two releases. The subprocess blocks
-    every optional-extra module rather than checking a dependency list, so the check
-    keeps working if an extra gains a member or an import moves to module scope.
+    Blocking optional modules directly keeps the check valid when dependencies or imports move.
     """
 
     import subprocess
     import sys
 
-    # Every extra member that a base install genuinely lacks. Two deliberate omissions:
-    # `tenacity` is a core dependency, which is the fix this test guards, and `numpy`
-    # arrives transitively through `blue-data`, so blocking it would assert an absence a
-    # real base install does not have.
+    # `tenacity` is a core dependency, and `numpy` arrives transitively through `blue-data`.
     blocked = [
         "litellm",
         "diskcache",
@@ -151,6 +154,31 @@ def test_readme_rule_template_planner_example() -> None:
 def test_readme_project_then_aggregate_template() -> None:
     template = project_then_aggregate_template("sum")
     assert template.label == "project-then-sum"
+
+
+def test_readme_refinement_and_live_record_examples() -> None:
+    refinable = versioned_registry().resolve("multipart_query@2.0.0")
+    assert isinstance(refinable, RefinableOperator)
+    plans, meta = refinable.refine([[]], {})
+    assert len(plans) == 1
+    assert meta.errors == []
+
+    record = plans[0].to_dict()
+    plans[0].set_property("pipeline_owner", "live")
+    assert record["properties"]["pipeline_owner"] == "live"
+
+    restored = DataPipeline.from_dict(record)
+    restored.set_property("owner", "live")
+    assert record["properties"]["owner"] == "live"
+
+    detached = DataPipeline.from_dict(deepcopy(record))
+    detached.set_property("owner", "detached")
+    assert record["properties"]["owner"] == "live"
+
+
+def test_readme_pipeline_error_marks_the_preflight_boundary() -> None:
+    with pytest.raises(PipelineError, match="pipeline has no nodes"):
+        PipelineExecutor(versioned_registry()).preflight(DataPipeline())
 
 
 def test_readme_planning_error_carries_a_structured_record() -> None:

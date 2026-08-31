@@ -40,6 +40,14 @@ python -m pip install "./lib[openai]"
 
 The `openai` extra pins `openai>=2.54,<3`. Nothing in the package imports that SDK until an `OpenAIPlanGenerator` has to build its own client, so every other path installs and runs without it.
 
+After installation, read the distribution version separately from the `@2.0.0` operator-card version:
+
+```python
+from importlib.metadata import version
+
+assert version("blue-data-ops") == "2.2.0"
+```
+
 ## Usage
 
 ```python
@@ -197,18 +205,25 @@ The rest of the compatibility surface remains public: `validate()` checks the li
 The four plan-producing operators expose raw `refiner()` and normalized `refine()` calls. `refiner()` keeps the v1 serialized-record shape. `refine()` returns `(list[DataPipeline], ExecMeta)` and reports empty or failed refinement through the same metadata model as `run()`.
 
 ```python
+from copy import deepcopy
+
 from blue_data_ops.plan import DataPipeline, RefinableOperator
 
 refinable = versioned_registry().resolve("multipart_query@2.0.0")
 assert isinstance(refinable, RefinableOperator)
-input_data = []
+input_data = [[]]
 attributes = {}
 plans, refine_meta = refinable.refine(input_data, attributes)
+assert len(plans) == 1
+assert refine_meta.errors == []
 records = [plan.to_dict() for plan in plans]
 restored = [DataPipeline.from_dict(record) for record in records]
+detached = [DataPipeline.from_dict(deepcopy(record)) for record in records]
 ```
 
-`DataPipeline.to_dict()` and `DataPipeline.from_dict()` are the portable representation boundary. A pipeline records pinned operator IDs, nodes, and edges. `PipelineExecutor` runs a materialized pipeline locally:
+`DataPipeline.to_dict()` and `DataPipeline.from_dict()` are the portable representation boundary. `to_dict()` exposes the pipeline's live mapping, and `from_dict(record)` adopts `record` as its live mapping rather than copying it. Use `deepcopy(record)` as shown above when the restored pipeline must not update the reusable serialized record.
+
+A pipeline records pinned operator IDs, nodes, and edges. `PipelineExecutor` runs a materialized pipeline locally:
 
 ```python
 from blue_data_ops.operators import versioned_registry
@@ -233,6 +248,8 @@ run = PipelineExecutor(versioned_registry()).execute(
 assert run.succeeded
 assert run.output_data == [[{"name": "b", "score": 9}]]
 ```
+
+`PipelineExecutor.preflight()` and `execute()` raise `blue_data_ops.plan.PipelineError` when the materialized graph or execution input cannot be used safely. Operator failures after preflight remain contained in the returned `PipelineRun`: `succeeded` is false, `failed_node_id` names the stopped node, and its `NodeRun.exec_meta` carries the operator error records.
 
 The executor resolves every pinned ID before it calls an operator, traverses the graph in stable topological order, forwards predecessor groups, and records each completed operator in `run.node_runs`. A successful empty result continues through the graph. The first structured node error stops the run and sets `failed_node_id`.
 

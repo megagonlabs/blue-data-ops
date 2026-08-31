@@ -170,7 +170,7 @@ def _assert_error(
         (NL2QueryRouterOperator(), {"search_query": "q"}),
     ],
 )
-def test_plan_c01_native_hooks_and_public_adapters_have_exact_types(
+def test_plan_native_hooks_and_public_adapters_have_exact_types(
     operator: RefinableOperator,
     attributes: Attributes,
 ) -> None:
@@ -195,7 +195,7 @@ def test_plan_c01_native_hooks_and_public_adapters_have_exact_types(
     assert type(operator.apply(INPUT, attributes)) is list
 
 
-def test_plan_c02_all_36_default_operators_now_own_native_hooks() -> None:
+def test_plan_all_36_default_operators_now_own_native_hooks() -> None:
     registry = default_registry()
     cards = registry.list_cards()
     assert len(cards) == 36
@@ -206,7 +206,7 @@ def test_plan_c02_all_36_default_operators_now_own_native_hooks() -> None:
         assert "_validate_input" in type(operator).__dict__
 
 
-def test_plan_c03_raw_validator_surfaces_stay_compatible() -> None:
+def test_plan_raw_validator_surfaces_stay_compatible() -> None:
     multipart = MultipartQueryOperator()
     router = NL2QueryRouterOperator()
     assert multipart.validate({}, {}) is True
@@ -231,7 +231,7 @@ def test_plan_c03_raw_validator_surfaces_stay_compatible() -> None:
         (NL2QueryRouterOperator(), {"search_query": "q"}),
     ],
 )
-def test_plan_c04_run_is_successful_empty_and_calls_native_body_once(
+def test_plan_run_is_successful_empty_and_calls_native_body_once(
     operator: RefinableOperator,
     attributes: Attributes,
 ) -> None:
@@ -636,7 +636,7 @@ def test_plan_nq05_selected_refinement_emits_one_resolvable_version(
     assert_registry_resolves(record, child_registry)
 
 
-def test_plan_shared01_normalization_is_fresh_and_wrapper_delegates() -> None:
+def test_plan_normalization_is_fresh_and_wrapper_delegates() -> None:
     source = MultipartQueryOperator()
     wrapper = _selected(source, "2.0.0")
     input_data = [[cte("x")]]
@@ -663,7 +663,7 @@ class CopyBomb(dict[str, Any]):
         raise RuntimeError("private-copy-payload")
 
 
-def test_plan_shared02_normalization_failure_is_defaults_failure() -> None:
+def test_plan_normalization_failure_is_defaults_failure() -> None:
     plans, meta = MultipartQueryOperator().refine(INPUT, cast(Attributes, CopyBomb()))
     assert plans == []
     _assert_error(
@@ -693,7 +693,7 @@ def _declarative_properties(version: str) -> Properties:
     }
 
 
-def test_plan_shared03_d32_raw_and_v1_fail_while_direct_and_v2_repair_prev() -> None:
+def test_plan_raw_and_v1_reject_invalid_prev_while_v2_normalizes_it() -> None:
     source = DeclarativeOperator({"plans": []})
     with pytest.raises(UnboundLocalError, match="from_id"):
         source.refiner(INPUT, {}, _declarative_properties("1.0.0"))
@@ -714,7 +714,7 @@ def test_plan_shared03_d32_raw_and_v1_fail_while_direct_and_v2_repair_prev() -> 
         assert (first, second) in edges(plans[0].to_dict())
 
 
-def test_plan_shared04_direct_calls_keep_declared_v1_child_pins(
+def test_plan_direct_calls_keep_declared_v1_child_pins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
@@ -725,7 +725,7 @@ def test_plan_shared04_direct_calls_keep_declared_v1_child_pins(
     }
 
 
-def test_plan_shared05_selected_error_identity_is_exact() -> None:
+def test_plan_selected_error_identity_is_exact() -> None:
     for operator, attributes in (
         (PlanDiscoverOperator(OperatorRegistry()), {}),
         (QueryBreakdownOperator(), {}),
