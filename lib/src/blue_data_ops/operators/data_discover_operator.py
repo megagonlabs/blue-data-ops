@@ -244,32 +244,45 @@ class DataDiscoverOperator(Operator):
         ),
         "scope": AttributeSpec(
             type="str",
-            description="Search scope to limit results",
+            description=(
+                "Base search scope. When omitted, source, database, and collection do not "
+                "construct one"
+            ),
             default=None,
             materialize_default=False,
         ),
         "source": AttributeSpec(
             type="str",
-            description="Source name to limit search scope",
+            description=(
+                "Source component. Refines an explicit scope only; it does not construct one "
+                "when scope is omitted"
+            ),
             default=None,
             materialize_default=False,
         ),
         "database": AttributeSpec(
             type="str",
-            description="Database name to limit search scope (requires source)",
+            description=(
+                "Database component; requires source. Refines an explicit scope only; it does not "
+                "construct one when scope is omitted"
+            ),
             default=None,
             materialize_default=False,
         ),
         "collection": AttributeSpec(
             type="str",
-            description="Collection name to limit search scope (requires source and database)",
+            description=(
+                "Collection component; requires source and database. Refines an explicit scope "
+                "only; it does not construct one when scope is omitted"
+            ),
             default=None,
             materialize_default=False,
         ),
         "auto_construct_scope": AttributeSpec(
             type="bool",
             description=(
-                "Whether to auto-construct scope from individual attributes or use scope as-is"
+                "Rebuild an explicit scope from source, database, and collection when true; "
+                "use that scope unchanged when false. Has no effect when scope is omitted"
             ),
             default=True,
         ),

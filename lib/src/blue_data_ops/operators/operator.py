@@ -46,6 +46,8 @@ if TYPE_CHECKING:
     from blue_data_ops.plan.refiner import DeclarativeOperator as DeclarativeOperator
 
 _INVALID_TIMEOUT_SUGGESTION = "execution.timeout_seconds must be a finite number greater than zero"
+_MISSING_LLM_SUGGESTION = "Install blue-data-ops[llm] on Python 3.11 or later."
+_LLM_EXTRA_MODULES = frozenset({"diskcache", "jinja2", "litellm"})
 _OPERATOR_ID_OVERRIDE: ContextVar[tuple[int, str] | None] = ContextVar(
     "blue_data_ops_operator_id_override",
     default=None,
@@ -191,6 +193,32 @@ def _invalid_timeout_error(operator_id: str) -> ErrorRecord:
         ErrorStage.VALIDATE,
         "invalid execution timeout",
         suggestion=_INVALID_TIMEOUT_SUGGESTION,
+    )
+
+
+def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
+    missing = exception
+    if not isinstance(missing, ModuleNotFoundError):
+        missing = exception.__cause__
+    if (
+        isinstance(missing, ModuleNotFoundError)
+        and type(missing.name) is str
+        and missing.name in _LLM_EXTRA_MODULES
+    ):
+        return _error(
+            operator_id,
+            ErrorCategory.RECOVERABLE,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            "LLM dependency is unavailable",
+            suggestion=_MISSING_LLM_SUGGESTION,
+        )
+    return _error(
+        operator_id,
+        ErrorCategory.FAILED,
+        ErrorCode.EXECUTION_FAILED,
+        ErrorStage.EXECUTE,
+        "operator execution failed",
     )
 
 
@@ -487,14 +515,8 @@ class Operator(Tool, ABC):
                 "operator timed out",
             )
             return [[]], {}, _meta(error=error)
-        except Exception:
-            error = _error(
-                self.operator_id,
-                ErrorCategory.FAILED,
-                ErrorCode.EXECUTION_FAILED,
-                ErrorStage.EXECUTE,
-                "operator execution failed",
-            )
+        except Exception as exception:
+            error = _execution_error(self.operator_id, exception)
             return [[]], {}, _meta(error=error)
         finally:
             _shutdown_executor(executor)
@@ -580,14 +602,8 @@ class Operator(Tool, ABC):
         try:
             execute: Callable[[DataBundle, Attributes, Properties | None], object] = self._execute
             result_value = _call_hook(execute, input_data, call_attributes, properties)
-        except Exception:
-            error = _error(
-                self.operator_id,
-                ErrorCategory.FAILED,
-                ErrorCode.EXECUTION_FAILED,
-                ErrorStage.EXECUTE,
-                "operator execution failed",
-            )
+        except Exception as exception:
+            error = _execution_error(self.operator_id, exception)
             return [[]], {}, _meta(error=error)
 
         if result_value is None:

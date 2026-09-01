@@ -4,15 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops-mcp"
-version = "0.4.0"
+version = "0.5.0"
 description = "MCP adapter for Blue Data Operators"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 # The core pin is exact and names the core release this adapter was verified against.
-# 0.4.0 moves it to 2.2.0. The adapter's own surface does not change: core 2.2.0 adds
-# refinement planning and Python-only skill resources while keeping every card at @2.0.0.
 dependencies = [
-    "blue-data-ops==2.2.0",
+    "blue-data-ops==2.3.0",
     "mcp==1.27.2",
     "pydantic>=2.11,<3",
 ]
@@ -36,13 +34,13 @@ blue_data_ops_mcp = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"

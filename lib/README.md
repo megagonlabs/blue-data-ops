@@ -1,54 +1,68 @@
 # blue-data-ops
 
-`blue-data-ops 2.2.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.3.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - `blue-data` 0.1.0 or later. It is an eager import-time dependency and must be importable whenever `blue_data_ops` is imported. Registry-backed operators access it through the data seam.
-- `tenacity`, also an eager import-time dependency: the LLM client module is reached from the package root through both `utils` and `operators`, and it imports `tenacity` at module scope. It is a core dependency rather than part of the `llm` extra for that reason.
 
 ## Installation
 
-From the repository root, install the package and the extras needed by your deployment:
+For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. Then run:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-python -m pip install "./lib[ml,vector,llm]"
+python3 -m venv blue-data-ops/lib/.venv
+source blue-data-ops/lib/.venv/bin/activate
+python -m pip install -e ./blue-data/lib
+python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]"
 ```
 
-For development:
+Install the `dev` extra when working on this package:
 
 ```bash
-python -m pip install -e "./lib[dev]"
+python -m pip install -e "./blue-data-ops/lib[dev]"
 ```
 
 If your artifact index is configured separately, install the released artifact instead:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.2.0"
+  "blue-data-ops[ml,vector,llm]==2.3.0"
 ```
 
-The resolver also obtains `blue-data>=0.1.0` from that index. For an offline source install, install the `blue-data` checkout or wheel first, then install `./lib`.
+The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
 
-The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, `llm` for the `nl2*` and `semantic_*` operators plus `query_breakdown`, and `openai` for `OpenAIPlanGenerator`. The `openai` extra is the only one the planner needs, and only for that one generator:
+The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown`, and `openai` for `OpenAIPlanGenerator`. `nl2query_router` does not need the `llm` extra. The `openai` extra is the only one the planner needs, and only for that one generator:
 
 ```bash
-python -m pip install "./lib[openai]"
+python -m pip install -e "./blue-data-ops/lib[openai]"
 ```
 
 The `openai` extra pins `openai>=2.54,<3`. Nothing in the package imports that SDK until an `OpenAIPlanGenerator` has to build its own client, so every other path installs and runs without it.
+
+If an LLM-backed `run()` call cannot import a member of the `llm` extra, its `ExecMeta` contains an `EXECUTION_FAILED` error with an instruction to install `blue-data-ops[llm]`. Other execution failures keep the generic contained error.
 
 After installation, read the distribution version separately from the `@2.0.0` operator-card version:
 
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.2.0"
+assert version("blue-data-ops") == "2.3.0"
 ```
 
 ## Usage
+
+Start with the credential-free examples:
+
+```bash
+cd blue-data-ops/lib
+python examples/core_quickstart.py
+python examples/sqlite_quickstart.py
+python examples/refinement.py
+```
+
+`sqlite_quickstart.py` creates a temporary SQLite database with ten rows, registers it, performs a real insert, and removes the database when it exits. See [examples/README.md](examples/README.md) for the ML, vector, and live-provider examples. See [OPERATORS.md](OPERATORS.md) for the generated attribute and outcome reference for all 36 operators. These reference and example files ship in the source distribution; they are not installed as files beside the Python package in the wheel.
 
 ```python
 from blue_data_ops import SelectOperator
@@ -69,21 +83,32 @@ op.validate(data, {})    # False: operand_key/operand/operand_val are required
 
 ### Registry-backed data operations
 
-`create_database`, `create_table`, `insert_table`, and `data_discover` need a `blue-data` registry. Create the `DataSource` with `blue-data`, register it, then pass the seam in `properties`:
+`create_database`, `create_table`, `insert_table`, and `data_discover` need a `blue-data` registry. The complete runnable setup is [examples/sqlite_quickstart.py](examples/sqlite_quickstart.py). Its core steps are:
 
 ```python
-from blue_data_ops import CreateDatabaseOperator, RegistrySeam
+from tempfile import TemporaryDirectory
+
 from blue_data.registry.data_registry import DataRegistry
+from blue_data.source.json.memory_json_source import MemoryJSONSource
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data_ops import CreateDatabaseOperator, RegistrySeam
 
-registry = DataRegistry(name="orders", rebuild=True)
-seam = RegistrySeam(registry)
-seam.register_source(source)  # source is a blue_data.source.source.DataSource
+with TemporaryDirectory() as directory:
+    source = SQLiteDBSource(
+        "demo_sqlite",
+        properties={"connection": {"database_directory": directory}},
+    )
+    registry = DataRegistry(store=MemoryJSONSource(), rebuild=False)
+    registry.register_source(source)
+    registry.sync_source(source.name, recursive=True)
+    seam = RegistrySeam(registry)
 
-CreateDatabaseOperator().invoke(
-    [[]],
-    {"source": source.name, "database": "main"},
-    {"data_registry": seam},
-)
+    output, _, meta = CreateDatabaseOperator().run(
+        [[]],
+        {"source": source.name, "database": "main"},
+        {"data_registry": seam},
+    )
+    assert meta.errors == []
 ```
 
 You may inject a raw `DataRegistry` instead; `resolve_registry()` wraps it. Without an injection, pass both `platform.name` and `data_registry.name`. The default provider then creates and caches an in-memory `DataRegistry` for that pair. A missing injection or naming pair leaves the registry unresolved.
@@ -102,7 +127,25 @@ You may inject a raw `DataRegistry` instead; `resolve_registry()` wraps it. With
 | Registry-backed | `create_database`, `create_table`, `insert_table`, `data_discover` |
 | Plan-producing | `multipart_query`, `nl2query_router`, `plan_discover`, `query_breakdown` |
 
-The `nl2*` and `semantic_*` operators plus `query_breakdown` send requests through [litellm](https://github.com/BerriAI/litellm); configure the model per call via properties (default `openai.model: gpt-4o`). `classify` uses NumPy and scikit-learn from the `ml` extra. Registry-backed operators talk to `blue-data` through the data seam.
+`nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown` send requests through [LiteLLM](https://github.com/BerriAI/litellm); configure the model per call via properties (default `openai.model: gpt-4o`). `classify` uses NumPy and scikit-learn from the `ml` extra. Registry-backed operators talk to `blue-data` through the data seam.
+
+This short `nl2llm` call uses a live provider:
+
+```python
+from blue_data_ops import NL2LLMOperator
+
+output, _, meta = NL2LLMOperator().run(
+    [[]],
+    {
+        "query": "Return two example products",
+        "attrs": [{"name": "name", "type": "string"}],
+    },
+    {"openai.model": "gpt-4o-mini"},
+)
+assert meta.errors == []
+```
+
+Install `[llm]` and configure the provider credential before running it. The complete `nl2sql` example in [examples/nl2sql_sqlite.py](examples/nl2sql_sqlite.py) builds a real SQLite schema and defaults to `execute_query=False`. Add `--execute` to run the generated SQL. The prefix check is a case-insensitive `startswith` guard, not a SQL parser or sandbox; callers remain responsible for database permissions and query safety.
 
 ### Versioned registries
 
@@ -130,6 +173,8 @@ latest = catalog.find_latest("nl2sql")
 op = catalog.resolve(latest.operator_id) if latest is not None else None
 ```
 
+Tags have six axes: `capability-*` describes the operation, `domain-*` the data family, `flow-*` the pipeline position, `accepts-*` the input shape, `produces-*` the result or side effect, and `requires-*` the runtime dependency or integration. A card may carry several values on an axis. Tag strings are exact; with multiple tags, every tag must be present. Free-text scoring ranks only the cards that pass that filter. The generated [operator reference](OPERATORS.md#tag-taxonomy) lists the current values and every card assignment.
+
 ### Operator skill resources
 
 `blue_data_ops.operator_skills` loads reviewed, versioned guidance for exact package-owned operators. The first package covers `nl2sql@2.0.0`. Its level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
@@ -145,7 +190,7 @@ assert skill.card is registry.get_card("nl2sql@2.0.0")
 assert skill.io.attributes["question"].required
 ```
 
-The loader has no latest-version fallback and does not accept custom registrations. Optional optimization, issue, and history resources are absent from this pilot and fail with `NOT_AVAILABLE` when requested.
+The loader has no latest-version fallback and does not accept custom registrations. The packaged `nl2sql@2.0.0` resource set does not include optimization, issue, or history resources; requesting one returns `NOT_AVAILABLE`.
 
 ### Structured execution
 
@@ -167,7 +212,7 @@ assert meta.errors == []
 
 `ExecMeta` has four fields: `is_empty`, `errors`, `logs`, and `traces`. Each `ErrorRecord` has `category`, `code`, `operator_id`, `stage`, `message`, `retryable`, and `suggestion`. Categories are `RECOVERABLE`, `FAILED`, or `TIMEOUT`; stages are `DEFAULTS`, `VALIDATE`, `EXECUTE`, `NORMALIZE`, or `REFINE`.
 
-An empty result is still successful. `run()` normalizes any empty group shape to `[[]]`, sets `is_empty=True`, and leaves `errors` empty:
+Continuing the structured-execution example, an empty result is still successful. `run()` normalizes any empty group shape to `[[]]`, sets `is_empty=True`, and leaves `errors` empty:
 
 ```python
 empty_data, _, empty_meta = op.run(
@@ -179,7 +224,7 @@ assert empty_meta.is_empty is True
 assert empty_meta.errors == []
 ```
 
-Invalid input and execution failures are data, not raised operator exceptions. The failure output is `[[]]`, and the error record identifies the boundary:
+In the same example, invalid input and execution failures are data, not raised operator exceptions. The failure output is `[[]]`, and the error record identifies the boundary:
 
 ```python
 failed_data, failed_attributes, failed_meta = op.run([[{"score": 3}]], {})
@@ -196,9 +241,9 @@ assert error.operator_id == "select@2.0.0"
 
 Set a canonical wrapper deadline with `properties={"execution.timeout_seconds": <finite-positive-number>}`. The wrapper never retries. The legacy `properties["timeout"]` field remains observable but does not set this deadline.
 
-`apply()` and `invoke()` remain the raw v1-compatible paths through v2.x. `apply()` calls the transform directly. `invoke()` runs boolean `validate()` and then `apply()`, returning `None` when validation is false. They do not provide canonical default materialization or contained `ExecMeta`; use `run()` when the caller needs those semantics. See [COMPATIBILITY.md](COMPATIBILITY.md) for the migration boundary.
+`apply()` and `invoke()` remain the raw v1-compatible paths through v2.x. For ordinary data operators, `apply()` calls the transform directly and `invoke()` runs boolean `validate()` before `apply()`, returning `None` when validation is false. `multipart_query` and `nl2query_router` preserve Blue's two-argument `validate(attributes, properties)` call shape; their inherited three-argument `invoke()` is not a supported path. Use `refine()` for those plan-producing operators. Raw calls do not provide canonical default materialization or contained `ExecMeta`; use `run()` when the caller needs those semantics. See [COMPATIBILITY.md](COMPATIBILITY.md) for the migration boundary.
 
-The rest of the compatibility surface remains public: `validate()` checks the live attribute schema and never raises, `explain()` describes a completed transform, and `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes.
+The rest of the compatibility surface remains public. The ordinary three-argument `validate(input_data, attributes, properties)` path checks the live attribute schema and returns `False` for invalid attribute values. The two plan-producing exceptions above use their Blue call shape. `explain()` describes a completed transform, and `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes.
 
 ### Refinement and plan representation
 
@@ -207,6 +252,7 @@ The four plan-producing operators expose raw `refiner()` and normalized `refine(
 ```python
 from copy import deepcopy
 
+from blue_data_ops.operators import versioned_registry
 from blue_data_ops.plan import DataPipeline, RefinableOperator
 
 refinable = versioned_registry().resolve("multipart_query@2.0.0")
@@ -317,7 +363,14 @@ assert template.label == "project-then-sum"
 Planning raises `PlanningError` instead of reporting through `ExecMeta`. It is a `ValueError` subclass carrying a structured `record`:
 
 ```python
-from blue_data_ops.plan import PlanningError
+from blue_data_ops.operators import versioned_registry
+from blue_data_ops.plan import DiscoveryQuery, PipelinePlanner, PlanningError, PlanningRequest, RulePlanGenerator
+
+planner = PipelinePlanner(versioned_registry(), RulePlanGenerator())
+request = PlanningRequest(
+    goal="average total of orders above 100",
+    discovery_queries=(DiscoveryQuery("filter", tags=("capability-filter",)),),
+)
 
 try:
     planner.plan(request)
@@ -332,7 +385,7 @@ Planning raises where execution returns metadata because there is no partial res
 
 ### Bounded data context
 
-A generator that needs to know the schema receives a `DataContextSnapshot`, never rows. `DataScope` names the exact registry address to plan against, with an optional entity projection:
+A generator that needs to know the schema receives a `DataContextSnapshot`, never rows. `DataScope` names the exact registry address to plan against, with an optional entity projection. The following constructor excerpt assumes the application has already created `registry`, `generator`, and `seam`; [examples/sqlite_quickstart.py](examples/sqlite_quickstart.py) shows the complete registry setup.
 
 ```python
 from blue_data_ops.plan import DataScope, PipelinePlanner, RegistryDataContextProvider
@@ -370,7 +423,7 @@ planner = PipelinePlanner(registry, generator)
 
 `allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins `@2.0.0`, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set. A conflicting value raises `GENERATION_RESULT_INVALID` and fails the whole generator or planner call before any drafts are returned.
 
-Sending a data-context snapshot takes a second, explicit opt-in:
+To extend the preceding generator with data-context disclosure, set a second, explicit opt-in:
 
 ```python
 generator = OpenAIPlanGenerator(
@@ -438,7 +491,12 @@ python -m pytest
 
 ```
 lib/
+├── COMPATIBILITY.md             # supported modes and compatibility boundaries
+├── MANIFEST.in                  # source-distribution examples and reference files
+├── OPERATORS.md                 # generated 36-operator attribute and outcome reference
+├── examples/                    # runnable base, SQLite, ML, vector, refinement, and LLM calls
 ├── pyproject.toml
+├── scripts/                     # reference generator and installed-LiteLLM check
 ├── src/
 │   └── blue_data_ops/
 │       ├── __init__.py           # public exports
@@ -457,9 +515,10 @@ lib/
 │       │   ├── planner.py        # PipelinePlanner, rule templates, planning records
 │       │   ├── context.py        # DataScope, snapshots, planning error vocabulary
 │       │   └── openai_generator.py  # OpenAIPlanGenerator (extra: openai)
-│       └── data/
-│           ├── registry_seam.py  # facade over a blue-data DataRegistry
-│           └── provider.py       # registry resolution + default cached provider
+│       ├── data/
+│       │   ├── registry_seam.py  # facade over a blue-data DataRegistry
+│       │   └── provider.py       # registry resolution + default cached provider
+│       └── tools/                 # compatibility Tool and helper interfaces
 └── tests/
     ├── doubles/                  # in-memory seam and source doubles
     └── unit/

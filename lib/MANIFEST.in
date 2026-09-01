@@ -1,0 +1,4 @@
+include COMPATIBILITY.md
+include OPERATORS.md
+recursive-include examples *.json *.md *.py
+recursive-include scripts *.py

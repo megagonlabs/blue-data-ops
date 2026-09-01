@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import time
 from dataclasses import asdict
 from threading import Event
@@ -24,6 +25,7 @@ from blue_data_ops.operators import (
     CreateTableOperator,
     DataBundle,
     DataDiscoverOperator,
+    NL2LLMOperator,
     NormalizeTextOperator,
     Operator,
     OperatorRegistry,
@@ -87,6 +89,10 @@ class ProbeOperator(Operator):
         self.body_calls += 1
         if self.case == "raises":
             raise RuntimeError("private provider payload")
+        if self.case == "missing_litellm":
+            raise ModuleNotFoundError("private import payload", name="litellm")
+        if self.case == "missing_other":
+            raise ModuleNotFoundError("private import payload", name="other_package")
         if self.case == "none":
             return cast(FunctionResult, None)
         if self.case == "malformed":
@@ -363,6 +369,60 @@ def test_failure_rows_are_total(
     assert meta.errors[0].stage is stage
     assert "private" not in meta.errors[0].message
     assert operator.body_calls == body_calls
+
+
+def test_missing_litellm_uses_the_existing_code_with_actionable_fields() -> None:
+    _, _, meta = ProbeOperator("missing_litellm").run([[]], {"required": "given"})
+    [error] = meta.errors
+    assert error.category is ErrorCategory.RECOVERABLE
+    assert error.code is ErrorCode.EXECUTION_FAILED
+    assert error.stage is ErrorStage.EXECUTE
+    assert error.message == "LLM dependency is unavailable"
+    assert error.retryable is False
+    assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
+
+
+@pytest.mark.parametrize(
+    "missing,properties",
+    [
+        ("jinja2", None),
+        ("litellm", None),
+        ("diskcache", {"llm.cache": True}),
+    ],
+)
+def test_real_llm_path_names_the_missing_extra_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+    properties: dict[str, Any] | None,
+) -> None:
+    original_import = builtins.__import__
+
+    def blocked_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name.split(".", 1)[0] == missing:
+            raise ModuleNotFoundError(f"blocked optional dependency {missing!r}", name=missing)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+    _, _, meta = NL2LLMOperator().run(
+        [[]],
+        {"query": "Return an empty JSON array."},
+        properties,
+    )
+    [error] = meta.errors
+    assert error.category is ErrorCategory.RECOVERABLE
+    assert error.code is ErrorCode.EXECUTION_FAILED
+    assert error.stage is ErrorStage.EXECUTE
+    assert error.message == "LLM dependency is unavailable"
+    assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
+
+
+def test_an_unrelated_missing_module_keeps_the_generic_contained_failure() -> None:
+    _, _, meta = ProbeOperator("missing_other").run([[]], {"required": "given"})
+    [error] = meta.errors
+    assert error.category is ErrorCategory.FAILED
+    assert error.code is ErrorCode.EXECUTION_FAILED
+    assert error.message == "operator execution failed"
+    assert error.suggestion is None
 
 
 def test_successful_empty_preserves_fresh_output_attributes() -> None:

@@ -26,13 +26,13 @@ The LLM output `sub` transformation passes its configured replacement string to 
 
 `properties["llm_client"]` injection and the `provider` argument of `resolve_llm_client` are this package's additions for testability and for reusing one client across calls. The default lifetime remains construct-per-call with no shared client.
 
-## Attribute validation is total
+## Ordinary attribute validation
 
-`Operator.validate` never raises: values the reference implementation would fail on after lax coercion (e.g. incomparable types) validate as invalid here instead of raising.
+The ordinary three-argument `Operator.validate(input_data, attributes, properties)` path returns `False` for values the reference implementation would fail on after lax coercion, such as incomparable types. `multipart_query` and `nl2query_router` preserve Blue's two-argument `validate(attributes, properties)` call shape and are not compatible with the inherited three-argument `invoke()` path; use `refine()` for their normalized plan output.
 
 ## Raw and canonical execution
 
-`apply()`, `validate()`, and `invoke()` preserve the raw Blue-compatible call shapes through v2.x. `apply()` calls the transform directly. `invoke()` runs boolean validation and returns `None` when validation is false; exceptions from the transform are not converted into execution metadata on these raw paths.
+`apply()`, `validate()`, and `invoke()` preserve raw Blue-compatible call shapes through v2.x. For ordinary data operators, `apply()` calls the transform directly and `invoke()` runs boolean validation, returning `None` when validation is false. The two plan-producing exceptions named above expose only their two-argument Blue validation shape, so their inherited `invoke()` path raises `TypeError`. Exceptions from transforms are not converted into execution metadata on raw paths.
 
 `run()` is the canonical v2 boundary. It materializes canonical defaults, validates, normalizes empty output to `[[]]`, and returns `(output_data, output_attributes, exec_meta)`. Recoverable, failed, and timed-out outcomes appear in `exec_meta.errors`. The same split applies to plan operators: raw `refiner()` returns serialized records, while normalized `refine()` returns `DataPipeline` objects and `ExecMeta`.
 
@@ -56,7 +56,7 @@ Plan-producing operators emit the canonical live record through `to_dict()`. The
 
 ## Planning boundaries
 
-`PipelinePlanner` (2.2.0) builds a compiled `DataPipeline` from a goal or from one normalized refinement call. It is not a local port of Blue's `DataPlanner` and does not grow into one: it plans once and stops. There is no refinement loop, no replanning after a failed node, no remote dispatch, and no automatic choice among multiple alternatives under the default selector. A caller that wants a different plan builds a new `PlanningRequest`.
+`PipelinePlanner` builds a compiled `DataPipeline` from a goal or from one normalized refinement call. It is not a local port of Blue's `DataPlanner` and does not grow into one: it plans once and stops. There is no refinement loop, no replanning after a failed node, no remote dispatch, and no automatic choice among multiple alternatives under the default selector. A caller that wants a different plan builds a new `PlanningRequest`.
 
 `plan_refinement()` accepts one explicit package-built `@2.0.0` refinement source. The request's nonempty exact-ID allowlist must admit the source and every child. The planner calls `refine()` once, rejects a bad batch as a whole, projects the complete portable graphs into drafts, and freshly compiles and preflights the selected draft. It does not collect a data-context snapshot or disclose packaged operator skill text. A scoped request remains anchored through compilation, including the source, database, and collection on an `nl2sql` child.
 
@@ -111,7 +111,7 @@ Catch `ResolveError`, `LLMError`, `PipelineError`, and `PlanningError` at their 
 
 ## Service client
 
-Blue's `ServiceClient` request and response surface (`get_properties`, `extract_input_params`, `extract_output_params`, `extract_api_properties`, `create_message`, `create_output`, `validate_input`, `process_output`, and `execute_api_call`) is not provided as a compatibility class in this release. LLM operators use this package's own client at the `execute_api_call` boundary, and injecting a client through `properties["llm_client"]` covers the common test and reuse cases. If you used `ServiceClient` for non-LLM service calls, there is no interim replacement here yet. Those callers wait for a Blue-shaped local client that mirrors the full method surface, planned for a later release.
+Blue's `ServiceClient` request and response surface (`get_properties`, `extract_input_params`, `extract_output_params`, `extract_api_properties`, `create_message`, `create_output`, `validate_input`, `process_output`, and `execute_api_call`) is not provided as a compatibility class. LLM operators use this package's own client at the `execute_api_call` boundary, and injecting a client through `properties["llm_client"]` covers the common test and reuse cases. For non-LLM service calls, keep using Blue's `ServiceClient` or provide an adapter for the methods your integration needs; `blue-data-ops` has no drop-in replacement.
 
 ## Similarity utilities
 

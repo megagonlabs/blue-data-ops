@@ -295,6 +295,8 @@ def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
     required_directories = (
         core_src,
         core_tests,
+        lib_root / "examples",
+        lib_root / "scripts",
         mcp_src,
         mcp_tests,
     )
@@ -302,6 +304,8 @@ def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
         lib_root / "pyproject.toml",
         lib_root / "README.md",
         lib_root / "COMPATIBILITY.md",
+        lib_root / "MANIFEST.in",
+        lib_root / "OPERATORS.md",
         mcp_root / "pyproject.toml",
         mcp_root / "README.md",
     )
@@ -311,7 +315,14 @@ def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
         assert path.is_file(), f"expected shipped portability file is missing: {path}"
 
     paths = set(required_files)
-    for root in (core_src, core_tests, mcp_src, mcp_tests):
+    for root in (
+        core_src,
+        core_tests,
+        lib_root / "examples",
+        lib_root / "scripts",
+        mcp_src,
+        mcp_tests,
+    ):
         paths.update(
             path
             for path in root.rglob("*")
@@ -353,6 +364,8 @@ def _minimal_release_tree(root: Path) -> Path:
     for directory in (
         lib_root / "src" / "blue_data_ops",
         lib_root / "tests",
+        lib_root / "examples",
+        lib_root / "scripts",
         mcp_root / "src" / "blue_data_ops_mcp",
         mcp_root / "tests",
     ):
@@ -361,6 +374,8 @@ def _minimal_release_tree(root: Path) -> Path:
         lib_root / "pyproject.toml",
         lib_root / "README.md",
         lib_root / "COMPATIBILITY.md",
+        lib_root / "MANIFEST.in",
+        lib_root / "OPERATORS.md",
         mcp_root / "pyproject.toml",
         mcp_root / "README.md",
     ):
@@ -379,6 +394,11 @@ def _minimal_release_tree(root: Path) -> Path:
             "lib/src/blue_data_ops/operator_skills/manifest.json",
             '{"schema_version": "' + "k" + '3-review"}\n',
         ),
+        ("lib/OPERATORS.md", "see decision " + "D" + "39\n"),
+        ("lib/MANIFEST.in", "# see decision " + "D" + "39\n"),
+        ("lib/examples/example.py", "# see decision " + "D" + "39\n"),
+        ("lib/examples/coverage.json", '{"schema_version": "' + "k" + '3-review"}\n'),
+        ("lib/scripts/check.py", "# see decision " + "D" + "39\n"),
         ("platform/mcp/README.md", "see decision " + "D" + "39\n"),
         ("platform/mcp/pyproject.toml", "# see decision " + "D" + "39\n"),
         (
@@ -393,6 +413,11 @@ def _minimal_release_tree(root: Path) -> Path:
     ids=[
         "core-markdown",
         "core-json",
+        "operator-reference",
+        "source-manifest",
+        "example-python",
+        "example-json",
+        "script-python",
         "mcp-readme",
         "mcp-metadata",
         "mcp-source",

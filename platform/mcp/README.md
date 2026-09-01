@@ -1,14 +1,15 @@
 # Blue Data Operators MCP
 
-This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.2.0`, followed by four `<name>__refine` companions for the operators that build plans.
+This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.3.0`, followed by four `<name>__refine` companions for the operators that build plans.
 
-The two version numbers differ on purpose. `2.2.0` is the core distribution this adapter pins; `@2.0.0` is the operator card version, which core 2.2.0 does not change. Tool names, arguments, and results are the same as in `0.3.0`.
+The two version numbers differ on purpose. `2.3.0` is the core distribution this adapter pins; `@2.0.0` is the operator card version, which core 2.3.0 does not change. Tool names, arguments, and results are the same as in `0.4.0`.
 
 ## Install
 
-From the repository root, install the core and adapter. The full default surface uses the core ML, vector, and LLM extras:
+For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. From the `blue-data-ops` repository root, install the sibling dependency, core, and adapter. The full default surface uses the core ML, vector, and LLM extras:
 
 ```bash
+python -m pip install ../blue-data/lib
 python -m pip install "./lib[ml,vector,llm]"
 python -m pip install ./platform/mcp
 ```
@@ -17,18 +18,18 @@ If your artifact index is configured separately:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.2.0" \
-  "blue-data-ops-mcp==0.4.0"
+  "blue-data-ops[ml,vector,llm]==2.3.0" \
+  "blue-data-ops-mcp==0.5.0"
 ```
 
-The `nl2*` and `semantic_*` operators plus `query_breakdown` resolve a provider client at call time. Supply the provider credential through its environment variable. The `openai.model` property selects the model (default `gpt-4o`); the default OpenAI client reads `OPENAI_API_KEY` for authentication.
+`nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown` resolve a provider client at call time. Supply the provider credential through its environment variable. The `openai.model` property selects the model (default `gpt-4o`); the default OpenAI client reads `OPENAI_API_KEY` for authentication.
 
 After installation, read the adapter version from distribution metadata:
 
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops-mcp") == "0.4.0"
+assert version("blue-data-ops-mcp") == "0.5.0"
 ```
 
 ## Embed or serve
@@ -214,7 +215,7 @@ Values are serialized with `default=str` for leaves JSON does not represent nati
 - An unknown tool name, an argument-shape error (missing or malformed `input_data`, `attributes`, or `properties`), or a projection or encoding failure is a tool error (`isError` true) with no operator error record added.
 - Malformed JSON-RPC and transport failures follow the MCP SDK's own behavior.
 
-The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.4.0`; each tool's operator version is in its `_meta`.
+The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.5.0`; each tool's operator version is in its `_meta`.
 
 ## Refinement companions and plans
 
@@ -268,19 +269,19 @@ Use these with `multipart_query__refine`, `nl2query_router__refine`, `plan_disco
 
 An MCP refinement result is a serialized plan, not an execution. `DataPipeline` records the operators, their pinned ids, and their edges; it has no execution method. A caller with the core `blue-data-ops` package installed can load a chosen materialized plan with `DataPipeline.from_dict()` and execute it with `PipelineExecutor` and a registry that resolves its pinned ids. The MCP server itself does not run returned plans.
 
-## Migrating from 0.3.0
+## Migrating from 0.4.0
 
-`0.4.0` moves the core pin from `blue-data-ops==2.1.0` to `==2.2.0` and changes nothing else. Tool names, descriptions, `_meta`, arguments, results, the structured envelope, error surfacing, and the transport are unchanged, and every operator id is still `@2.0.0`.
+`0.5.0` moves the core pin from `blue-data-ops==2.2.0` to `==2.3.0` and raises the supported Python floor to 3.11. Tool names, descriptions, `_meta`, arguments, results, the structured envelope, error surfacing, and the transport are unchanged, and every operator id is still `@2.0.0`.
 
-Update both distributions together. The exact pin means one environment holds one pair, so a `0.3.0` adapter cannot run against core `2.2.0` and `0.4.0` cannot run against core `2.1.0`:
+Update both distributions together. The exact pin means one environment holds one pair, so a `0.4.0` adapter cannot run against core `2.3.0` and `0.5.0` cannot run against core `2.2.0`:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.2.0" \
-  "blue-data-ops-mcp==0.4.0"
+  "blue-data-ops[ml,vector,llm]==2.3.0" \
+  "blue-data-ops-mcp==0.5.0"
 ```
 
-Core `2.2.0` adds one-level refinement planning and a Python-only operator skill loader. Neither reaches this adapter's surface: planner entry points are not MCP tools, and skill resources are not added to tool descriptions, `_meta`, arguments, or results.
+Core `2.3.0` adds runnable onboarding examples and a generated operator reference. Neither changes this adapter's surface: examples and reference pages are not MCP tools, and skill resources are not added to tool descriptions, `_meta`, arguments, or results.
 
 ## Migrating from 0.1.0
 

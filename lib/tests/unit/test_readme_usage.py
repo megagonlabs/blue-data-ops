@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import tomllib
 from copy import deepcopy
-from importlib.metadata import version
-from typing import Any
+from pathlib import Path
 
 import pytest
 
 blue_data = pytest.importorskip("blue_data")
 
-from blue_data_ops import CreateDatabaseOperator, SelectOperator, resolve_registry  # noqa: E402
+from blue_data.registry.data_registry import DataRegistry  # noqa: E402
+from blue_data.source.json.memory_json_source import MemoryJSONSource  # noqa: E402
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # noqa: E402
+
+from blue_data_ops import CreateDatabaseOperator, RegistrySeam, SelectOperator  # noqa: E402
 from blue_data_ops.operators import versioned_registry  # noqa: E402
 from blue_data_ops.plan import (  # noqa: E402
     SELECT_THEN_AVERAGE_TEMPLATE,
@@ -36,42 +40,67 @@ def test_readme_select_example() -> None:
     assert op.validate(data, {}) is False
 
 
-def test_readme_installed_distribution_version() -> None:
-    assert version("blue-data-ops") == "2.2.0"
+def test_readme_explains_plan_operator_raw_call_shapes() -> None:
+    for operator_id in ("multipart_query@2.0.0", "nl2query_router@2.0.0"):
+        operator = versioned_registry().resolve(operator_id)
+        with pytest.raises(TypeError, match="unexpected keyword argument 'input_data'"):
+            operator.invoke([[]], {}, {})
 
 
-def test_readme_registry_example() -> None:
-    class _Source:
-        def __init__(self) -> None:
-            self.name = "my_source"
-            self.properties: dict[str, Any] = {"connection": {"protocol": "memory"}}
-            self.databases: list[str] = []
+def test_root_readme_has_a_complete_source_install_and_mcp_route() -> None:
+    root_readme = (Path(__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+    lib_readme = (Path(__file__).parents[2] / "README.md").read_text(encoding="utf-8")
+    mcp_readme = (Path(__file__).parents[3] / "platform/mcp/README.md").read_text(encoding="utf-8")
+    assert "python -m venv blue-data-ops/lib/.venv" in root_readme
+    assert "source blue-data-ops/lib/.venv/bin/activate" in root_readme
+    assert "python3 -m venv blue-data-ops/lib/.venv" in lib_readme
+    assert "source blue-data-ops/lib/.venv/bin/activate" in lib_readme
+    assert "python -m pip install -e ./blue-data/lib" in root_readme
+    assert 'python -m pip install -e "./blue-data-ops/lib[dev]"' in root_readme
+    assert "cd blue-data-ops/lib" in root_readme
+    assert "python -m pytest" in root_readme
+    assert "platform/mcp/README.md" in root_readme
+    assert "python -m pip install ../blue-data/lib" in mcp_readme
 
-        def create_database(self, database: str, **_kw: Any) -> dict[str, str]:
-            self.databases.append(database)
-            return {"status": "success"}
 
-        def fetch_databases(self) -> list[str]:
-            return list(self.databases)
-
-        def fetch_metadata(self) -> dict[str, Any]:
-            return {}
-
-        def fetch_database_metadata(self, database: str) -> dict[str, Any]:
-            return {}
-
-        def fetch_database_collections(self, database: str) -> list[str]:
-            return []
-
-    seam = resolve_registry({"platform.name": "readme_p", "data_registry.name": "readme_r"})
-    assert seam is not None
-    seam.register_source(_Source())  # pyright: ignore[reportArgumentType] — structural stub
-
-    result = CreateDatabaseOperator().invoke(
-        [[]], {"source": "my_source", "database": "main"}, {"data_registry": seam}
+def test_readme_tag_discovery_uses_exact_and_filtering() -> None:
+    registry = versioned_registry()
+    cards = registry.find(
+        "filter",
+        tags=["domain-relational", "flow-transform"],
     )
-    assert result == [[]]
-    assert seam.get_record("main", "database", "/source/my_source") is not None
+    assert [card.operator_id for card in cards] == [
+        "select@2.0.0",
+        "select@1.0.0",
+    ]
+    assert all({"domain-relational", "flow-transform"} <= set(card.tags) for card in cards)
+
+
+def test_readme_source_distribution_version() -> None:
+    metadata = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
+    assert metadata["project"]["version"] == "2.3.0"
+    assert metadata["project"]["requires-python"] == ">=3.11"
+    assert metadata["tool"]["ruff"]["target-version"] == "py311"
+    assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"
+
+
+def test_readme_registry_example(tmp_path: Path) -> None:
+    source = SQLiteDBSource(
+        "demo_sqlite",
+        properties={"connection": {"database_directory": str(tmp_path)}},
+    )
+    registry = DataRegistry(store=MemoryJSONSource(), rebuild=False)
+    registry.register_source(source)
+    registry.sync_source(source.name, recursive=True)
+    seam = RegistrySeam(registry)
+
+    output, output_attributes, meta = CreateDatabaseOperator().run(
+        [[]], {"source": source.name, "database": "main"}, {"data_registry": seam}
+    )
+    assert output == [[]]
+    assert output_attributes == {}
+    assert meta.errors == []
+    assert seam.get_record("main", "database", f"/source/{source.name}") is not None
 
 
 def test_the_package_imports_with_no_optional_extra_installed() -> None:
