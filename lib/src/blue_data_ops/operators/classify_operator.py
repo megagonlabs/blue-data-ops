@@ -21,12 +21,13 @@ class _ClassifyModelFailure(Exception):
 
 
 class ClassifyOperator(Operator):
-    """Train a decision tree and predict labels for every input group."""
+    """Train a classifier and predict labels for every input group."""
 
     name: ClassVar[str] = "classify"
     description: ClassVar[str] = (
         "Given input data with numeric vectors and training labels, train a classifier "
-        "and predict class labels for each sample using DecisionTreeClassifier."
+        "and predict class labels for each sample using DecisionTreeClassifier, "
+        "KNeighborsClassifier, or MultinomialNB."
     )
     attributes: ClassVar[dict[str, AttributeSpec]] = {
         "vector_key": AttributeSpec(
@@ -46,31 +47,51 @@ class ClassifyOperator(Operator):
         ),
         "criterion": AttributeSpec(
             type="str",
-            description="Function to measure split quality",
+            description="Function to measure split quality for decision_tree",
             default="gini",
         ),
         "splitter": AttributeSpec(
             type="str",
-            description="Strategy to choose the split",
+            description="Strategy to choose the split for decision_tree",
             default="best",
         ),
         "max_depth": AttributeSpec(
             type="int",
-            description="The maximum depth of the tree",
+            description="The maximum depth of the tree for decision_tree",
         ),
         "min_samples_split": AttributeSpec(
             type="float",
-            description="Minimum samples to split an internal node",
+            description="Minimum samples to split an internal node for decision_tree",
             default=2,
         ),
         "min_samples_leaf": AttributeSpec(
             type="float",
-            description="Minimum samples to be at a leaf node",
+            description="Minimum samples to be at a leaf node for decision_tree",
             default=1,
         ),
         "random_state": AttributeSpec(
             type="int",
-            description="Controls the randomness",
+            description="Controls the randomness for decision_tree",
+        ),
+        "n_neighbors": AttributeSpec(
+            type="int",
+            description="Number of neighbors to use for kneighbors queries for knn",
+            default=5,
+        ),
+        "weights": AttributeSpec(
+            type="str",
+            description="Weight function used in prediction for knn",
+            default="uniform",
+        ),
+        "alpha": AttributeSpec(
+            type="float",
+            description="Additive smoothing parameter for multinomial_nb",
+            default=1.0,
+        ),
+        "fit_prior": AttributeSpec(
+            type="bool",
+            description="Whether to learn class prior probabilities for multinomial_nb",
+            default=True,
         ),
     }
 
@@ -95,9 +116,10 @@ class ClassifyOperator(Operator):
         vector_key = attributes.get("vector_key")
         label_key = attributes.get("label_key")
         output_key = cast(str, attributes.get("output_key", "predicted_label"))
+
+        # Decision Tree attributes
         criterion = cast(str, attributes.get("criterion", "gini"))
         splitter = cast(str, attributes.get("splitter", "best"))
-
         max_depth_raw = attributes.get("max_depth")
         max_depth = (
             int(max_depth_raw)
@@ -105,19 +127,39 @@ class ClassifyOperator(Operator):
             else None
         )
         split_raw = attributes.get("min_samples_split", 2)
-        min_samples_split = (
-            float(split_raw) if isinstance(split_raw, str) and "." in split_raw else int(split_raw)
-        )
+        if isinstance(split_raw, float):
+            min_samples_split: int | float = split_raw
+        elif isinstance(split_raw, str) and "." in split_raw:
+            min_samples_split = float(split_raw)
+        else:
+            min_samples_split = int(split_raw)
+
         leaf_raw = attributes.get("min_samples_leaf", 1)
-        min_samples_leaf = (
-            float(leaf_raw) if isinstance(leaf_raw, str) and "." in leaf_raw else int(leaf_raw)
-        )
+        if isinstance(leaf_raw, float):
+            min_samples_leaf: int | float = leaf_raw
+        elif isinstance(leaf_raw, str) and "." in leaf_raw:
+            min_samples_leaf = float(leaf_raw)
+        else:
+            min_samples_leaf = int(leaf_raw)
+
         random_state_raw = attributes.get("random_state")
         random_state = (
             int(random_state_raw)
             if random_state_raw is not None and str(random_state_raw).lower() != "none"
             else None
         )
+
+        # KNN attributes
+        n_neighbors = int(attributes.get("n_neighbors", 5))
+        weights = cast(str, attributes.get("weights", "uniform"))
+
+        # Multinomial NB attributes
+        alpha = float(attributes.get("alpha", 1.0))
+        fit_prior_raw = attributes.get("fit_prior", True)
+        if isinstance(fit_prior_raw, str):
+            fit_prior = fit_prior_raw.lower() not in {"false", "0"}
+        else:
+            fit_prior = bool(fit_prior_raw)
 
         if not input_data or not input_data[0]:
             return FunctionResult(input_data, {})
@@ -130,24 +172,42 @@ class ClassifyOperator(Operator):
             if vector is not None and isinstance(vector, list) and label is not None:
                 vectors.append(cast(list[Any], vector))
                 labels.append(label)
-        if algorithm == "decision_tree" and not vectors:
-            return FunctionResult(input_data, {})
-        if algorithm != "decision_tree":
+
+        if not vectors or algorithm not in {"decision_tree", "knn", "multinomial_nb"}:
             return FunctionResult(input_data, {})
 
         # The ml extra is optional; import only when a real model path is reached.
         np = cast(Any, import_module("numpy"))
-        decision_tree_classifier = getattr(import_module("sklearn.tree"), "DecisionTreeClassifier")
+        if algorithm == "decision_tree":
+            model_constructor = getattr(import_module("sklearn.tree"), "DecisionTreeClassifier")
+        elif algorithm == "knn":
+            model_constructor = getattr(import_module("sklearn.neighbors"), "KNeighborsClassifier")
+        elif algorithm == "multinomial_nb":
+            model_constructor = getattr(import_module("sklearn.naive_bayes"), "MultinomialNB")
+        else:
+            return FunctionResult(input_data, {})
 
         try:
-            model = decision_tree_classifier(
-                criterion=criterion,
-                splitter=splitter,
-                max_depth=max_depth,
-                min_samples_split=min_samples_split,
-                min_samples_leaf=min_samples_leaf,
-                random_state=random_state,
-            )
+            if algorithm == "decision_tree":
+                model: Any = model_constructor(
+                    criterion=criterion,
+                    splitter=splitter,
+                    max_depth=max_depth,
+                    min_samples_split=min_samples_split,
+                    min_samples_leaf=min_samples_leaf,
+                    random_state=random_state,
+                )
+            elif algorithm == "knn":
+                model = model_constructor(
+                    n_neighbors=n_neighbors,
+                    weights=weights,
+                )
+            else:
+                model = model_constructor(
+                    alpha=alpha,
+                    fit_prior=fit_prior,
+                )
+
             model.fit(np.array(vectors), np.array(labels))
 
             result_data: DataBundle = []
@@ -172,7 +232,10 @@ class ClassifyOperator(Operator):
                     for index, record in enumerate(data_subset):
                         new_record = record.copy()
                         if index in valid_indices:
-                            new_record[output_key] = predictions[label_index]
+                            pred_val = predictions[label_index]
+                            new_record[output_key] = (
+                                pred_val.item() if hasattr(pred_val, "item") else pred_val
+                            )
                             label_index += 1
                         else:
                             new_record[output_key] = None
