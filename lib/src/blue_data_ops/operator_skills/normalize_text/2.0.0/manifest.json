@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "normalize_text@2.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "9f100a3d6eb88527d8103c4e467e987082561bd8a91d471e9e7bbc5097e3da73"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "95c4c8f9246c853b3fd38f02f3c1d2a5a60126972838dd29ef00c61f34116c24"
+    }
+  }
+}

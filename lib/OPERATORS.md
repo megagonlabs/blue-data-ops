@@ -126,7 +126,7 @@ The fixture profile is `none`; non-`none` profiles use deterministic test double
 
 ## `classify@2.0.0`
 
-Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier.
+Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier, KNeighborsClassifier, or MultinomialNB.
 
 When to invoke: Use when labeled numeric vectors are available and class labels are needed for input samples.
 
@@ -137,12 +137,16 @@ Tags: `domain-ml`, `flow-transform`, `accepts-data`, `produces-data`, `capabilit
 | `vector_key` | `str` | yes | `—` | The key to the numeric vector values (features) |
 | `label_key` | `str` | yes | `—` | The key to the target class labels |
 | `output_key` | `str` | no | `"predicted_label"` | The key name for the predicted labels |
-| `criterion` | `str` | no | `"gini"` | Function to measure split quality |
-| `splitter` | `str` | no | `"best"` | Strategy to choose the split |
-| `max_depth` | `int` | no | `—` | The maximum depth of the tree |
-| `min_samples_split` | `float` | no | `2` | Minimum samples to split an internal node |
-| `min_samples_leaf` | `float` | no | `1` | Minimum samples to be at a leaf node |
-| `random_state` | `int` | no | `—` | Controls the randomness |
+| `criterion` | `str` | no | `"gini"` | Function to measure split quality for decision_tree |
+| `splitter` | `str` | no | `"best"` | Strategy to choose the split for decision_tree |
+| `max_depth` | `int` | no | `—` | The maximum depth of the tree for decision_tree |
+| `min_samples_split` | `float` | no | `2` | Minimum samples to split an internal node for decision_tree |
+| `min_samples_leaf` | `float` | no | `1` | Minimum samples to be at a leaf node for decision_tree |
+| `random_state` | `int` | no | `—` | Controls the randomness for decision_tree |
+| `n_neighbors` | `int` | no | `5` | Number of neighbors to use for kneighbors queries for knn |
+| `weights` | `str` | no | `"uniform"` | Weight function used in prediction for knn |
+| `alpha` | `float` | no | `1.0` | Additive smoothing parameter for multinomial_nb |
+| `fit_prior` | `bool` | no | `true` | Whether to learn class prior probabilities for multinomial_nb |
 
 Fixture-backed call:
 

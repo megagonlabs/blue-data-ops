@@ -18,13 +18,13 @@ def test_distribution_metadata_and_public_surface() -> None:
     metadata = importlib.metadata.metadata("blue-data-ops-mcp")
     requirements = metadata.get_all("Requires-Dist") or []
     assert metadata["Name"] == "blue-data-ops-mcp"
-    assert metadata["Version"] == "0.5.0"
+    assert metadata["Version"] == "0.6.0"
     assert metadata["Requires-Python"] == ">=3.11"
     runtime = {requirement for requirement in requirements if "extra ==" not in requirement}
-    # 0.5.0 tracks core 2.3.0. The operator cards this adapter serves are still @2.0.0;
+    # 0.6.0 tracks core 2.4.0. The operator cards this adapter serves are still @2.0.0;
     # only the core distribution version moved.
     assert runtime == {
-        "blue-data-ops==2.3.0",
+        "blue-data-ops==2.4.0",
         "mcp==1.27.2",
         "pydantic<3,>=2.11",
     }

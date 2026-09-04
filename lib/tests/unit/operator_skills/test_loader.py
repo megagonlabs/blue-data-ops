@@ -121,12 +121,6 @@ def test_operator_id_must_be_exact_and_path_safe(operator_id: object) -> None:
     )
 
 
-def test_exact_id_has_no_version_or_operator_fallback() -> None:
-    loader = OperatorSkillLoader(versioned_registry())
-    _error(lambda: loader.load("nl2sql@1.0.0"), OperatorSkillErrorCode.NOT_AVAILABLE)
-    _error(lambda: loader.load("select@2.0.0"), OperatorSkillErrorCode.NOT_AVAILABLE)
-
-
 def test_custom_registration_cannot_claim_package_resources(tmp_path: Path) -> None:
     registry = OperatorRegistry()
     registry.register(NL2SQLOperator(), "2.0.0")

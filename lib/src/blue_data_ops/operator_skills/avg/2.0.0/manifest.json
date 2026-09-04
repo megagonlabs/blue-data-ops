@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "avg@2.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "0c7bba50ef67570e4c989e1dc540afc48c7f1dba1d51c14077faf9bd54fdf90c"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "84de4a13320ac341f4082181fa2715d6a6519d4c11f812124ada381fd8f19802"
+    }
+  }
+}

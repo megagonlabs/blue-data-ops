@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 2.3.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.4.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.3.0"
+  "blue-data-ops[ml,vector,llm]==2.4.0"
 ```
 
 The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
@@ -48,7 +48,7 @@ After installation, read the distribution version separately from the `@2.0.0` o
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.3.0"
+assert version("blue-data-ops") == "2.4.0"
 ```
 
 ## Usage
@@ -177,7 +177,7 @@ Tags have six axes: `capability-*` describes the operation, `domain-*` the data 
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` loads reviewed, versioned guidance for exact package-owned operators. The first package covers `nl2sql@2.0.0`. Its level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.4.0 includes packages for `avg`, `classify`, `insert_table`, `multipart_query`, `nl2sql`, `normalize_text`, `semantic_filter`, `union`, and `vector_similarity`, all at `@2.0.0`. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -507,7 +507,7 @@ lib/
 │       │   └── *_operator.py     # one module per operator
 │       ├── utils/                # Blue-compatible type, tool, JSON, uuid, string helpers
 │       ├── llm/                  # LLM client, templating, resolution (litellm-backed)
-│       ├── operator_skills/      # reviewed resources keyed by exact operator id
+│       ├── operator_skills/      # versioned resources keyed by exact operator id
 │       ├── plan/
 │       │   ├── pipeline.py       # serializable DataPipeline record
 │       │   ├── refiner.py        # operator-level refinement

@@ -92,7 +92,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its arithmetic mean across records."
     },
     {
-      "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier.",
+      "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier, KNeighborsClassifier, or MultinomialNB.",
       "name": "classify",
       "operator_id": "classify@2.0.0",
       "tags": [
@@ -107,7 +107,7 @@
       "when_to_invoke": "Use when labeled numeric vectors are available and class labels are needed for input samples."
     },
     {
-      "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier.",
+      "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier, KNeighborsClassifier, or MultinomialNB.",
       "name": "classify",
       "operator_id": "classify@1.0.0",
       "tags": [
@@ -1114,12 +1114,12 @@
   "registry": "versioned_registry",
   "schema_version": "operator-discovery/1",
   "source_manifest": {
-    "aggregate_sha256": "708c51a187a9faa46823b5dc3e6616b5d6ac632048a13a4d53dd5a47d50bd0a2",
+    "aggregate_sha256": "7d1306ae6455a232eabfa9c6ccc700303278c375369b4ea8851e77688c7edabf",
     "files": {
       "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
       "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
       "avg": "2ffc1e520e7ce1d65c9c030bdfbf6921f37bfcd97f3d8a66689437b66477c82d",
-      "classify": "9499bf0a217b6cd0e0856e946ec039c90760f6b17af1aa2875637151ffcd193e",
+      "classify": "f4550001f0cef86bb5a7b27dc2dd30c73830b458d6a4ce6bb30649314b6d0b49",
       "cluster": "2ac4fdbbf672da3cdc0b50bce4f3ad712a877609dd5f493ba2a02d43a650babf",
       "create_database": "ce5eb3429058756222d6cd93b7d26e80ff4a904898ab2375b22ddfed71d12277",
       "create_table": "13a3fb1922b4d882212df5b274c757bb2a4159414405cee12ef766efe5e17a4c",

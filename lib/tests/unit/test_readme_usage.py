@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tomllib
 from copy import deepcopy
 from pathlib import Path
@@ -78,10 +79,27 @@ def test_readme_tag_discovery_uses_exact_and_filtering() -> None:
 
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
-    assert metadata["project"]["version"] == "2.3.0"
+    assert metadata["project"]["version"] == "2.4.0"
     assert metadata["project"]["requires-python"] == ">=3.11"
     assert metadata["tool"]["ruff"]["target-version"] == "py311"
     assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"
+
+
+def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
+    package_root = Path(__file__).parents[2]
+    readme = (package_root / "README.md").read_text(encoding="utf-8")
+    index_path = package_root / "src/blue_data_ops/operator_skills/_index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    operator_ids = tuple(index["packages"])
+
+    assert len(operator_ids) == 9
+    for operator_id in operator_ids:
+        name, version = operator_id.split("@", maxsplit=1)
+        assert f"`{name}`" in readme
+        assert f"all at `@{version}`" in readme
+    lowered = readme.lower()
+    assert "first operator skill package" not in lowered
+    assert "only operator skill package" not in lowered
 
 
 def test_readme_registry_example(tmp_path: Path) -> None:

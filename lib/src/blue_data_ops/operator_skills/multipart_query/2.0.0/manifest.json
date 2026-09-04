@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "multipart_query@2.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "ca36ec40e718453b395d0f6ace85a1f1243107403800f4469916c42012c02e70"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "ef42475fcc1950bb17e10e52eaf353dbc07d847d8d5d94b47241fc499e1fb760"
+    }
+  }
+}

@@ -1,6 +1,14 @@
 {
   "format": "blue-data-ops/operator-skill-index@1",
   "packages": {
-    "nl2sql@2.0.0": "nl2sql/2.0.0/manifest.json"
+    "avg@2.0.0": "avg/2.0.0/manifest.json",
+    "classify@2.0.0": "classify/2.0.0/manifest.json",
+    "insert_table@2.0.0": "insert_table/2.0.0/manifest.json",
+    "multipart_query@2.0.0": "multipart_query/2.0.0/manifest.json",
+    "nl2sql@2.0.0": "nl2sql/2.0.0/manifest.json",
+    "normalize_text@2.0.0": "normalize_text/2.0.0/manifest.json",
+    "semantic_filter@2.0.0": "semantic_filter/2.0.0/manifest.json",
+    "union@2.0.0": "union/2.0.0/manifest.json",
+    "vector_similarity@2.0.0": "vector_similarity/2.0.0/manifest.json"
   }
 }

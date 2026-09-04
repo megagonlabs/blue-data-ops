@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "classify@2.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "f6f8589bb7421c40b808e14a62b74cc35ecbb16a4d01a86980947b9287cc2019"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "42cc2ad4bfa956c0068b99894d80e0183ef0a8d8a7e949c85b59113dc8b7a088"
+    }
+  }
+}
