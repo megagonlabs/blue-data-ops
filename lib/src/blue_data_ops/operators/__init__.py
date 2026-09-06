@@ -10,6 +10,11 @@ from blue_data_ops.operators.create_database_operator import CreateDatabaseOpera
 from blue_data_ops.operators.create_table_operator import CreateTableOperator
 from blue_data_ops.operators.data_discover_operator import DataDiscoverOperator
 from blue_data_ops.operators.delete_operator import DeleteOperator
+from blue_data_ops.operators.embedding_discovery import (
+    EmbeddingDiscoveryError,
+    OperatorEmbedder,
+    OperatorEmbeddingIndex,
+)
 from blue_data_ops.operators.insert_operator import InsertOperator
 from blue_data_ops.operators.insert_table_operator import InsertTableOperator
 from blue_data_ops.operators.intersect_operator import IntersectOperator
@@ -83,6 +88,7 @@ __all__ = [
     "Data",
     "DataBundle",
     "DeleteOperator",
+    "EmbeddingDiscoveryError",
     "ErrorCategory",
     "ErrorCode",
     "ErrorRecord",
@@ -105,6 +111,8 @@ __all__ = [
     "DiscoveryError",
     "Operator",
     "OperatorCard",
+    "OperatorEmbedder",
+    "OperatorEmbeddingIndex",
     "OperatorRegistry",
     "OperatorDiscoverOperator",
     "OperatorError",

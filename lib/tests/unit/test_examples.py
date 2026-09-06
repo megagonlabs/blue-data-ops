@@ -18,6 +18,7 @@ OFFLINE_EXAMPLES = (
     "sqlite_quickstart.py",
     "ml_quickstart.py",
     "vector_quickstart.py",
+    "embedding_planner.py",
     "refinement.py",
 )
 OPTIONAL_EXAMPLES = (

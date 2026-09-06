@@ -2,31 +2,33 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from blue_data_ops.operators.embedding_discovery import (
+    EmbeddingDiscoveryError,
+    OperatorEmbeddingIndex,
+)
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.registry import OperatorRegistry, default_registry
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
     DataBundle,
-    OperatorError,
     Properties,
 )
 
 
 class OperatorDiscoverOperator(Operator):
-    """Deterministic local operator-discovery facade, outside the 36-card catalog and MCP inventory.
+    """Discover cards through lexical search or an explicit embedding index.
 
-    Portable mode delegates to the registry's deterministic level-1 discovery (exact tag filter
-    then rule-based text scoring). Approximate, vector, or hybrid search needs an optional platform
-    backend and fails explicitly when that backend is absent — the facade never silently degrades or
-    swallows a requested approximate search into an empty result. It has no ``DISCOVERY`` record and
-    is never registered as a primary card.
+    Lexical search uses the registry's level-1 text scoring after exact tag filtering. Approximate
+    callers must pass the same explicit registry to this facade and its index; a missing or invalid
+    index fails without fallback. Hybrid search is unavailable. This facade has no ``DISCOVERY``
+    record and stays outside the built-in card catalog and MCP inventory.
     """
 
     name: ClassVar[str] = "operator_discover"
     description: ClassVar[str] = (
-        "Discover pinned operator cards by deterministic local text and exact-tag matching; "
-        "approximate, vector, and hybrid modes require an optional platform backend"
+        "Discover pinned operator cards by lexical or caller-supplied embedding search; "
+        "hybrid search is unavailable"
     )
     attributes: ClassVar[dict[str, AttributeSpec]] = {
         "search_query": AttributeSpec(
@@ -59,16 +61,21 @@ class OperatorDiscoverOperator(Operator):
         del input_data
         approximate = bool(attributes.get("approximate", False))
         hybrid = bool(attributes.get("hybrid", False))
-        backend = (properties or {}).get("discovery_backend")
-        if (approximate or hybrid) and backend is None:
-            raise OperatorError(
-                "approximate/vector/hybrid discovery requires a platform backend; none was provided"
-            )
+        if approximate and hybrid:
+            raise EmbeddingDiscoveryError("INVALID_MODE")
+        if hybrid:
+            raise EmbeddingDiscoveryError("MODE_UNAVAILABLE")
 
         registry = self._registry if self._registry is not None else default_registry()
         query = attributes.get("search_query", "")
         tags = attributes.get("tags") or None
-        cards = registry.find(query, tags=tags)
+        if approximate:
+            backend = (properties or {}).get("discovery_backend")
+            if type(backend) is not OperatorEmbeddingIndex or backend.registry is not registry:
+                raise EmbeddingDiscoveryError("BACKEND_MISMATCH")
+            cards = backend.find(query, tags=tags)
+        else:
+            cards = registry.find(query, tags=tags)
         limit = attributes.get("limit", -1)
         if isinstance(limit, int) and limit >= 0:
             cards = cards[:limit]

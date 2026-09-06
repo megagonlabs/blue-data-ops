@@ -73,7 +73,11 @@ def test_generators_rules_and_planner_share_one_call_shape() -> None:
         "generator",
         "selector",
         "data_context_provider",
+        "embedding_index",
     ]
+    assert inspect.signature(PipelinePlanner.__init__).parameters["embedding_index"].kind is (
+        inspect.Parameter.KEYWORD_ONLY
+    )
     assert list(inspect.signature(DataScope).parameters) == [
         "source",
         "database",

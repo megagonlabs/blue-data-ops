@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 2.5.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.6.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.5.0"
+  "blue-data-ops[ml,vector,llm]==2.6.0"
 ```
 
 The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
@@ -48,7 +48,7 @@ After installation, read the distribution version separately from the `@2.0.0` o
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.5.0"
+assert version("blue-data-ops") == "2.6.0"
 ```
 
 ## Usage
@@ -175,9 +175,36 @@ op = catalog.resolve(latest.operator_id) if latest is not None else None
 
 Tags have six axes: `capability-*` describes the operation, `domain-*` the data family, `flow-*` the pipeline position, `accepts-*` the input shape, `produces-*` the result or side effect, and `requires-*` the runtime dependency or integration. A card may carry several values on an axis. Tag strings are exact; with multiple tags, every tag must be present. Free-text scoring ranks only the cards that pass that filter. The generated [operator reference](OPERATORS.md#tag-taxonomy) lists the current values and every card assignment.
 
+`OperatorEmbeddingIndex` adds embedding search for direct Python callers. The caller supplies the embedder and its `space_id`; the package does not select or install an embedding model.
+
+```python
+from blue_data_ops.operators import OperatorEmbeddingIndex, versioned_registry
+
+
+class KeywordEmbedder:
+    @property
+    def space_id(self) -> str:
+        return "readme-keywords-v1"
+
+    def __call__(self, texts: tuple[str, ...]) -> list[list[float]]:
+        terms = ("filter", "join", "query")
+        return [
+            [1.0, *(float(term in text.casefold()) for term in terms)]
+            for text in texts
+        ]
+
+
+catalog = versioned_registry()
+embedding_index = OperatorEmbeddingIndex.build(catalog, KeywordEmbedder())
+cards = embedding_index.find("filter rows", tags=["produces-data"])
+op = catalog.resolve(cards[0].operator_id) if cards else None
+```
+
+`build()` passes every card's name, `when_to_invoke`, description, and ordered tags to the embedder in one batch. A nonblank search passes the query unchanged in a separate call; a whitespace-only query is blank. With a nonblank query, `find()` returns every tag-matching card in cosine order. It applies no threshold or limit; callers limit the returned list. Rebuild the index after registering another card or changing the embedding model or preprocessing, and give each embedding space a distinct `space_id`. Callback failures, invalid vectors, and stale snapshots raise `EmbeddingDiscoveryError` with a stable `reason`.
+
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.5.0 includes `@2.0.0` packages for all 32 active execution operators and retains the `multipart_query@2.0.0` package. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.6.0 includes `@2.0.0` packages for all 32 active execution operators and retains the `multipart_query@2.0.0` package. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

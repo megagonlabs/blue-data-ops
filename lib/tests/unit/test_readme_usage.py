@@ -16,7 +16,7 @@ from blue_data.source.json.memory_json_source import MemoryJSONSource  # noqa: E
 from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # noqa: E402
 
 from blue_data_ops import CreateDatabaseOperator, RegistrySeam, SelectOperator  # noqa: E402
-from blue_data_ops.operators import versioned_registry  # noqa: E402
+from blue_data_ops.operators import OperatorEmbeddingIndex, versioned_registry  # noqa: E402
 from blue_data_ops.plan import (  # noqa: E402
     SELECT_THEN_AVERAGE_TEMPLATE,
     DataPipeline,
@@ -77,9 +77,40 @@ def test_readme_tag_discovery_uses_exact_and_filtering() -> None:
     assert all({"domain-relational", "flow-transform"} <= set(card.tags) for card in cards)
 
 
+def test_readme_embedding_discovery_example() -> None:
+    readme = (Path(__file__).parents[2] / "README.md").read_text(encoding="utf-8")
+    contract = (
+        "With a nonblank query, `find()` returns every tag-matching card in cosine order. "
+        "It applies no threshold or limit; callers limit the returned list."
+    )
+
+    class KeywordEmbedder:
+        @property
+        def space_id(self) -> str:
+            return "readme-keywords-v1"
+
+        def __call__(self, texts: tuple[str, ...]) -> list[list[float]]:
+            terms = ("filter", "join", "query")
+            return [[1.0, *(float(term in text.casefold()) for term in terms)] for text in texts]
+
+    catalog = versioned_registry()
+    embedding_index = OperatorEmbeddingIndex.build(catalog, KeywordEmbedder())
+    cards = embedding_index.find("filter rows", tags=["produces-data"])
+    expected_ids = {
+        card.operator_id for card in catalog.list_cards() if "produces-data" in card.tags
+    }
+    limited = cards[:1]
+    op = catalog.resolve(limited[0].operator_id) if limited else None
+
+    assert contract in readme
+    assert len(cards) > len(limited) == 1
+    assert {card.operator_id for card in cards} == expected_ids
+    assert op is catalog.resolve(cards[0].operator_id)
+
+
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
-    assert metadata["project"]["version"] == "2.5.0"
+    assert metadata["project"]["version"] == "2.6.0"
     assert metadata["project"]["requires-python"] == ">=3.11"
     assert metadata["tool"]["ruff"]["target-version"] == "py311"
     assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"

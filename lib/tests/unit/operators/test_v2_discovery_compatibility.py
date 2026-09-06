@@ -8,13 +8,17 @@ no core recipe. ``resolve()`` and ``DataPipeline.from_dict()`` never upgrade a s
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, cast
 
 import pytest
 
 from blue_data_ops.operators import (
     DeclarativeOperator,
+    DiscoveryError,
+    EmbeddingDiscoveryError,
     OperatorDiscoverOperator,
+    OperatorEmbeddingIndex,
     OperatorError,
     UpgradeError,
     default_registry,
@@ -65,18 +69,128 @@ def test_facade_portable_mode_is_deterministic_local_discovery() -> None:
     assert len(limited) == 2
 
 
-@pytest.mark.parametrize("mode", ["approximate", "hybrid"])
-def test_facade_fails_explicitly_without_a_backend(mode: str) -> None:
-    facade = OperatorDiscoverOperator(versioned_registry())
-    with pytest.raises(OperatorError):
-        facade.apply([[]], {"search_query": "x", mode: True})
+class _ControlledEmbedder:
+    space_id = "facade-control-v1"
+
+    def __init__(self, *, reverse: bool = False, fail_query: bool = False) -> None:
+        self.reverse = reverse
+        self.fail_query = fail_query
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, texts: tuple[str, ...]) -> Sequence[Sequence[float]]:
+        self.calls.append(texts)
+        if len(texts) == 1:
+            if self.fail_query:
+                raise RuntimeError("private-callback-detail")
+            return ((1.0, 0.0, 0.25),)
+
+        vectors: list[tuple[float, float, float]] = []
+        for text in texts:
+            if 'name: "select"' in text:
+                vector = (1.0, 0.0, 0.25)
+            elif 'name: "avg"' in text:
+                vector = (0.0, 1.0, 0.25)
+            else:
+                vector = (0.0, 0.0, 1.0)
+            if self.reverse and vector[:2] != (0.0, 0.0):
+                vector = (vector[1], vector[0], vector[2])
+            vectors.append(vector)
+        return vectors
 
 
-@pytest.mark.parametrize("mode", ["approximate", "hybrid"])
-def test_facade_approximate_delegates_when_a_backend_is_present(mode: str) -> None:
-    facade = OperatorDiscoverOperator(versioned_registry())
-    rows = facade.apply([[]], {"search_query": "join", mode: True}, {"discovery_backend": object()})
-    assert rows and rows[0]  # a backend lets the request proceed to deterministic local discovery
+def _approximate_first_name(*, reverse: bool) -> tuple[str, _ControlledEmbedder]:
+    registry = versioned_registry()
+    embedder = _ControlledEmbedder(reverse=reverse)
+    index = OperatorEmbeddingIndex.build(registry, embedder)
+    rows = OperatorDiscoverOperator(registry).apply(
+        [[]],
+        {"search_query": "rank by the supplied vector", "approximate": True, "limit": 1},
+        {"discovery_backend": index},
+    )[0]
+    return cast(str, rows[0]["name"]), embedder
+
+
+def test_facade_approximate_mode_uses_the_index_order() -> None:
+    first, first_embedder = _approximate_first_name(reverse=False)
+    reversed_first, reversed_embedder = _approximate_first_name(reverse=True)
+
+    assert first == "select"
+    assert reversed_first == "avg"
+    assert len(first_embedder.calls) == len(reversed_embedder.calls) == 2
+    assert len(first_embedder.calls[0]) == len(versioned_registry().list_cards())
+    assert first_embedder.calls[1] == ("rank by the supplied vector",)
+
+
+@pytest.mark.parametrize("backend_kind", ["missing", "wrong", "different_registry"])
+def test_facade_rejects_an_unbound_embedding_index(backend_kind: str) -> None:
+    registry = versioned_registry()
+    properties: dict[str, Any] = {}
+    if backend_kind == "wrong":
+        properties["discovery_backend"] = object()
+    elif backend_kind == "different_registry":
+        properties["discovery_backend"] = OperatorEmbeddingIndex.build(
+            versioned_registry(), _ControlledEmbedder()
+        )
+
+    facade = OperatorDiscoverOperator(registry)
+    with pytest.raises(EmbeddingDiscoveryError) as caught:
+        facade.apply(
+            [[]],
+            {"search_query": "select", "approximate": True},
+            properties,
+        )
+
+    assert caught.value.reason == "BACKEND_MISMATCH"
+    assert isinstance(caught.value, OperatorError)
+    assert isinstance(caught.value, DiscoveryError)
+
+
+@pytest.mark.parametrize(
+    ("attributes", "reason"),
+    [
+        ({"search_query": "x", "hybrid": True}, "MODE_UNAVAILABLE"),
+        (
+            {"search_query": "x", "approximate": True, "hybrid": True},
+            "INVALID_MODE",
+        ),
+    ],
+)
+def test_facade_rejects_unavailable_or_conflicting_modes(
+    attributes: dict[str, Any], reason: str
+) -> None:
+    with pytest.raises(OperatorError) as caught:
+        OperatorDiscoverOperator(versioned_registry()).apply([[]], attributes)
+
+    assert isinstance(caught.value, EmbeddingDiscoveryError)
+    assert caught.value.reason == reason
+
+
+def test_facade_does_not_fall_back_when_the_index_query_fails() -> None:
+    registry = versioned_registry()
+    embedder = _ControlledEmbedder(fail_query=True)
+    index = OperatorEmbeddingIndex.build(registry, embedder)
+
+    with pytest.raises(EmbeddingDiscoveryError) as caught:
+        OperatorDiscoverOperator(registry).apply(
+            [[]],
+            {"search_query": "select", "approximate": True},
+            {"discovery_backend": index},
+        )
+
+    assert caught.value.reason == "QUERY_FAILED"
+    assert "private-callback-detail" not in str(caught.value)
+
+
+def test_facade_run_contains_embedding_errors() -> None:
+    output, output_attributes, meta = OperatorDiscoverOperator(versioned_registry()).run(
+        [[]],
+        {"search_query": "select", "approximate": True},
+    )
+
+    assert output == [[]]
+    assert output_attributes == {}
+    assert len(meta.errors) == 1
+    assert meta.errors[0].message == "operator execution failed"
 
 
 # --------------------------------------------------------------------------------------------------

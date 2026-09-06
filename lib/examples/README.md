@@ -6,6 +6,7 @@ Run these commands from `lib/` after following the main README installation step
 - `python examples/sqlite_quickstart.py`: a temporary ten-row SQLite database, registry discovery, and an insert; base install.
 - `python examples/ml_quickstart.py`: local decision-tree classification; install `[ml]`.
 - `python examples/vector_quickstart.py`: similarity from supplied embeddings, with no model download; install `[vector]`.
+- `python examples/embedding_planner.py`: caller-supplied embedding discovery feeding the local rule planner; base install.
 - `python examples/refinement.py`: credential-free multipart, routing, and registry-driven refinement; base install.
 - `python examples/nl2llm.py`: live natural-language-to-JSON request; install `[llm]` and set `OPENAI_API_KEY`.
 - `python examples/nl2sql_sqlite.py`: live SQL generation against the temporary SQLite schema; install `[llm]` and set `OPENAI_API_KEY`. Add `--execute` to run the generated query.

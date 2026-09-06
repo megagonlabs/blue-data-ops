@@ -1,8 +1,8 @@
 # Blue Data Operators MCP
 
-This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.5.0`, followed by four `<name>__refine` companions for the operators that build plans.
+This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.6.0`, followed by four `<name>__refine` companions for the operators that build plans.
 
-The two version numbers differ on purpose. `2.5.0` is the core distribution this adapter pins; `@2.0.0` is the operator card version, which core 2.5.0 does not change. Version 0.7.0 changes only the core pin. Tool names, `_meta`, arguments, result envelopes, error behavior, and transport are unchanged from 0.6.0. Operator skill resources are not added to MCP descriptions, metadata, arguments, or results.
+The two version numbers differ on purpose. `2.6.0` is the core distribution this adapter pins; `@2.0.0` is the operator card version, which core 2.6.0 does not change. Version 0.8.0 changes only the core pin. Tool names, `_meta`, arguments, result envelopes, error behavior, and transport are unchanged from 0.7.0. Operator skill resources are not added to MCP descriptions, metadata, arguments, or results.
 
 ## Install
 
@@ -18,8 +18,8 @@ If your artifact index is configured separately:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.5.0" \
-  "blue-data-ops-mcp==0.7.0"
+  "blue-data-ops[ml,vector,llm]==2.6.0" \
+  "blue-data-ops-mcp==0.8.0"
 ```
 
 `nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown` resolve a provider client at call time. Supply the provider credential through its environment variable. The `openai.model` property selects the model (default `gpt-4o`); the default OpenAI client reads `OPENAI_API_KEY` for authentication.
@@ -29,7 +29,7 @@ After installation, read the adapter version from distribution metadata:
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops-mcp") == "0.7.0"
+assert version("blue-data-ops-mcp") == "0.8.0"
 ```
 
 ## Embed or serve
@@ -215,7 +215,7 @@ Values are serialized with `default=str` for leaves JSON does not represent nati
 - An unknown tool name, an argument-shape error (missing or malformed `input_data`, `attributes`, or `properties`), or a projection or encoding failure is a tool error (`isError` true) with no operator error record added.
 - Malformed JSON-RPC and transport failures follow the MCP SDK's own behavior.
 
-The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.7.0`; each tool's operator version is in its `_meta`.
+The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.8.0`; each tool's operator version is in its `_meta`.
 
 ## Refinement companions and plans
 
@@ -268,6 +268,18 @@ breakdown_arguments = {
 Use these with `multipart_query__refine`, `nl2query_router__refine`, `plan_discover__refine`, and `query_breakdown__refine`, respectively. The router reads source records from the first input group. `query_breakdown__refine` calls the configured LLM provider; the other three shapes above are credential-free.
 
 An MCP refinement result is a serialized plan, not an execution. `DataPipeline` records the operators, their pinned ids, and their edges; it has no execution method. A caller with the core `blue-data-ops` package installed can load a chosen materialized plan with `DataPipeline.from_dict()` and execute it with `PipelineExecutor` and a registry that resolves its pinned ids. The MCP server itself does not run returned plans.
+
+## Migrating from 0.7.0
+
+`0.8.0` moves the exact core pin from `blue-data-ops==2.5.0` to `==2.6.0`. The core release adds caller-supplied embedding discovery and optional local-planner integration. The adapter still exposes the same 40 tools and does not load or transmit embedding-discovery inputs.
+
+Update both distributions together:
+
+```bash
+python -m pip install --index-url "$PIP_INDEX_URL" \
+  "blue-data-ops[ml,vector,llm]==2.6.0" \
+  "blue-data-ops-mcp==0.8.0"
+```
 
 ## Migrating from 0.6.0
 

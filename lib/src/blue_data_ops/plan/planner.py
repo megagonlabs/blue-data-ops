@@ -7,6 +7,10 @@ from itertools import islice
 from math import isfinite
 from typing import Any, Literal, Protocol, cast
 
+from blue_data_ops.operators.embedding_discovery import (
+    EmbeddingDiscoveryError,
+    OperatorEmbeddingIndex,
+)
 from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, is_builtin_card
 from blue_data_ops.operators.types import DataBundle, ErrorCategory, Properties
 from blue_data_ops.plan.context import (
@@ -1076,12 +1080,20 @@ class PipelinePlanner:
         generator: PlanGenerator,
         selector: RequireSinglePlan | None = None,
         data_context_provider: DataContextProvider | None = None,
+        *,
+        embedding_index: OperatorEmbeddingIndex | None = None,
     ) -> None:
+        if embedding_index is not None and (
+            type(embedding_index) is not OperatorEmbeddingIndex
+            or embedding_index.registry is not registry
+        ):
+            raise EmbeddingDiscoveryError("BACKEND_MISMATCH")
         self._registry = registry
         self._generator = generator
         self._selector = selector or RequireSinglePlan()
         self._executor = PipelineExecutor(registry)
         self._data_context_provider = data_context_provider
+        self._embedding_index = embedding_index
 
     def discover(self, request: PlanningRequest) -> DiscoverySnapshot:
         typed_request = _validate_request_data(request)
@@ -1101,7 +1113,11 @@ class PipelinePlanner:
         cards: list[OperatorCard] = []
         seen: set[str] = set()
         for query in request.discovery_queries:
-            matches = self._registry.find(query.text, tags=query.tags)
+            matches = (
+                self._embedding_index.find(query.text, tags=query.tags)
+                if self._embedding_index is not None
+                else self._registry.find(query.text, tags=query.tags)
+            )
             query_count = 0
             for card in matches:
                 if card.version != _PLANNER_OPERATOR_VERSION:
