@@ -20,6 +20,7 @@ from blue_data_ops.operator_skills import (
     OperatorSkillLoadError,
 )
 from blue_data_ops.operators import OperatorRegistry, versioned_registry
+from blue_data_ops.operators.types import AttributeSpec
 
 from ._conformance_support import (
     INDEX_FORMAT,
@@ -28,9 +29,19 @@ from ._conformance_support import (
     CatalogSnapshot,
     inspect_catalog,
 )
+from ._settings_conformance import (
+    EffectiveReadCensus,
+    assert_guide_matches_operator,
+    effective_read_census,
+    expected_skill_package_ids,
+    parse_settings,
+    render_expected_settings,
+    runtime_metadata_reads,
+)
 
 PACKAGE_ROOT = Path(__file__).parents[3] / "src" / "blue_data_ops" / "operator_skills"
-EXPECTED_PACKAGE_COUNT = 9
+EXPECTED_PACKAGE_IDS = expected_skill_package_ids(versioned_registry())
+EXPECTED_PACKAGE_COUNT = len(EXPECTED_PACKAGE_IDS)
 CATALOG = inspect_catalog(
     PACKAGE_ROOT,
     minimum_packages=1,
@@ -159,20 +170,22 @@ def test_shipped_catalog_sets_and_generic_test_ids_are_equal() -> None:
     )
 
 
-def test_guide_attribute_summaries_match_the_live_schema_across_the_catalog() -> None:
-    loader = OperatorSkillLoader(versioned_registry())
-    checked = 0
+def test_guide_settings_match_live_schema_and_effective_reads_across_the_catalog() -> None:
+    registry = versioned_registry()
+    loader = OperatorSkillLoader(registry)
     visited: set[str] = set()
+    checked_summaries = 0
 
     for operator_id in CATALOG.package_ids:
         skill = loader.load(operator_id, level=2)
         guide = skill.guide or ""
-        checked += len(_attribute_summary_paragraphs(guide))
-        visited.add(operator_id)
+        assert_guide_matches_operator(guide, registry.resolve(operator_id))
+        checked_summaries += len(_attribute_summary_paragraphs(guide))
         assert _attribute_summary_issues(guide, set(skill.io.attributes)) == ()
+        visited.add(operator_id)
 
-    assert visited == set(CATALOG.package_ids)
-    assert checked > 0
+    assert visited == set(EXPECTED_PACKAGE_IDS) == set(CATALOG.package_ids)
+    assert checked_summaries > 0
 
 
 @pytest.mark.parametrize(
@@ -472,3 +485,465 @@ def test_loader_failure_taxonomy_records_a_healthy_sibling(
         assert loader.load(sibling_id, level=3).card.operator_id == sibling_id
     else:
         _error(lambda: loader.load(sibling_id, level=3), sibling_code)
+
+
+class _SyntheticOperator:
+    attributes = {
+        "declared": AttributeSpec(type="str"),
+        "structured_attribute": AttributeSpec(type="list[str]", default=[]),
+    }
+    DEFAULT_PROPERTIES: dict[str, object] = {
+        "discarded": False,
+        "output_cast": "json",
+        "output_strip": True,
+        "overwritten": "default",
+        "service_prefix": "openai",
+        "structured_property": [],
+    }
+
+
+_SYNTHETIC_SOURCE = """
+def execute(self, attributes, properties):
+    self.properties["attributes"]
+    self.properties.get("attribute_cache")
+    attributes.get("declared")
+    attributes.get("compatibility")
+    merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+    properties.get("scalar", 1)
+    if "flag" in properties:
+        pass
+    merged.update(
+        {
+            "overwritten": attributes.get("declared"),
+            "discarded": attributes.get("declared"),
+        }
+    )
+    merged.get("overwritten")
+    result = {"copied": properties.get("scalar")}
+    result.get("result_only")
+    payload = build_message({}, properties)
+    payload.get("provider_only")
+    resolve_registry(properties)
+    resolve_llm_client(merged)
+"""
+
+_HELPER_SOURCES = {
+    "resolve_registry": """
+def resolve_registry(properties):
+    properties.get("data_registry")
+    properties.get("data_registry.name")
+    properties.get("platform.name")
+""",
+    "resolve_llm_client": """
+_ACCEPTED_LLM_KEYS = {
+    "cache", "cache_dir", "max_parallel", "max_tokens", "model", "rate_limit", "stream",
+    "temperature"
+}
+def resolve_llm_client(properties):
+    properties.get("llm_client")
+    properties.get("service_prefix")
+    properties.get("output_template")
+    if "output_cast" in properties:
+        properties["output_cast"]
+    if "output_strip" in properties:
+        pass
+""",
+}
+
+
+def _guide_for(census: EffectiveReadCensus) -> str:
+    lines = [
+        "# Synthetic",
+        "",
+        "## Settings",
+        "",
+        "| Name | Input | Declared | Effective default | Validation | Kind |",
+        "|---|---|---|---|---|---|",
+    ]
+    lines.extend(
+        f"| {row.name} | {row.input} | {row.declared} | {row.effective_default} | "
+        f"{row.validation} | {row.kind} |"
+        for row in census.expected
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _synthetic_census() -> EffectiveReadCensus:
+    return effective_read_census(
+        _SyntheticOperator(), source=_SYNTHETIC_SOURCE, helper_sources=_HELPER_SOURCES
+    )
+
+
+def test_expected_membership_is_derived_from_runtime_refinability() -> None:
+    assert CATALOG.package_ids == EXPECTED_PACKAGE_IDS
+    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 33
+
+
+def test_census_covers_all_layers_and_setting_kinds() -> None:
+    census = _synthetic_census()
+    assert {row.kind for row in census.expected} == {
+        "namespace",
+        "presence",
+        "scalar",
+        "seam",
+        "structured",
+    }
+    assert census.post_merge_reads == ("overwritten",)
+    assert census.discarded_post_merge_writes == ("discarded",)
+    discarded = next(
+        row for row in census.expected if row.name == "discarded" and row.input == "properties"
+    )
+    assert (discarded.effective_default, discarded.validation) == (
+        "discarded",
+        "write-and-discard",
+    )
+    output_strip = next(
+        row for row in census.expected if row.name == "output_strip" and row.input == "properties"
+    )
+    assert output_strip.kind == "presence"
+    output_cast = next(
+        row for row in census.expected if row.name == "output_cast" and row.input == "properties"
+    )
+    assert output_cast.kind == "scalar"
+    identities = {(row.name, row.input) for row in census.expected}
+    assert ("attributes", "properties") not in identities
+    assert ("attribute_cache", "properties") not in identities
+    assert ("result_only", "properties") not in identities
+    assert ("provider_only", "properties") not in identities
+    assert census.excluded_runtime_metadata
+    assert {evidence.helper for evidence in census.indirect_evidence} == {
+        "resolve_llm_client",
+        "resolve_registry",
+    }
+    assert all(
+        evidence.call_line > 0 and len(evidence.source_sha256) == 64
+        for evidence in census.indirect_evidence
+    )
+
+
+def test_semantic_join_distinguishes_read_back_and_discarded_property_writes() -> None:
+    census = effective_read_census(versioned_registry().resolve("semantic_join@2.0.0"))
+    assert census.post_merge_reads == (
+        "failure_probability",
+        "optimize_thresholds",
+        "precision_target",
+        "recall_target",
+        "sampling_percentage",
+        "use_embedding_filter",
+    )
+    assert census.discarded_post_merge_writes == (
+        "batch_size",
+        "embedding_threshold",
+    )
+    properties = {row.name: row for row in census.expected if row.input == "properties"}
+    for name in census.post_merge_reads:
+        assert properties[name].validation.startswith("attribute-overwrites-property:")
+    for name in census.discarded_post_merge_writes:
+        assert (
+            properties[name].effective_default,
+            properties[name].validation,
+        ) == ("discarded", "write-and-discard")
+    assert properties["output_cast"].kind == "scalar"
+
+
+def test_validation_reads_do_not_change_execution_defaults() -> None:
+    source = """
+def execute(self, attributes, properties):
+    attributes.get("limit", 10)
+    properties.get("batch_size", 32)
+
+def _validate_input(self, attributes, properties):
+    attributes.get("limit")
+    properties.get("batch_size")
+"""
+    census = effective_read_census(_SyntheticOperator(), source=source, helper_sources={})
+    rows = {(row.name, row.input): row for row in census.expected}
+    assert rows[("limit", "attributes")].effective_default == "10"
+    assert rows[("batch_size", "properties")].effective_default == "32"
+
+
+def test_validation_provenance_is_scoped_to_one_function() -> None:
+    source = """
+def execute(self, attributes, properties):
+    limit = properties.get("limit")
+    return limit
+
+def other(config):
+    limit = 5
+    isinstance(limit, int)
+"""
+    census = effective_read_census(_SyntheticOperator(), source=source, helper_sources={})
+    row = next(row for row in census.expected if row.name == "limit" and row.input == "properties")
+    assert row.validation == "none"
+
+
+def test_alias_reads_defaults_and_post_merge_writes_are_function_scoped() -> None:
+    source = """
+def execute(self, attributes, properties):
+    merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+    merged.get("real_setting", 1)
+
+def unrelated(self, attributes, some_other_mapping):
+    merged = some_other_mapping
+    merged.get("not_a_setting", 99)
+    merged.update({"not_a_write": attributes.get("declared")})
+"""
+    census = effective_read_census(_SyntheticOperator(), source=source, helper_sources={})
+    rows = {(row.name, row.input): row for row in census.expected}
+    assert rows[("real_setting", "properties")].effective_default == "1"
+    assert ("not_a_setting", "properties") not in rows
+    assert ("not_a_write", "properties") not in rows
+    assert "not_a_write" not in census.discarded_post_merge_writes
+
+
+def test_async_validation_provenance_matches_synchronous_validation() -> None:
+    source = """
+async def execute(self, attributes, properties):
+    limit = properties.get("async_limit", 3)
+    if not isinstance(limit, int):
+        raise ValueError("async_limit")
+"""
+    census = effective_read_census(_SyntheticOperator(), source=source, helper_sources={})
+    row = next(
+        row for row in census.expected if row.name == "async_limit" and row.input == "properties"
+    )
+    assert row.effective_default == "3"
+    assert row.validation == "runtime-check"
+
+
+@pytest.mark.parametrize(
+    ("validation_prefix", "helper_prefix"),
+    (("def", "def"), ("async def", "async def")),
+)
+def test_nested_validation_helpers_do_not_supply_execution_defaults(
+    validation_prefix: str, helper_prefix: str
+) -> None:
+    source = f"""
+def execute(self, attributes, properties):
+    properties["probe"]
+
+{validation_prefix} _validate_input(self, attributes, properties):
+    {helper_prefix} helper():
+        return properties.get("probe", "VALIDATION-ONLY")
+    return helper
+"""
+    census = effective_read_census(_SyntheticOperator(), source=source, helper_sources={})
+    row = next(row for row in census.expected if row.name == "probe" and row.input == "properties")
+    assert row.effective_default == "none"
+
+
+def test_runtime_metadata_census_handles_subscript_and_get_without_rendering_rows() -> None:
+    assert runtime_metadata_reads(
+        """
+def inspect(self):
+    self.properties["attributes"]
+    self.properties.get("attribute_cache")
+"""
+    ) == ("attribute_cache", "attributes")
+
+
+def test_vector_search_presence_guard_is_not_reported_as_validation() -> None:
+    operator = versioned_registry().resolve("vector_search@2.0.0")
+    census = effective_read_census(operator)
+    row = next(
+        row for row in census.expected if row.name == "min_score" and row.input == "properties"
+    )
+    assert row.validation == "none"
+    guide = _guide_for(census).replace(
+        "| min_score | properties | no | none | none | scalar |",
+        "| min_score | properties | no | none | runtime-check | scalar |",
+    )
+    with pytest.raises(AssertionError):
+        assert_guide_matches_operator(guide, operator)
+
+
+def test_synthetic_settings_table_matches_schema_and_effective_reads() -> None:
+    census = _synthetic_census()
+    guide = _guide_for(census)
+    assert parse_settings(guide)
+    assert_guide_matches_operator(
+        guide,
+        _SyntheticOperator(),
+        source=_SYNTHETIC_SOURCE,
+        helper_sources=_HELPER_SOURCES,
+    )
+
+
+def test_expected_row_dump_uses_the_machine_grammar() -> None:
+    rendered = render_expected_settings(_SyntheticOperator())
+    assert rendered.startswith(
+        "| Name | Input | Declared | Effective default | Validation | Kind |"
+    )
+    assert parse_settings("# Synthetic\n\n## Settings\n\n" + rendered)
+
+
+def test_validation_status_accepts_reader_detail_after_the_checked_prefix() -> None:
+    census = _synthetic_census()
+    guide = _guide_for(census).replace(
+        "| declared | attributes | yes | none | attribute-spec:str | scalar |",
+        "| declared | attributes | yes | none | attribute-spec:str; non-empty string | scalar |",
+    )
+    assert_guide_matches_operator(
+        guide,
+        _SyntheticOperator(),
+        source=_SYNTHETIC_SOURCE,
+        helper_sources=_HELPER_SOURCES,
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "section-missing",
+        "section-duplicate",
+        "declared-missing",
+        "declared-invented",
+        "property-missing",
+        "property-invented",
+        "input-misclassified",
+        "kind-misclassified",
+        "helper-presence-misclassified",
+        "default-wrong",
+        "validation-wrong",
+        "machine-cell-backtick",
+        "row-duplicate",
+        "row-unsorted",
+    ),
+)
+def test_settings_mutations_turn_the_instrument_red(mutation: str) -> None:
+    guide = _guide_for(_synthetic_census())
+    error_pattern: str | None = None
+    if mutation == "section-missing":
+        guide = guide.replace("## Settings", "## Configuration")
+    elif mutation == "section-duplicate":
+        guide += "\n## Settings\n"
+    elif mutation == "declared-missing":
+        guide = "\n".join(
+            line for line in guide.splitlines() if not line.startswith("| declared | attributes |")
+        )
+    elif mutation == "declared-invented":
+        guide = guide.replace(
+            "| llm.* | properties:llm.* |",
+            "| invented | attributes | yes | none | none | scalar |\n| llm.* | properties:llm.* |",
+        )
+        error_pattern = "Settings mismatch"
+    elif mutation == "property-missing":
+        guide = "\n".join(
+            line for line in guide.splitlines() if not line.startswith("| scalar | properties |")
+        )
+    elif mutation == "property-invented":
+        guide = guide.replace(
+            "| scalar | properties |",
+            "| property_extra | properties | no | none | none | scalar |\n| scalar | properties |",
+        )
+    elif mutation == "input-misclassified":
+        guide = guide.replace("| scalar | properties |", "| scalar | attributes |")
+    elif mutation == "kind-misclassified":
+        guide = guide.replace(
+            "| structured_property | properties | no | [] | none | structured |",
+            "| structured_property | properties | no | [] | none | scalar |",
+        )
+    elif mutation == "helper-presence-misclassified":
+        guide = guide.replace(
+            "| output_strip | properties | no | true | helper:resolve_llm_client | presence |",
+            "| output_strip | properties | no | true | helper:resolve_llm_client | scalar |",
+        )
+    elif mutation == "default-wrong":
+        guide = guide.replace(
+            "| structured_property | properties | no | [] | none | structured |",
+            "| structured_property | properties | no | {} | none | structured |",
+        )
+    elif mutation == "validation-wrong":
+        guide = guide.replace(
+            "| discarded | properties | no | discarded | write-and-discard |",
+            "| discarded | properties | no | discarded | none |",
+        )
+    elif mutation == "machine-cell-backtick":
+        guide = guide.replace("| declared | attributes |", "| de`clared | attributes |")
+    elif mutation == "row-duplicate":
+        row = "| declared | attributes | yes | none | attribute-spec:str | scalar |"
+        guide = guide.replace(row, row + "\n" + row)
+        error_pattern = "duplicate Settings row"
+    elif mutation == "row-unsorted":
+        first = "| declared | attributes | yes | none | attribute-spec:str | scalar |"
+        second = "| discarded | properties | no | discarded | write-and-discard | scalar |"
+        guide = guide.replace(first + "\n" + second, second + "\n" + first)
+        error_pattern = "not UTF-8-byte-sorted"
+    else:
+        raise AssertionError(f"unknown mutation: {mutation}")
+
+    with pytest.raises(AssertionError, match=error_pattern):
+        assert_guide_matches_operator(
+            guide,
+            _SyntheticOperator(),
+            source=_SYNTHETIC_SOURCE,
+            helper_sources=_HELPER_SOURCES,
+        )
+
+
+@pytest.mark.parametrize(
+    ("helper", "key"),
+    (
+        ("resolve_registry", "data_registry.name"),
+        ("resolve_llm_client", "service_prefix"),
+        ("resolve_llm_client", "output_template"),
+        ("resolve_llm_client", "_ACCEPTED_LLM_KEYS"),
+    ),
+)
+def test_stale_indirect_and_wildcard_evidence_turns_the_census_red(helper: str, key: str) -> None:
+    helper_sources = dict(_HELPER_SOURCES)
+    helper_sources[helper] = helper_sources[helper].replace(key, "removed")
+    with pytest.raises(AssertionError, match="stale"):
+        effective_read_census(
+            _SyntheticOperator(),
+            source=_SYNTHETIC_SOURCE,
+            helper_sources=helper_sources,
+        )
+
+
+def test_an_unmodelled_exact_helper_read_turns_the_census_red() -> None:
+    helper_sources = dict(_HELPER_SOURCES)
+    helper_sources["resolve_llm_client"] += '\nproperties.get("unmodelled_helper_setting")\n'
+    with pytest.raises(AssertionError, match="uncovered"):
+        effective_read_census(
+            _SyntheticOperator(),
+            source=_SYNTHETIC_SOURCE,
+            helper_sources=helper_sources,
+        )
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    (
+        '{"model", "temperature", "seed"}',
+        '{"unrelated"}',
+    ),
+)
+def test_changed_reviewed_llm_key_set_turns_the_census_red(replacement: str) -> None:
+    helper_sources = dict(_HELPER_SOURCES)
+    start = helper_sources["resolve_llm_client"].index("_ACCEPTED_LLM_KEYS =")
+    function = helper_sources["resolve_llm_client"].index("\ndef resolve_llm_client")
+    helper_sources["resolve_llm_client"] = (
+        helper_sources["resolve_llm_client"][:start]
+        + "_ACCEPTED_LLM_KEYS = "
+        + replacement
+        + helper_sources["resolve_llm_client"][function:]
+    )
+    with pytest.raises(AssertionError, match="stale llm.* key-set evidence"):
+        effective_read_census(
+            _SyntheticOperator(),
+            source=_SYNTHETIC_SOURCE,
+            helper_sources=helper_sources,
+        )
+
+
+def test_code_formatted_machine_cells_and_inline_code_in_free_text_are_parsed() -> None:
+    guide = """# Synthetic
+
+## Settings
+
+| Name | Input | Declared | Effective default | Validation | Kind |
+|---|---|---|---|---|---|
+| `value` | `attributes` | `yes` | `none` | accepts `str` values | `scalar` |
+"""
+    assert parse_settings(guide)[0].validation == "accepts `str` values"

@@ -1,21 +1,54 @@
-# NL-to-SQL
+# Natural language to SQL
 
-`nl2sql@2.0.0` translates a natural-language question into SQL and can optionally execute the generated query through the configured data registry. It reads the current database schema from that registry and sends the question, schema, protocol, context, and additional requirements to the configured LLM client.
+`nl2sql@2.0.0` translates a natural-language question into SQL and can execute the generated statement through the configured data registry.
 
-## Inputs
+The live `io.attributes` mapping lists the declared settings: `additional_requirements`, `attr_names`, `case_insensitive`, `collection`, `context`, `database`, `protocol`, `question`, `schema`, and `source`. The Settings table also records compatibility inputs read outside that mapping.
 
-Use the `io.attributes` mapping returned by `OperatorSkillLoader.load()` as the live, machine-readable schema for declared attributes. It is refreshed from the resolved operator when the view is loaded, but it is not an exhaustive inventory of compatibility inputs read by the implementation. The declared attributes include `source`, `database`, `collection`, `question`, and `protocol`, along with optional controls for case sensitivity, extra requirements, domain context, and requested output field names.
+## Settings
 
-The implementation also reads the undeclared caller attribute `force_query_prefixes`. It changes only the prompt guidance sent to the LLM. The `validate_query_prefixes` property governs which prefixes the returned SQL is allowed to use.
+| Name | Input | Declared | Effective default | Validation | Kind |
+|---|---|---|---|---|---|
+| `<service_prefix>.*` | `properties:<service_prefix>.*` | `no` | `none` | `helper:resolve_llm_client` | `namespace` |
+| `additional_requirements` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `attr_names` | `attributes` | `yes` | `[]` | `attribute-spec:list[str]` | `structured` |
+| `case_insensitive` | `attributes` | `yes` | `true` | `attribute-spec:bool` | `scalar` |
+| `collection` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `context` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `data_registry` | `properties` | `no` | `none` | `helper:resolve_registry` | `seam` |
+| `data_registry.name` | `properties` | `no` | `none` | `helper:resolve_registry` | `seam` |
+| `database` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `execute_query` | `properties` | `no` | `true` | `none` | `scalar` |
+| `execution.timeout_seconds` | `base-properties` | `no` | `none` | `finite-positive-number` | `scalar` |
+| `force_query_prefixes` | `attributes` | `no` | `"SELECT"` | `none` | `scalar` |
+| `input_context` | `properties` | `no` | `"$[0]"` | `none` | `scalar` |
+| `input_context_field` | `properties` | `no` | `"content"` | `none` | `scalar` |
+| `input_field` | `properties` | `no` | `"messages"` | `none` | `scalar` |
+| `input_json` | `properties` | `no` | `"[{\"role\": \"user\"}]"` | `none` | `scalar` |
+| `input_template` | `properties` | `no` | `source-sha256:26b282e53a7f7853d7fea2974ff5b6039742f9370d156894166a66e3ea0b01b9` | `none` | `scalar` |
+| `llm.*` | `properties:llm.*` | `no` | `none` | `helper:resolve_llm_client` | `namespace` |
+| `llm_client` | `properties` | `no` | `none` | `helper:resolve_llm_client` | `seam` |
+| `openai.api` | `properties` | `no` | `"ChatCompletion"` | `none` | `scalar` |
+| `openai.max_tokens` | `properties` | `no` | `512` | `none` | `scalar` |
+| `openai.model` | `properties` | `no` | `"gpt-4o"` | `none` | `scalar` |
+| `openai.stream` | `properties` | `no` | `false` | `none` | `scalar` |
+| `openai.temperature` | `properties` | `no` | `0` | `none` | `scalar` |
+| `output_cast` | `properties` | `no` | `"json"` | `none` | `scalar` |
+| `output_path` | `properties` | `no` | `"$.choices[0].message.content"` | `none` | `scalar` |
+| `output_strip` | `properties` | `no` | `true` | `helper:resolve_llm_client; presence only: any value enables stripping` | `presence` |
+| `output_template` | `properties` | `no` | `none` | `helper:resolve_llm_client` | `scalar` |
+| `output_transformations` | `properties` | `no` | `source-sha256:4c5590a88361773f2b559375ccaed622ddaab9adeb52b16482d5b2ea9d10255b` | `none` | `structured` |
+| `platform.name` | `properties` | `no` | `none` | `helper:resolve_registry` | `seam` |
+| `protocol` | `attributes` | `yes` | `"postgres"` | `attribute-spec:str` | `scalar` |
+| `question` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `schema` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `service_prefix` | `properties` | `no` | `"openai"` | `none` | `scalar` |
+| `source` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
+| `validate_query_prefixes` | `properties` | `no` | `["SELECT"]` | `none` | `structured` |
 
-The supported protocols are `postgres`, `mysql`, and `sqlite`. The operator fetches its schema from the data registry; the declared `schema` attribute does not replace that lookup in this version.
+## Data and safety boundaries
 
-## Results
+The operator always obtains the live schema from the registry; the declared `schema` attribute does not replace that lookup. It sends the question, schema, protocol, context, requested aliases, and additional requirements to the LLM client. The undeclared `force_query_prefixes` attribute changes that prompt only. The returned SQL is independently checked against `validate_query_prefixes`.
 
-With query execution enabled, the operator returns the registry's normalized query result. With execution disabled, it returns `[[{"sql": "..."}]]`. The structured `run()` boundary adds execution metadata and currently returns an empty `output_attributes` mapping.
+With `execute_query=true`, the registry result is normalized and returned. With execution disabled, the result is `[[{"sql": "..."}]]`. A blank question returns `[[]]` before registry or client resolution. Missing registry configuration makes compatibility `apply()` return `[[]]`. Invalid addressing, protocol, provider response, SQL prefix, or registry execution remains an error.
 
-A blank question returns the successful-empty shape `[[]]` without a registry or provider call. For Blue compatibility, the execution check requires nonempty `protocol`, `database`, and `collection` values but deliberately does not require a nonempty `source`; an empty or omitted source is passed to the registry as an empty string. Missing registry configuration also produces the raw empty shape on the compatibility `apply()` path. Invalid protocols, missing database or collection addressing, malformed provider responses, invalid query prefixes, and provider failures remain errors; callers that need contained error records should use `run()`.
-
-## Operational boundary
-
-The default properties allow generated queries beginning with `SELECT` and execute the query. Owners should review both settings for their deployment. This guide describes the current operator; loading it does not execute the operator, contact a provider, change planner input, or grant the text authority over planning.
+Use `run()` for contained validation and execution failures. Missing LLM-extra modules receive the dependency suggestion. The current `output_attributes` mapping is empty. Schema lookup and query execution are registry side effects; provider generation may use network access unless a client is injected.

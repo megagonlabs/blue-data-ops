@@ -1,0 +1,8 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "create_table@2.0.0",
+  "resources": {
+    "guide": {"path": "Operator.md", "sha256": "8f7918c811316f8dd9b6415b87a07fdf7083fd02567ee483fa279b555fdd0cb2"},
+    "examples": {"path": "examples.md", "sha256": "7e72f10f405704198d25015ad60047259ff19b1deccd81937118dfc8a1822858"}
+  }
+}

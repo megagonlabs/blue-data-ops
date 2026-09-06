@@ -1,19 +1,31 @@
 # Classification
 
-`classify@2.0.0` trains a classifier from labeled vectors in the first input group, then predicts labels for records in every group. Install the `ml` extra before executing a model path.
+`classify@2.0.0` trains on labeled vectors in the first group, then predicts labels for records in every group. Install the `ml` extra before using a model path.
 
-## Training and prediction
+## Settings
 
-Only first-group records that have both a list-valued `vector_key` and a non-null `label_key` train the model. Later groups never contribute training labels. During prediction, records with a list-valued vector receive a prediction; other records are copied with the configured `output_key` set to `None`.
+| Name | Input | Declared | Effective default | Validation | Kind |
+|---|---|---|---|---|---|
+| `algorithm` | `properties` | `no` | `"decision_tree"` | none; `decision_tree`, `knn`, or `multinomial_nb`; another value returns the input unchanged | `scalar` |
+| `alpha` | `attributes` | `yes` | `1.0` | attribute-spec:float; converted with `float()` | `scalar` |
+| `criterion` | `attributes` | `yes` | `"gini"` | attribute-spec:str; the selected model validates accepted values | `scalar` |
+| `execution.timeout_seconds` | `base-properties` | `no` | `none` | finite-positive-number; Boolean rejected | `scalar` |
+| `fit_prior` | `attributes` | `yes` | `true` | attribute-spec:bool; strings other than `false` and `0` execute as true | `scalar` |
+| `label_key` | `attributes` | `yes` | `none` | attribute-spec:str; custom validation requires a non-empty value, while Pydantic-lax bytes pass | `scalar` |
+| `max_depth` | `attributes` | `yes` | `none` | attribute-spec:int; converted with `int()` when supplied | `scalar` |
+| `min_samples_leaf` | `attributes` | `yes` | `1` | attribute-spec:float; converted to integer or float from the raw value | `scalar` |
+| `min_samples_split` | `attributes` | `yes` | `2` | attribute-spec:float; converted to integer or float from the raw value | `scalar` |
+| `n_neighbors` | `attributes` | `yes` | `5` | attribute-spec:int; converted with `int()` | `scalar` |
+| `output_key` | `attributes` | `yes` | `"predicted_label"` | `attribute-spec:str` | `scalar` |
+| `random_state` | `attributes` | `yes` | `none` | attribute-spec:int; converted with `int()` when supplied | `scalar` |
+| `splitter` | `attributes` | `yes` | `"best"` | attribute-spec:str; the selected model validates accepted values | `scalar` |
+| `vector_key` | `attributes` | `yes` | `none` | attribute-spec:str; custom validation requires a non-empty value, while Pydantic-lax bytes pass | `scalar` |
+| `weights` | `attributes` | `yes` | `"uniform"` | attribute-spec:str; KNN validates accepted values | `scalar` |
 
-Choose the model with `properties["algorithm"]`. The supported values are `decision_tree` (the default), `knn`, and `multinomial_nb`. Any other value returns the input unchanged. With usable settings, empty input, an empty first group, or a first group with no usable training pair also returns the input unchanged without importing NumPy or scikit-learn.
+## Behavior
 
-The live `io.attributes` mapping declares the shared settings `vector_key`, `label_key`, and `output_key`; the decision-tree settings `criterion`, `splitter`, `max_depth`, `min_samples_split`, `min_samples_leaf`, and `random_state`; the k-nearest-neighbor settings `n_neighbors` and `weights`; and the multinomial naive-Bayes settings `alpha` and `fit_prior`. `algorithm` is an undeclared property.
+Only first-group records with a list-valued vector and non-null label train the model. Records in all groups are copied for successful prediction; a record without a list-valued vector receives `None` at `output_key`. Empty input, an empty first group, no usable training pair, or an unknown algorithm returns the caller's input object unchanged.
 
-Numeric and Boolean model settings are converted before the empty-input and algorithm checks. A malformed setting for a model that was not selected can therefore fail the call.
+NumPy and the selected scikit-learn class load only after a supported non-empty path is reached. Missing modules therefore propagate from raw `apply()` and `invoke()`; `run()` returns `[[]]` with a generic `EXECUTION_FAILED` error. Model construction, fitting, and prediction failures are caught: raw calls return the original input, while `run()` reports an execution failure because `_execute()` raises before the compatibility catch in `apply()`.
 
-## Failure behavior
-
-NumPy and the selected scikit-learn class load only after the input reaches a supported model path. Import errors propagate from `apply()` and `invoke()`; `run()` contains them as execution errors. Model construction, fitting, and prediction failures return the original input from `apply()` and `invoke()`, while `run()` returns `[[]]` with an execution error.
-
-Successful output contains copied records rather than the caller's record objects. `output_attributes` is empty in this version.
+`output_attributes` is `{}`. `explain()` uses shared statistics. There is no provider disclosure or persistent side effect. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.

@@ -16,7 +16,7 @@ SKILL_SOURCE = CORE_SOURCE / "operator_skills"
 DISCLOSURE_RUNNER = PACKAGE_ROOT / "tests" / "installed" / "operator_skill_disclosure.py"
 CORE_SOURCE_FILE_FLOOR = 73
 MCP_SOURCE_FILE_FLOOR = 4
-RESOURCE_TEXT_FLOOR = 18
+RESOURCE_TEXT_FLOOR = 66
 
 
 def _imports_operator_skills(path: Path) -> list[str]:

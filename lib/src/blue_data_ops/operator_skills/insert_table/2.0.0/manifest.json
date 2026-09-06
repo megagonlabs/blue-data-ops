@@ -2,13 +2,7 @@
   "format": "blue-data-ops/operator-skill@1",
   "operator_id": "insert_table@2.0.0",
   "resources": {
-    "guide": {
-      "path": "Operator.md",
-      "sha256": "3d5d500ad33ba03e677b9980844d324de2e5bd7b2a44bdb6dbf5e37d99b94bf4"
-    },
-    "examples": {
-      "path": "examples.md",
-      "sha256": "b3d71a776c3244d9b0f90caa48fc80a57a07028947fe11c052579aa09f8c6d3a"
-    }
+    "guide": {"path": "Operator.md", "sha256": "443bcdcd5859ed003a8b8d6b13bc50f53915ec402aaaf49718f1d95a0bdd3de9"},
+    "examples": {"path": "examples.md", "sha256": "102bb603bb6f50fa50520d43c91f2fe2b5b98aff834dcdfe18a9b99458f2d89d"}
   }
 }

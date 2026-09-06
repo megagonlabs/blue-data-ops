@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "vector_search@2.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "6ca15c26f44daf45a9f7c1ebd3631a6cec317453b9cfece08f0720e8daa9f56f"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "6644cdd4aef269fcb0a8451173cb1dbb2d0dafb62c774c586afcb05e68b87e88"
+    }
+  }
+}

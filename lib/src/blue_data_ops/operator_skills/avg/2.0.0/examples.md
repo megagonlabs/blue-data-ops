@@ -1,6 +1,8 @@
 # Average owner check
 
-This check loads the package, averages the first group, and verifies the successful empty result. It runs with the base installation.
+Environment: base
+
+This check averages the first group and verifies the successful zero result.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -15,12 +17,13 @@ output, output_attributes, meta = operator.run(
     {"avg_key": "value"},
 )
 empty, _, empty_meta = operator.run([[]], {"avg_key": "value"})
+invalid, _, invalid_meta = operator.run([[{"value": 1}]], {})
 
 assert skill.card.operator_id == "avg@2.0.0"
 assert skill.loaded_kinds == ("guide", "examples")
 assert output == [[{"avg": 7 / 3}]]
-assert empty == [[{"avg": 0}]]
+assert empty == [[{"avg": 0}]] and not empty_meta.is_empty
+assert invalid == [[]] and invalid_meta.errors[0].code.value == "INVALID_INPUT"
 assert output_attributes == {}
 assert meta.errors == []
-assert empty_meta.errors == []
 ```

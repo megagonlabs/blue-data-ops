@@ -1,0 +1,8 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "intersect@2.0.0",
+  "resources": {
+    "guide": {"path": "Operator.md", "sha256": "3bf0d5262f15a6d4c6c5c8b75b588710229b329a592f4435784c09fac43245eb"},
+    "examples": {"path": "examples.md", "sha256": "87f276b2d69c9b293f31dc4addeeeb5f6b914e746f3880d2ab06c0f6d49c0712"}
+  }
+}

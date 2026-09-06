@@ -1,0 +1,8 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "argmax@2.0.0",
+  "resources": {
+    "guide": {"path": "Operator.md", "sha256": "0cb0cdf0bb46439862fadf5eb1d237a09d3cb0736a178f553fc5a871563151dd"},
+    "examples": {"path": "examples.md", "sha256": "dde40358c3c6ce510d5b7efd9780210be8a7df320b9676157897fb8f4d855a07"}
+  }
+}

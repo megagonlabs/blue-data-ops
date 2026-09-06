@@ -29,6 +29,8 @@ PINNED_ID = re.compile(
     r"^(?P<name>[^/@\\]+)@(?P<version>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$"
 )
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
+ENVIRONMENTS = frozenset({"base", "ml", "vector", "llm"})
+ENVIRONMENT_LINE = re.compile(r"^Environment: (?P<value>\S+)$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,32 @@ def extract_fences(text: str) -> tuple[Fence, ...]:
     if language is not None:
         raise AssertionError(f"unclosed {language!r} fence at line {opening_line}")
     return tuple(fences)
+
+
+def parse_environment(text: str) -> str:
+    prose: list[str] = []
+    inside_fence = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            inside_fence = not inside_fence
+            continue
+        if not inside_fence:
+            prose.append(line)
+    matches = tuple(ENVIRONMENT_LINE.finditer("\n".join(prose)))
+    assert len(matches) == 1, f"expected one Environment field, found {len(matches)}"
+    value = matches[0].group("value")
+    assert value in ENVIRONMENTS, f"unknown Environment: {value}"
+    return value
+
+
+def environment_partitions(pages: dict[str, str]) -> dict[str, tuple[str, ...]]:
+    partitions: dict[str, list[str]] = {name: [] for name in sorted(ENVIRONMENTS)}
+    for operator_id, page in pages.items():
+        partitions[parse_environment(page)].append(operator_id)
+    return {
+        name: tuple(sorted(operator_ids, key=lambda item: item.encode("utf-8")))
+        for name, operator_ids in partitions.items()
+    }
 
 
 def _without_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -166,6 +194,7 @@ def validate_pages(pages: dict[str, str]) -> dict[str, tuple[Fence, ...]]:
     assert pages, "the package index contains no owner checks"
     extracted: dict[str, tuple[Fence, ...]] = {}
     for operator_id, text in pages.items():
+        parse_environment(text)
         fences = extract_fences(text)
         plain = tuple(fence for fence in fences if fence.language == "python")
         assert plain, f"{operator_id} has no executable python fence"
@@ -224,20 +253,25 @@ def main() -> int:
     resource_root, distribution_root = installed_resource_root(forbidden)
     pages = indexed_example_pages(resource_root)
     fences = validate_pages(pages)
+    partitions = environment_partitions(pages)
     selected = set(cast(list[str], arguments.only)) or set(pages)
     assert selected.issubset(pages)
-    for operator_id in sorted(selected):
-        execute_page(operator_id, fences[operator_id])
     print(
         json.dumps(
             {
                 "distribution_root": str(distribution_root),
+                "environments": {
+                    name: list(operator_ids) for name, operator_ids in partitions.items()
+                },
                 "executed": sorted(selected),
                 "resource_root": str(resource_root),
             },
             sort_keys=True,
-        )
+        ),
+        flush=True,
     )
+    for operator_id in sorted(selected):
+        execute_page(operator_id, fences[operator_id])
     return 0
 
 

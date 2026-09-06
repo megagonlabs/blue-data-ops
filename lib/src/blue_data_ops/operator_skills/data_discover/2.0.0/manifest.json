@@ -1,0 +1,8 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "data_discover@2.0.0",
+  "resources": {
+    "guide": {"path": "Operator.md", "sha256": "2a13239ca972a0b513e6a953e6fe84cdf98f7c0619ee0cb6769ce9fc7764c99b"},
+    "examples": {"path": "examples.md", "sha256": "6e81ac97294d7dc8049e9585a4002173c99d5a08130f6ec1d2d2ebae9a7725e0"}
+  }
+}

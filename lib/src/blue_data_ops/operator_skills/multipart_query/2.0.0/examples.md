@@ -1,6 +1,8 @@
-# Multipart-query owner check
+# Multipart-query check
 
-The check refines one CTE, verifies the portable child IDs, and records the compute and validator compatibility behavior. It runs with the base installation.
+Environment: base
+
+This check refines one local CTE, verifies the selected child versions, and performs no query.
 
 ```python
 from typing import Any, cast
@@ -11,7 +13,6 @@ from blue_data_ops.operators import versioned_registry
 registry = versioned_registry()
 skill = OperatorSkillLoader(registry).load("multipart_query@2.0.0", level=3)
 operator = registry.resolve("multipart_query@2.0.0")
-
 cte = {
     "table": "facts",
     "description": "read facts",
@@ -20,6 +21,7 @@ cte = {
     "dependency": [],
     "generality": 0,
 }
+
 plans, refine_meta = operator.refine([[cte]], {})
 compute, output_attributes, compute_meta = operator.run([[]], {})
 child_ids = sorted(
@@ -42,7 +44,8 @@ assert child_ids == [
     "insert_table@2.0.0",
     "nl2query_router@2.0.0",
 ]
-assert compute == [[]] and compute_meta.errors == []
+assert compute == [[]]
 assert output_attributes == {}
+assert compute_meta.errors == []
 assert refine_meta.errors == []
 ```

@@ -2,13 +2,7 @@
   "format": "blue-data-ops/operator-skill@1",
   "operator_id": "avg@2.0.0",
   "resources": {
-    "guide": {
-      "path": "Operator.md",
-      "sha256": "0c7bba50ef67570e4c989e1dc540afc48c7f1dba1d51c14077faf9bd54fdf90c"
-    },
-    "examples": {
-      "path": "examples.md",
-      "sha256": "84de4a13320ac341f4082181fa2715d6a6519d4c11f812124ada381fd8f19802"
-    }
+    "guide": {"path": "Operator.md", "sha256": "fbbb71a7b4cbb1d5fe6ce49ddda02e78d259fc8bb87624297822dcdcb4a551f9"},
+    "examples": {"path": "examples.md", "sha256": "7efc73bde0f82b4266f66d773e01f768bfd822d2c3fb964ddcedcd7e210341e9"}
   }
 }

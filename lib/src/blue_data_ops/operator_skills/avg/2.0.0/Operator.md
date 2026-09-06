@@ -1,15 +1,19 @@
 # Average
 
-`avg@2.0.0` calculates one arithmetic mean from the first input group. Records in later groups are not read.
+`avg@2.0.0` calculates one arithmetic mean from the first input group. Later groups are ignored.
 
-## Values included in the mean
+## Settings
 
-The operator reads `avg_key` from each record in the first group. Existing integers and floats count directly, including booleans (`True` counts as 1 and `False` as 0). Other values are converted with `int()` first and `float()` second. This means a `Decimal` with a fractional part is truncated by `int()`, while a string such as `"3.5"` reaches the floating-point conversion. Values that cannot be converted are skipped.
+| Name | Input | Declared | Effective default | Validation | Kind |
+|---|---|---|---|---|---|
+| `avg_key` | `attributes` | `yes` | `none` | attribute-spec:str; non-empty string; selected data values use `int()` then `float()`, so bytes convert and fractional `Decimal` values truncate | `scalar` |
+| `execution.timeout_seconds` | `base-properties` | `no` | `none` | finite-positive-number; Boolean rejected | `scalar` |
+| `output_key` | `attributes` | `yes` | `"avg"` | `attribute-spec:str` | `scalar` |
 
-The live `io.attributes` mapping gives the declared `avg_key` and `output_key` schema. The default output key is `avg`.
+## Behavior
 
-## Results
+Integers and floats count directly, including Boolean values. Other values are converted with `int()` first and `float()` second. A string such as `"3.5"` reaches the floating-point conversion; an unconvertible value or missing key is skipped. Exceptions other than conversion failures propagate from the raw calls.
 
-A successful call returns one record in one group, such as `[[{"avg": 2.5}]]`. Empty input, an empty first group, or a first group with no convertible values returns the same shape with a zero value. The zero is a successful result, not an error record.
+`apply()` returns one new result record. Empty input, an empty first group, or no convertible values produces `[[{"avg": 0}]]`, which is a successful non-empty result. `invoke()` returns `None` for invalid settings. `run()` contains execution and timeout failures in `ExecMeta`; `output_attributes` is `{}`.
 
-`run()` validates that `avg_key` is nonempty and returns structured execution metadata. The current operator returns an empty `output_attributes` mapping. `invoke()` returns `None` when validation fails; `apply()` returns the raw result and does not add execution metadata.
+`explain()` uses the shared statistics. The operator has no side effect, provider call, registry call, or optional extra. Its default raw `refiner()` returns `[]`; it has no structured `refine()` surface.

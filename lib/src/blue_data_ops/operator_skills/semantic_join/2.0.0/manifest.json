@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "semantic_join@2.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "43725ec87c5c8f014c21c177df4e42682da0c523ea9622e819b21a47ad474afd"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "3daf2b61a9472a0a4648bdd4edb3238874f2351c23cfc63496ae9cbd16693eee"
+    }
+  }
+}

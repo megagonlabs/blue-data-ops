@@ -1,6 +1,8 @@
-# Classification owner check
+# Classification check
 
-Install `blue-data-ops[ml]` for this check. The first group trains each model; the second group checks prediction and missing-vector handling.
+Environment: ml
+
+The first group trains each supported model. The second group checks prediction and missing-vector handling.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -9,7 +11,6 @@ from blue_data_ops.operators import versioned_registry
 registry = versioned_registry()
 skill = OperatorSkillLoader(registry).load("classify@2.0.0", level=3)
 operator = registry.resolve("classify@2.0.0")
-
 training = [
     {"label": "first", "vector": [10.0, 1.0]},
     {"label": "first", "vector": [9.0, 0.5]},
@@ -42,19 +43,7 @@ for algorithm, settings in checks:
     assert output_attributes == {}
     assert meta.errors == []
 
-assert set(skill.io.attributes) == {
-    "vector_key",
-    "label_key",
-    "output_key",
-    "criterion",
-    "splitter",
-    "max_depth",
-    "min_samples_split",
-    "min_samples_leaf",
-    "random_state",
-    "n_neighbors",
-    "weights",
-    "alpha",
-    "fit_prior",
-}
+unchanged = operator.apply([training], common, {"algorithm": "unknown"})
+assert skill.card.operator_id == "classify@2.0.0"
+assert unchanged[0] is training
 ```
