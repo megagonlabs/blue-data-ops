@@ -19,6 +19,8 @@ OFFLINE_EXAMPLES = (
     "ml_quickstart.py",
     "vector_quickstart.py",
     "embedding_planner.py",
+    "operator_skill_discovery.py",
+    "operator_skill_integrations.py",
     "refinement.py",
 )
 OPTIONAL_EXAMPLES = (
@@ -30,9 +32,15 @@ OPTIONAL_EXAMPLES = (
 
 @pytest.mark.parametrize("name", OFFLINE_EXAMPLES)
 def test_offline_example_runs_from_lib(name: str) -> None:
+    env = dict(os.environ)
+    source_path = str(LIB_ROOT / "src")
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (source_path, env.get("PYTHONPATH", "")) if part
+    )
     result = subprocess.run(
         [sys.executable, str(EXAMPLES / name)],
         cwd=LIB_ROOT,
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -49,6 +57,11 @@ def test_optional_example_is_valid_python(name: str) -> None:
 
 def test_example_map_covers_public_tag_families() -> None:
     coverage = json.loads((EXAMPLES / "coverage.json").read_text(encoding="utf-8"))
+    mapped_examples = set(coverage["examples"])
+    runnable_examples = {
+        path.name for path in EXAMPLES.glob("*.py") if not path.name.startswith("_")
+    }
+    assert mapped_examples == runnable_examples
     registry = versioned_registry()
     cards = {card.operator_id: card for card in registry.list_cards() if card.version == "2.0.0"}
     class_ids = {type(registry.resolve(operator_id)).__name__: operator_id for operator_id in cards}

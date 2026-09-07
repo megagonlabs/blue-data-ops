@@ -96,6 +96,13 @@ class OperatorSkillView:
     history: str | None = None
 
 
+@dataclass(frozen=True)
+class OperatorSkillDescriptor:
+    card: OperatorCard
+    declared_kinds: tuple[str, ...]
+    declared_levels: tuple[int, ...]
+
+
 class _ReadFailure(str, Enum):
     ROOT_UNAVAILABLE = "root-unavailable"
     UNSAFE_PATH = "unsafe-path"
@@ -301,8 +308,7 @@ class OperatorSkillLoader:
             raise OperatorSkillLoadError(OperatorSkillErrorCode.MANIFEST_INVALID)
         return path
 
-    def _manifest(self, operator_id: str) -> tuple[OperatorCard, Operator, Path, dict[str, Any]]:
-        card, operator = self._binding(operator_id)
+    def _index_paths(self) -> dict[str, Path]:
         index = self._read_json(Path("_index.json"), INDEX_BYTE_LIMIT)
         if set(index) != set(_INDEX_KEYS) or index.get("format") != _INDEX_FORMAT:
             self._raise(OperatorSkillErrorCode.MANIFEST_INVALID)
@@ -316,6 +322,11 @@ class OperatorSkillLoader:
             if type(key) is not str or _PINNED_ID.fullmatch(key) is None:
                 self._raise(OperatorSkillErrorCode.MANIFEST_INVALID)
             paths[key] = self._manifest_path(key, value)
+        return paths
+
+    def _manifest(self, operator_id: str) -> tuple[OperatorCard, Operator, Path, dict[str, Any]]:
+        card, operator = self._binding(operator_id)
+        paths = self._index_paths()
         if operator_id not in paths:
             self._raise(OperatorSkillErrorCode.NOT_AVAILABLE)
 
@@ -349,6 +360,35 @@ class OperatorSkillLoader:
             if type(digest) is not str or _DIGEST.fullmatch(digest) is None:
                 self._raise(OperatorSkillErrorCode.MANIFEST_INVALID)
         return card, operator, manifest_path.parent, manifest
+
+    def available_operator_ids(self) -> tuple[str, ...]:
+        if type(self._registry) is not OperatorRegistry:
+            self._raise(OperatorSkillErrorCode.TRUST_REQUIRED)
+        indexed = self._index_paths()
+        return tuple(
+            card.operator_id
+            for card in self._registry.list_cards()
+            if card.operator_id in indexed and is_builtin_card(self._registry, card)
+        )
+
+    def describe(self, operator_id: str) -> OperatorSkillDescriptor:
+        card, _, _, manifest = self._manifest(operator_id)
+        resources = cast(dict[str, object], manifest["resources"])
+        declared_kinds = tuple(kind for kind in _RESOURCE_FILES if kind in resources)
+        declared_levels = tuple(
+            level
+            for level, required in {
+                2: ("guide",),
+                3: ("guide", "examples"),
+                4: ("guide", "examples", "history"),
+            }.items()
+            if all(kind in resources for kind in required)
+        )
+        return OperatorSkillDescriptor(
+            card=card,
+            declared_kinds=declared_kinds,
+            declared_levels=declared_levels,
+        )
 
     def _text(
         self,

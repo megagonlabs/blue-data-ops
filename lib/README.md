@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 2.6.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.7.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.6.0"
+  "blue-data-ops[ml,vector,llm]==2.7.0"
 ```
 
 The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
@@ -48,7 +48,7 @@ After installation, read the distribution version separately from the `@2.0.0` o
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.6.0"
+assert version("blue-data-ops") == "2.7.0"
 ```
 
 ## Usage
@@ -204,20 +204,50 @@ op = catalog.resolve(cards[0].operator_id) if cards else None
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.6.0 includes `@2.0.0` packages for all 32 active execution operators and retains the `multipart_query@2.0.0` package. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.7.0 includes `@2.0.0` packages for all 32 active execution operators and retains the `multipart_query@2.0.0` package. It also lets callers inspect package availability and resource metadata before loading text. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import versioned_registry
 
 registry = versioned_registry()
-skill = OperatorSkillLoader(registry).load("nl2sql@2.0.0", level=3)
+loader = OperatorSkillLoader(registry)
+skill = loader.load("nl2sql@2.0.0", level=3)
 
 assert skill.card is registry.get_card("nl2sql@2.0.0")
 assert skill.io.attributes["question"].required
 ```
 
-The loader has no latest-version fallback and does not accept custom registrations. The packaged `nl2sql@2.0.0` resource set does not include optimization, issue, or history resources; requesting one returns `NOT_AVAILABLE`.
+To expand a discovered card, first intersect the discovery result with the packages available to this loader:
+
+```python
+eligible_ids = set(loader.available_operator_ids())
+
+matches = registry.find("average", tags=["domain-arithmetic"])
+selected = next(card for card in matches if card.operator_id in eligible_ids)
+descriptor = loader.describe(selected.operator_id)
+skill = loader.load(selected.operator_id, level=max(descriptor.declared_levels))
+
+assert selected.operator_id == "avg@2.0.0"
+assert descriptor.declared_kinds == ("guide", "examples")
+assert descriptor.declared_levels == (2, 3)
+assert skill.card is selected
+```
+
+`available_operator_ids()` validates the package index and intersects it with package-built cards in the loader's registry. `describe()` validates the selected card, the full index, and its manifest, then reports the resource kinds and complete levels declared there. Neither method opens Markdown or validates the live attribute schema. Calling them in sequence reads the index twice and the selected manifest once because the loader keeps no cache or snapshot.
+
+A discovered card may have no skill package. Check eligibility before expansion instead of treating that case as a failed discovery:
+
+```python
+matches = registry.find("plan_discover", tags=["domain-plan"])
+selected = matches[0]
+if selected.operator_id not in eligible_ids:
+    print("no packaged guidance for", selected.operator_id)
+```
+
+Metadata calls do not guarantee that a later resource read will succeed. A package can change between calls, and `load()` or `read()` may still raise `OperatorSkillLoadError`. Handle `OperatorSkillErrorCode.NOT_AVAILABLE` when an optional level or resource is absent. The loader has no latest-version fallback and does not accept custom registrations.
+
+The runnable [`operator_skill_discovery.py`](examples/operator_skill_discovery.py) and [`operator_skill_integrations.py`](examples/operator_skill_integrations.py) examples show lexical, embedding-first, and planner-adjacent caller flows. The planner itself never loads skill metadata or text.
 
 ### Structured execution
 

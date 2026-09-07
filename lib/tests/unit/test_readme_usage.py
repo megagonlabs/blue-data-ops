@@ -110,7 +110,7 @@ def test_readme_embedding_discovery_example() -> None:
 
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
-    assert metadata["project"]["version"] == "2.6.0"
+    assert metadata["project"]["version"] == "2.7.0"
     assert metadata["project"]["requires-python"] == ">=3.11"
     assert metadata["tool"]["ruff"]["target-version"] == "py311"
     assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"

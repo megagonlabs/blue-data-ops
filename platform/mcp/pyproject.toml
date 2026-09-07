@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops-mcp"
-version = "0.8.0"
+version = "0.9.0"
 description = "MCP adapter for Blue Data Operators"
 readme = "README.md"
 requires-python = ">=3.11"
 # The core pin is exact and names the core release this adapter was verified against.
 dependencies = [
-    "blue-data-ops==2.6.0",
+    "blue-data-ops==2.7.0",
     "mcp==1.27.2",
     "pydantic>=2.11,<3",
 ]
