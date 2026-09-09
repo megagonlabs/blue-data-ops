@@ -10,6 +10,7 @@ from copy import deepcopy
 from math import isfinite
 from typing import TYPE_CHECKING, Any, ClassVar, ParamSpec, TypeVar, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators._metadata import (
     definitions_from_specs,
     enrich_attribute_signature,
@@ -241,6 +242,7 @@ def default_operator_function(
     return []
 
 
+@_deprecation.entry(subject="Operator.refiner()")
 def default_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -325,6 +327,10 @@ class Operator(Tool, ABC):
     attributes: ClassVar[dict[str, AttributeSpec]] = {}
     PROPERTIES: ClassVar[dict[str, Any]] = {}
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _deprecation.install(cls)
+
     def __init__(
         self,
         name: str | None = None,
@@ -335,6 +341,9 @@ class Operator(Tool, ABC):
         explainer: Callable[..., Any] | None = None,
         refiner: Callable[..., Any] | None = None,
     ) -> None:
+        # An already-hooked callable is the package's own refiner, so it announces itself.
+        if refiner is not None and not _deprecation.is_wrapped(refiner):
+            _deprecation.warn_injected_refiner()
         class_name = type(self).name
         class_description = type(self).description
         resolved_name = class_name if name is None else name
@@ -431,6 +440,7 @@ class Operator(Tool, ABC):
     ) -> DataBundle:
         """Transform input_data under attributes and return the operator output."""
 
+    @_deprecation.entry("validate")
     def validate(
         self,
         input_data: DataBundle,
@@ -461,6 +471,7 @@ class Operator(Tool, ABC):
         """Adapt the v1 single-output body to the v2 internal result."""
         return FunctionResult(self.apply(input_data, attributes, properties), {})
 
+    @_deprecation.entry("invoke")
     def invoke(
         self,
         input_data: DataBundle,
@@ -472,6 +483,7 @@ class Operator(Tool, ABC):
             return None
         return self.apply(input_data, attributes, properties)
 
+    @_deprecation.entry("run")
     def run(
         self,
         input_data: DataBundle,
@@ -489,7 +501,12 @@ class Operator(Tool, ABC):
         executor: ThreadPoolExecutor | None = None
         try:
             executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="blue-data-ops")
-            future = executor.submit(self._run_once, input_data, attributes, properties)
+            future = executor.submit(
+                _deprecation.propagate(self._run_once),
+                input_data,
+                attributes,
+                properties,
+            )
         except Exception:
             _shutdown_executor(executor)
             error = _error(
@@ -643,6 +660,7 @@ class Operator(Tool, ABC):
             return [[]], {}, _meta(error=error)
         return output_data, output_attributes, _meta(is_empty=is_empty)
 
+    @_deprecation.entry("explain")
     def explain(
         self,
         output: DataBundle,
@@ -772,6 +790,13 @@ class _VersionBindingMixin:
         object.__setattr__(self, "name", target.name)
         object.__setattr__(self, "description", target.description)
         object.__setattr__(self, "attributes", target.attributes)
+        # Closed here rather than read at call time, so an alias over an alias keeps the
+        # innermost target's lifecycle at any layer depth.
+        object.__setattr__(
+            self,
+            _deprecation.BOUND_REMOVED_TARGET,
+            _deprecation.effective_removed_target(target),
+        )
 
     @property
     def operator_id(self) -> str:
@@ -784,6 +809,7 @@ class _VersionBindingMixin:
         target = object.__getattribute__(self, "_target")
         return getattr(target, name)
 
+    @_deprecation.entry("apply")
     def apply(
         self,
         input_data: DataBundle,
@@ -799,6 +825,7 @@ class _VersionBindingMixin:
             properties,
         )
 
+    @_deprecation.entry("validate")
     def validate(
         self,
         input_data: DataBundle,
@@ -844,6 +871,7 @@ class _VersionBindingMixin:
             properties,
         )
 
+    @_deprecation.entry("invoke")
     def invoke(
         self,
         input_data: DataBundle,
@@ -859,6 +887,7 @@ class _VersionBindingMixin:
             properties,
         )
 
+    @_deprecation.entry("explain")
     def explain(
         self,
         output: DataBundle,
@@ -873,6 +902,9 @@ class _VersionBindingMixin:
             input_data,
             attributes,
         )
+
+
+_deprecation.register_version_binding_base(_VersionBindingMixin)
 
 
 class _VersionBoundOperator(  # pyright: ignore[reportUnusedClass]

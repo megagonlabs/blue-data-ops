@@ -3,6 +3,9 @@ from __future__ import annotations
 from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import versioned_registry
 
+# The v1 average card is current and searchable; it just ships no skill package.
+SKILL_INELIGIBLE_OPERATOR_ID = "avg@1.0.0"
+
 
 def main() -> None:
     registry = versioned_registry()
@@ -11,6 +14,7 @@ def main() -> None:
 
     matches = registry.find("average", tags=["domain-arithmetic"])
     selected = next(card for card in matches if card.operator_id in eligible_ids)
+    skipped = next(card for card in matches if card.operator_id not in eligible_ids)
     descriptor = loader.describe(selected.operator_id)
     view = loader.load(selected.operator_id, level=max(descriptor.declared_levels))
 
@@ -19,13 +23,11 @@ def main() -> None:
     assert descriptor.declared_levels == (2, 3)
     assert view.card is selected
 
-    plan_matches = registry.find("plan_discover", tags=["domain-plan"])
-    top_plan_match = plan_matches[0]
-    assert top_plan_match.operator_id == "plan_discover@2.0.0"
-    assert top_plan_match.operator_id not in eligible_ids
+    assert skipped.operator_id == SKILL_INELIGIBLE_OPERATOR_ID
+    assert SKILL_INELIGIBLE_OPERATOR_ID not in eligible_ids
 
     print("expanded:", selected.operator_id, descriptor.declared_levels)
-    print("skipped without loading:", top_plan_match.operator_id)
+    print("skipped without loading:", skipped.operator_id)
 
 
 if __name__ == "__main__":

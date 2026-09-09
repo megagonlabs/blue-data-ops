@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._multipart_plan import build_multipart_pipelines
 from blue_data_ops.operators.types import (
@@ -19,6 +20,7 @@ from blue_data_ops.plan.refiner import (
 )
 
 
+@_deprecation.entry(subject="multipart_query_operator_function()")
 def multipart_query_operator_function(
     input_data: DataBundle,
     attributes: Attributes,
@@ -29,6 +31,7 @@ def multipart_query_operator_function(
     return [[]]
 
 
+@_deprecation.entry(subject="multipart_query_operator_refiner()")
 def multipart_query_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -42,6 +45,7 @@ def multipart_query_operator_refiner(
     )
 
 
+@_deprecation.entry(subject="multipart_query_operator_validator()")
 def multipart_query_operator_validator(
     attributes: Attributes,
     properties: Properties | None = None,
@@ -53,6 +57,7 @@ def multipart_query_operator_validator(
     )
 
 
+@_deprecation.entry(subject="multipart_query_operator_explainer()")
 def multipart_query_operator_explainer(
     output: DataBundle,
     input_data: DataBundle,

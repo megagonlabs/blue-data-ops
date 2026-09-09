@@ -10,6 +10,11 @@ from blue_data_ops.operators import versioned_registry
 
 LIB_ROOT = Path(__file__).resolve().parents[1]
 OUTCOMES_PATH = LIB_ROOT / "tests" / "fixtures" / "v2_operator_outcomes.json"
+DEPRECATION_NOTICE = (
+    "**Deprecated in 2.8.0; removed in 3.0.0.** Both registered versions carry the lifecycle "
+    "flag, and calls emit a `BlueDataOpsDeprecationWarning`. See "
+    "[COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280)."
+)
 
 
 def _display(value: Any) -> str:
@@ -109,6 +114,12 @@ def render_reference() -> str:
             [
                 f"## `{card.operator_id}`",
                 "",
+            ]
+        )
+        if card.deprecated:
+            lines.extend([DEPRECATION_NOTICE, ""])
+        lines.extend(
+            [
                 card.description,
                 "",
                 f"When to invoke: {card.when_to_invoke}",

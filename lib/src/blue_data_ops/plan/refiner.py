@@ -7,6 +7,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from copy import deepcopy
 from typing import Any, ClassVar, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators.operator import (
     Operator,
     _call_with_operator_id,  # pyright: ignore[reportPrivateUsage]
@@ -65,6 +66,7 @@ class RefinableOperator(Operator, ABC):
         del properties
         return deepcopy(input_data), deepcopy(attributes)
 
+    @_deprecation.entry("refine")
     def refine(
         self,
         input_data: DataBundle,
@@ -85,7 +87,12 @@ class RefinableOperator(Operator, ABC):
                 max_workers=1,
                 thread_name_prefix="blue-data-ops-refine",
             )
-            future = executor.submit(self._refine_once, input_data, attributes, properties)
+            future = executor.submit(
+                _deprecation.propagate(self._refine_once),
+                input_data,
+                attributes,
+                properties,
+            )
         except Exception:
             _shutdown_executor(executor)
             error = _error(
@@ -364,6 +371,7 @@ def _plan_records(value: object) -> list[dict[str, Any]] | None:
     return records
 
 
+@_deprecation.entry(subject="declarative_operator_refiner()")
 def declarative_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -455,6 +463,7 @@ def declarative_operator_refiner(
     return pipelines
 
 
+@_deprecation.entry(subject="normalized_declarative_operator_refiner()")
 def normalized_declarative_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -539,6 +548,9 @@ def normalized_declarative_operator_refiner(
 class DeclarativeOperator(RefinableOperator):
     """Operator whose properties hold ordered declarative subplans."""
 
+    # Read by Operator.__init_subclass__ while the class is being created, so it has to be
+    # a class-body assignment rather than a later setattr.
+    __blue_deprecated_type__ = True
     PROPERTIES: ClassVar[dict[str, list[Any]]] = {"plans": []}
     name = "declarative_operator"
     description = "Declaratively specifies the execution of the operator as a set of plans"

@@ -27,6 +27,8 @@ from ._settings_conformance import expected_skill_package_ids
 
 RESOURCE_ROOT = Path(__file__).parents[3] / "src" / "blue_data_ops" / "operator_skills"
 OPERATOR_ID = "nl2sql@2.0.0"
+ELIGIBLE_AVERAGE_ID = "avg@2.0.0"
+INELIGIBLE_AVERAGE_ID = "avg@1.0.0"
 
 
 def _copy_resources(tmp_path: Path) -> Path:
@@ -64,6 +66,45 @@ def test_available_ids_are_the_registry_ordered_eligible_intersection() -> None:
 
 def test_default_registry_has_no_eligible_skill_packages() -> None:
     assert OperatorSkillLoader(default_registry()).available_operator_ids() == ()
+
+
+# The retained v1 average card is the one the skill-discovery example skips. Visibility,
+# lifecycle, and resource eligibility are three different properties of these cards, so each is
+# observed on its own: a card can be searchable and current and still ship no skill package.
+def test_the_v1_average_card_stays_publicly_discoverable() -> None:
+    registry = versioned_registry()
+    matches = registry.find("average", tags=["domain-arithmetic"])
+
+    assert [card.operator_id for card in matches] == [ELIGIBLE_AVERAGE_ID, INELIGIBLE_AVERAGE_ID]
+    assert registry.get_card(INELIGIBLE_AVERAGE_ID) is not None
+    assert registry.resolve(INELIGIBLE_AVERAGE_ID) is not None
+
+
+# Lifecycle covers both average versions. The skill-eligible one is as easy to deprecate by
+# accident as the retained one, and neither the ranked-discovery check above nor the eligibility
+# checks below would notice.
+def test_neither_average_card_is_deprecated() -> None:
+    registry = versioned_registry()
+
+    for operator_id in (ELIGIBLE_AVERAGE_ID, INELIGIBLE_AVERAGE_ID):
+        card = registry.get_card(operator_id)
+        assert card is not None, operator_id
+        assert card.deprecated is False, operator_id
+
+
+def test_the_v1_average_card_has_no_operator_skill_package() -> None:
+    loader = OperatorSkillLoader(versioned_registry())
+
+    assert INELIGIBLE_AVERAGE_ID not in loader.available_operator_ids()
+    _error(lambda: loader.describe(INELIGIBLE_AVERAGE_ID), OperatorSkillErrorCode.NOT_AVAILABLE)
+    _error(lambda: loader.load(INELIGIBLE_AVERAGE_ID), OperatorSkillErrorCode.NOT_AVAILABLE)
+
+
+def test_the_v2_average_card_stays_operator_skill_eligible() -> None:
+    loader = OperatorSkillLoader(versioned_registry())
+
+    assert ELIGIBLE_AVERAGE_ID in loader.available_operator_ids()
+    assert loader.describe(ELIGIBLE_AVERAGE_ID).declared_levels == (2, 3)
 
 
 def test_public_registration_cannot_claim_indexed_resources(tmp_path: Path) -> None:
@@ -202,6 +243,20 @@ def test_whole_index_validation_rejects_an_unrelated_bad_entry(tmp_path: Path) -
 
     _error(loader.available_operator_ids, OperatorSkillErrorCode.MANIFEST_INVALID)
     _error(lambda: loader.describe(OPERATOR_ID), OperatorSkillErrorCode.MANIFEST_INVALID)
+
+
+def test_a_dot_segment_package_name_invalidates_the_whole_index(tmp_path: Path) -> None:
+    root = _copy_resources(tmp_path)
+    index_path = root / "_index.json"
+    index = _load_json(index_path)
+    index["packages"]["..@1.0.0"] = "../1.0.0/manifest.json"
+    _write_json(index_path, index)
+    loader = OperatorSkillLoader(versioned_registry(), _resource_root=root)
+
+    _error(loader.available_operator_ids, OperatorSkillErrorCode.MANIFEST_INVALID)
+    _error(lambda: loader.describe(OPERATOR_ID), OperatorSkillErrorCode.MANIFEST_INVALID)
+    _error(lambda: loader.load(OPERATOR_ID), OperatorSkillErrorCode.MANIFEST_INVALID)
+    _error(lambda: loader.read(OPERATOR_ID, "guide"), OperatorSkillErrorCode.MANIFEST_INVALID)
 
 
 def test_existing_argument_checks_still_precede_index_reads(tmp_path: Path) -> None:

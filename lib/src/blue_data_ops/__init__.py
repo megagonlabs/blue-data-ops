@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from blue_data_ops import utils
+from blue_data_ops._deprecation import BlueDataOpsDeprecationWarning
 from blue_data_ops.data import (
     BlueDataRegistryProvider,
     DataRegistryProvider,
@@ -58,6 +59,7 @@ __all__ = [
     "ArgmaxOperator",
     "ArgminOperator",
     "AvgOperator",
+    "BlueDataOpsDeprecationWarning",
     "BlueDataRegistryProvider",
     "CreateDatabaseOperator",
     "CreateTableOperator",

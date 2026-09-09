@@ -1,3 +1,11 @@
+"""Compatibility evidence: 2.8.0 deprecates the refinement surface.
+
+``refiner()``, ``refine()``, and ``PipelinePlanner.plan_refinement()`` stay callable for the
+rest of 2.x and are removed in 3.0.0. This script keeps calling them so the seam stays
+exercised; do not copy it into a new integration. Each ``refine()`` call below emits a
+``BlueDataOpsDeprecationWarning``, and nothing here filters that warning away.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence

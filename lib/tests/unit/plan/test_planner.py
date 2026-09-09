@@ -819,7 +819,16 @@ def test_rejects_an_operator_outside_the_discovery_snapshot() -> None:
         planner.plan(request)
 
 
-def test_rejects_a_refinable_execution_node() -> None:
+def test_a_deprecated_step_is_named_by_the_lifecycle_before_compilation() -> None:
+    """A generator that hands plan() a deprecated step is told why it was refused.
+
+    The containment is `_compile`: the step is absent from an active-only snapshot, so
+    compilation rejects it either way, with "was not discovered". This check runs first
+    only so the message names the lifecycle instead. It is attribution, not a second
+    barrier. The executor's own refusal to preflight a refinable node is unchanged and is
+    covered in test_executor.py.
+    """
+
     draft = PlanDraft(
         (
             PlanStep(
@@ -838,12 +847,51 @@ def test_rejects_a_refinable_execution_node() -> None:
         discovery_queries=(DiscoveryQuery("query_breakdown"),),
     )
 
-    with pytest.raises(PlanningError, match="materialized non-refinable") as caught:
+    with pytest.raises(PlanningError) as caught:
         planner.plan(request)
 
+    assert caught.value.record.message == (
+        "operator 'query_breakdown@2.0.0' is deprecated and is not admitted by plan()"
+    )
     assert caught.value.record.category is ErrorCategory.RECOVERABLE
-    assert caught.value.record.code is PlanningErrorCode.PREFLIGHT_FAILED
-    assert caught.value.record.stage is PlanningStage.PREFLIGHT
+    assert caught.value.record.code is PlanningErrorCode.PLAN_INVALID
+    assert caught.value.record.stage is PlanningStage.COMPILATION
+
+
+def test_a_failing_lifecycle_lookup_is_contained_like_any_compilation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lifecycle lookup runs on every draft, so a registry failure must not escape.
+
+    The draft here is entirely active, which is the ordinary case: the caller never asked
+    for a deprecated operator and only the lookup itself fails. The record is the generic
+    compilation one, distinct from the deprecated-step message above.
+    """
+
+    registry = versioned_registry()
+    planner = PipelinePlanner(registry, RulePlanGenerator((_fixed_rule(_order_draft()),)))
+    request = _order_request()
+
+    assert planner.plan(request).preflight.operator_ids == ("select@2.0.0", "avg@2.0.0")
+
+    def explode(*args: object) -> NoReturn:
+        del args
+        raise RuntimeError("lifecycle-lookup-detail-should-not-leak")
+
+    monkeypatch.setattr(registry, "get_card", explode)
+
+    with pytest.raises(PlanningError, match="plan compilation failed") as caught:
+        planner.plan(request)
+
+    assert "lifecycle-lookup-detail" not in str(caught.value)
+    assert caught.value.record == (
+        ErrorCategory.FAILED,
+        PlanningErrorCode.COMPILATION_FAILED,
+        PlanningStage.COMPILATION,
+        "plan compilation failed",
+        False,
+        "Check the plan compiler.",
+    )
 
 
 def test_rejects_a_cyclic_draft() -> None:
@@ -1021,3 +1069,172 @@ def test_result_copy_failure_has_a_non_leaking_record(
         False,
         "Use a planning request containing portable data.",
     )
+
+
+# --- Lifecycle admission: compatibility discovery versus ordinary planning ----------- #
+DEPRECATED_PLAN_IDS = (
+    "plan_discover@2.0.0",
+    "multipart_query@2.0.0",
+    "nl2query_router@2.0.0",
+    "query_breakdown@2.0.0",
+)
+
+
+def _admission_request() -> PlanningRequest:
+    """One request whose queries reach the deprecated cohort and two active operators."""
+
+    return PlanningRequest(
+        goal="Average order total above 100",
+        discovery_queries=(
+            DiscoveryQuery("plan", limit=4),
+            DiscoveryQuery("select", limit=2),
+            DiscoveryQuery("avg", limit=1),
+        ),
+        allowed_operator_ids=(),
+        max_discovery_cards=12,
+    )
+
+
+class _OfferedRecorder(RulePlanGenerator):
+    """A rule generator that also keeps what plan() offered it."""
+
+    def __init__(self, rules: Sequence[PlanRule] | None = None) -> None:
+        super().__init__(rules)
+        self.offered: list[tuple[str, ...]] = []
+
+    def generate(
+        self,
+        request: PlanningRequest,
+        discovery: DiscoverySnapshot,
+        data_context: DataContextSnapshot | None = None,
+    ) -> tuple[PlanDraft, ...]:
+        self.offered.append(discovery.operator_ids)
+        return super().generate(request, discovery, data_context)
+
+
+def test_public_discover_still_offers_the_deprecated_plan_cohort() -> None:
+    planner = PipelinePlanner(versioned_registry(), RulePlanGenerator())
+
+    assert planner.discover(_admission_request()).operator_ids == (
+        "plan_discover@2.0.0",
+        "multipart_query@2.0.0",
+        "nl2query_router@2.0.0",
+        "query_breakdown@2.0.0",
+        "semantic_project@2.0.0",
+        "select@2.0.0",
+        "avg@2.0.0",
+    )
+
+
+def test_ordinary_planning_offers_only_active_cards_and_backfills_the_budget() -> None:
+    """`data_discover@2.0.0` is the evidence that the skip is inside the ranking loop.
+
+    A deprecated card that is skipped in the loop spends neither the query limit nor
+    `max_discovery_cards`, so an active card that ranked below the cohort and would have
+    been truncated away is offered instead. Filtering the finished snapshot yields the
+    same three active cards without this one.
+    """
+
+    generator = _OfferedRecorder((_fixed_rule(_order_draft()),))
+    planner = PipelinePlanner(versioned_registry(), generator)
+
+    result = planner.plan(_admission_request())
+
+    assert result.discovery.operator_ids == (
+        "data_discover@2.0.0",
+        "semantic_project@2.0.0",
+        "select@2.0.0",
+        "avg@2.0.0",
+    )
+    assert generator.offered == [result.discovery.operator_ids]
+
+
+def test_planner_version_admission_is_unchanged_by_the_lifecycle_filter() -> None:
+    planner = PipelinePlanner(
+        versioned_registry(), _OfferedRecorder((_fixed_rule(_order_draft()),))
+    )
+    request = _admission_request()
+
+    compatible = planner.discover(request).operator_ids
+    active = planner.plan(request).discovery.operator_ids
+
+    assert all(operator_id.endswith("@2.0.0") for operator_id in compatible + active)
+
+
+def test_ordinary_planning_and_compatibility_discovery_share_one_error_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`discover()` and `plan()` reach discovery through the same parameterized body."""
+
+    registry = versioned_registry()
+
+    def explode(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise RuntimeError("registry-payload-should-not-leak")
+
+    monkeypatch.setattr(registry, "find", explode)
+    planner = PipelinePlanner(registry, RulePlanGenerator())
+    envelope = (
+        ErrorCategory.FAILED,
+        PlanningErrorCode.DISCOVERY_FAILED,
+        PlanningStage.DISCOVERY,
+        "operator discovery failed",
+        False,
+        "Check the operator registry and discovery filters.",
+    )
+
+    with pytest.raises(PlanningError) as public:
+        planner.discover(_order_request())
+    with pytest.raises(PlanningError) as active:
+        planner.plan(_order_request())
+
+    assert public.value.record == envelope
+    assert active.value.record == envelope
+    assert "registry-payload" not in str(active.value)
+
+
+def test_a_request_restricted_to_deprecated_cards_reaches_no_candidates() -> None:
+    planner = PipelinePlanner(versioned_registry(), RulePlanGenerator())
+    request = PlanningRequest(
+        goal="Break a question down",
+        discovery_queries=(DiscoveryQuery("plan", limit=4),),
+        allowed_operator_ids=DEPRECATED_PLAN_IDS,
+    )
+
+    assert planner.discover(request).operator_ids == DEPRECATED_PLAN_IDS
+
+    with pytest.raises(PlanningError, match="planning produced no candidates") as caught:
+        planner.plan(request)
+
+    assert caught.value.record.code is PlanningErrorCode.NO_CANDIDATES
+    assert caught.value.record.stage is PlanningStage.SELECTION
+
+
+@pytest.mark.parametrize("source_operator_id", DEPRECATED_PLAN_IDS)
+def test_refinement_still_discovers_and_admits_every_deprecated_source(
+    source_operator_id: str,
+) -> None:
+    """Compatibility refinement keeps all four sources: it runs through `discover()`.
+
+    `_eligible_refinement_source` rejects a source that is missing from the snapshot, so a
+    source reaching its own body at all is the proof that public discovery still carries
+    it. Three of the four then fail inside the operator for want of a live registry,
+    metadata, or query, which is their behavior at 2.7.0 on this input.
+    """
+
+    planner = PipelinePlanner(versioned_registry(), cast(Any, None))
+    request = PlanningRequest(
+        goal="Materialize a refinement alternative",
+        discovery_queries=(DiscoveryQuery(source_operator_id.split("@", 1)[0]),),
+        allowed_operator_ids=(source_operator_id, "create_database@2.0.0"),
+    )
+
+    assert source_operator_id in planner.discover(request).operator_ids
+
+    if source_operator_id == "multipart_query@2.0.0":
+        result = planner.plan_refinement(request, source_operator_id, [[]], {})
+        assert result.preflight.operator_ids == ("create_database@2.0.0",)
+        return
+
+    with pytest.raises(PlanningError, match="operator refinement failed"):
+        planner.plan_refinement(request, source_operator_id, [[]], {})

@@ -364,7 +364,7 @@ class OpenAIPlanGenerator:
         return self._decode(raw, request, authorized, data_context)
 
     def _authorized_cards(self, discovery: DiscoverySnapshot) -> dict[str, OperatorCard]:
-        """The model-visible catalog: allowlisted, discovered, built-in, v2, side-effect free.
+        """The model-visible catalog: allowlisted, discovered, built-in, v2, active, read-only.
 
         Provenance failure and an empty result are different outcomes on purpose. The
         first says the caller wired up a registry this generator cannot vouch for; the
@@ -388,6 +388,10 @@ class OpenAIPlanGenerator:
                 self._registry.resolve(card.operator_id)
             except Exception:
                 raise _builtin_cards_required() from None
+            if card.deprecated:
+                # Default-deny by lifecycle, and only after the provenance test above, so
+                # the flag read is the registry's own value rather than the caller's.
+                continue
             if _SIDE_EFFECT_TAG in card.tags:
                 # Default-deny: a write card is never offered to the model, and the
                 # decoder rejects one anyway. Planning performs no write either way.

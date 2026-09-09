@@ -7,6 +7,7 @@ from itertools import islice
 from math import isfinite
 from typing import Any, Literal, Protocol, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators.embedding_discovery import (
     EmbeddingDiscoveryError,
     OperatorEmbeddingIndex,
@@ -1096,9 +1097,19 @@ class PipelinePlanner:
         self._embedding_index = embedding_index
 
     def discover(self, request: PlanningRequest) -> DiscoverySnapshot:
+        """Compatibility discovery: every discoverable 2.0.0 card, deprecated or not.
+
+        `plan_refinement()` reaches its sources through this snapshot and rejects a source
+        that is missing from it, so the lifecycle filter belongs on the active-only path
+        rather than here.
+        """
+
+        return self._discovery(request, active_only=False)
+
+    def _discovery(self, request: PlanningRequest, *, active_only: bool) -> DiscoverySnapshot:
         typed_request = _validate_request_data(request)
         try:
-            return self._discover(typed_request)
+            return self._discover(typed_request, active_only=active_only)
         except Exception:
             raise planning_error(
                 PlanningStage.DISCOVERY,
@@ -1108,7 +1119,9 @@ class PipelinePlanner:
                 suggestion="Check the operator registry and discovery filters.",
             ) from None
 
-    def _discover(self, request: PlanningRequest) -> DiscoverySnapshot:
+    def _discover(
+        self, request: PlanningRequest, *, active_only: bool = False
+    ) -> DiscoverySnapshot:
         allowed = set(request.allowed_operator_ids)
         cards: list[OperatorCard] = []
         seen: set[str] = set()
@@ -1121,6 +1134,10 @@ class PipelinePlanner:
             query_count = 0
             for card in matches:
                 if card.version != _PLANNER_OPERATOR_VERSION:
+                    continue
+                # In the loop, so a skipped card spends neither the query limit nor the
+                # card budget: the caller's discovery budget buys active cards.
+                if active_only and card.deprecated:
                     continue
                 if allowed and card.operator_id not in allowed:
                     continue
@@ -1141,7 +1158,7 @@ class PipelinePlanner:
         # caller-supplied registry, so an anchor taken after it would record a scope that
         # callback had already been free to change.
         scope_anchor = _scope_anchor(typed_request)
-        discovery = self.discover(typed_request)
+        discovery = self._discovery(typed_request, active_only=True)
         self._require_anchor(typed_request, scope_anchor)
         # Two detached copies of one canonical document. The generator gets the
         # first and may do what it likes with it; `retained` never leaves this frame
@@ -1151,8 +1168,11 @@ class PipelinePlanner:
         _validate_request_data(typed_request)
         self._require_anchor(typed_request, scope_anchor)
         selected = self._select_candidate(candidates)
-        self._require_anchor(typed_request, scope_anchor)
         try:
+            # The lookup calls the caller-supplied registry, so it belongs inside the
+            # boundary: an unexpected failure there is contained, not raised raw.
+            self._reject_deprecated_steps(selected)
+            self._require_anchor(typed_request, scope_anchor)
             pipeline = self._compile(typed_request, selected, discovery, scope_anchor)
         except PlanningError:
             raise
@@ -1364,6 +1384,25 @@ class PipelinePlanner:
             code=PlanningErrorCode.SELECTION_RESULT_INVALID,
         )
 
+    def _reject_deprecated_steps(self, draft: PlanDraft) -> None:
+        """Name the lifecycle when a draft reaches compilation with a deprecated step.
+
+        `_compile` already rejects such a step, because an active-only snapshot does not
+        contain it. This runs first only so the message says why, not "was not
+        discovered"; it is attribution, and `_compile` remains the containment.
+        """
+
+        for step in draft.steps:
+            operator_id = cast(object, getattr(step, "operator_id", None))
+            if type(operator_id) is not str:
+                continue  # _compile owns shape errors
+            card = self._registry.get_card(operator_id)
+            if card is not None and card.deprecated:
+                raise _invalid_compiled_plan(
+                    f"operator {operator_id!r} is deprecated and is not admitted by plan()"
+                )
+
+    @_deprecation.entry(subject="PipelinePlanner.plan_refinement()")
     def plan_refinement(
         self,
         request: PlanningRequest,

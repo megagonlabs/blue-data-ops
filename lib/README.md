@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 2.7.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.8.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.7.0"
+  "blue-data-ops[ml,vector,llm]==2.8.0"
 ```
 
 The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
@@ -48,7 +48,7 @@ After installation, read the distribution version separately from the `@2.0.0` o
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.7.0"
+assert version("blue-data-ops") == "2.8.0"
 ```
 
 ## Usage
@@ -62,7 +62,7 @@ python examples/sqlite_quickstart.py
 python examples/refinement.py
 ```
 
-`sqlite_quickstart.py` creates a temporary SQLite database with ten rows, registers it, performs a real insert, and removes the database when it exits. See [examples/README.md](examples/README.md) for the ML, vector, and live-provider examples. See [OPERATORS.md](OPERATORS.md) for the generated attribute and outcome reference for all 36 operators. These reference and example files ship in the source distribution; they are not installed as files beside the Python package in the wheel.
+`sqlite_quickstart.py` creates a temporary SQLite database with ten rows, registers it, performs a real insert, and removes the database when it exits. `refinement.py` calls the seam deprecated in 2.8.0 and stays runnable as compatibility evidence; start from the other two. See [examples/README.md](examples/README.md) for the ML, vector, and live-provider examples. See [OPERATORS.md](OPERATORS.md) for the generated attribute and outcome reference for all 36 operators. These reference and example files ship in the source distribution; they are not installed as files beside the Python package in the wheel.
 
 ```python
 from blue_data_ops import SelectOperator
@@ -125,9 +125,11 @@ You may inject a raw `DataRegistry` instead; `resolve_registry()` wraps it. With
 | Vector (extra: `vector`) | `vector_embed`, `vector_search`, `vector_similarity` |
 | LLM (extra: `llm`) | `nl2llm`, `nl2sql`, `nl2bn`, `semantic_extract`, `semantic_filter`, `semantic_join`, `semantic_project`, `semantic_transform` |
 | Registry-backed | `create_database`, `create_table`, `insert_table`, `data_discover` |
-| Plan-producing | `multipart_query`, `nl2query_router`, `plan_discover`, `query_breakdown` |
+| Plan-producing (deprecated) | `multipart_query`, `nl2query_router`, `plan_discover`, `query_breakdown` |
 
 `nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown` send requests through [LiteLLM](https://github.com/BerriAI/litellm); configure the model per call via properties (default `openai.model: gpt-4o`). `classify` uses NumPy and scikit-learn from the `ml` extra. Registry-backed operators talk to `blue-data` through the data seam.
+
+The four plan-producing operators are deprecated in 2.8.0 and removed in 3.0.0. They still resolve and run for the rest of 2.x; see [Deprecations in 2.8.0](#deprecations-in-280).
 
 This short `nl2llm` call uses a live provider:
 
@@ -204,7 +206,7 @@ op = catalog.resolve(cards[0].operator_id) if cards else None
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.7.0 includes `@2.0.0` packages for all 32 active execution operators and retains the `multipart_query@2.0.0` package. It also lets callers inspect package availability and resource metadata before loading text. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Version 2.8.0 includes `@2.0.0` packages for all 32 active execution operators and retains the `multipart_query@2.0.0` package. It also lets callers inspect package availability and resource metadata before loading text. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -236,13 +238,13 @@ assert skill.card is selected
 
 `available_operator_ids()` validates the package index and intersects it with package-built cards in the loader's registry. `describe()` validates the selected card, the full index, and its manifest, then reports the resource kinds and complete levels declared there. Neither method opens Markdown or validates the live attribute schema. Calling them in sequence reads the index twice and the selected manifest once because the loader keeps no cache or snapshot.
 
-A discovered card may have no skill package. Check eligibility before expansion instead of treating that case as a failed discovery:
+A discovered card may have no skill package. Eligibility is separate from both visibility and lifecycle: `avg@1.0.0` is current and searchable and still ships no package, while `avg@2.0.0` is the eligible one. Check eligibility before expansion instead of treating the miss as a failed discovery:
 
 ```python
-matches = registry.find("plan_discover", tags=["domain-plan"])
-selected = matches[0]
-if selected.operator_id not in eligible_ids:
-    print("no packaged guidance for", selected.operator_id)
+skipped = next(card for card in matches if card.operator_id not in eligible_ids)
+
+assert skipped.operator_id == "avg@1.0.0"
+assert registry.get_card(skipped.operator_id) is not None
 ```
 
 Metadata calls do not guarantee that a later resource read will succeed. A package can change between calls, and `load()` or `read()` may still raise `OperatorSkillLoadError`. Handle `OperatorSkillErrorCode.NOT_AVAILABLE` when an optional level or resource is absent. The loader has no latest-version fallback and does not accept custom registrations.
@@ -298,11 +300,13 @@ assert error.operator_id == "select@2.0.0"
 
 Set a canonical wrapper deadline with `properties={"execution.timeout_seconds": <finite-positive-number>}`. The wrapper never retries. The legacy `properties["timeout"]` field remains observable but does not set this deadline.
 
-`apply()` and `invoke()` remain the raw v1-compatible paths through v2.x. For ordinary data operators, `apply()` calls the transform directly and `invoke()` runs boolean `validate()` before `apply()`, returning `None` when validation is false. `multipart_query` and `nl2query_router` preserve Blue's two-argument `validate(attributes, properties)` call shape; their inherited three-argument `invoke()` is not a supported path. Use `refine()` for those plan-producing operators. Raw calls do not provide canonical default materialization or contained `ExecMeta`; use `run()` when the caller needs those semantics. See [COMPATIBILITY.md](COMPATIBILITY.md) for the migration boundary.
+`apply()` and `invoke()` remain the raw v1-compatible paths through v2.x. For ordinary data operators, `apply()` calls the transform directly and `invoke()` runs boolean `validate()` before `apply()`, returning `None` when validation is false. `multipart_query` and `nl2query_router` preserve Blue's two-argument `validate(attributes, properties)` call shape; their inherited three-argument `invoke()` is not a supported path. Use `refine()` for those plan-producing operators. Raw calls do not provide canonical default materialization or contained `ExecMeta`; use `run()` when the caller needs those semantics. Those four operators and every `refiner()` and `refine()` call are deprecated in 2.8.0. See [COMPATIBILITY.md](COMPATIBILITY.md) for the migration boundary.
 
 The rest of the compatibility surface remains public. The ordinary three-argument `validate(input_data, attributes, properties)` path checks the live attribute schema and returns `False` for invalid attribute values. The two plan-producing exceptions above use their Blue call shape. `explain()` describes a completed transform, and `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes.
 
 ### Refinement and plan representation
+
+The whole refinement seam is deprecated in 2.8.0 and removed in 3.0.0, including the calls below and `RefinableOperator` itself. It stays callable for the rest of 2.x, and each call warns. Treat this section and [`examples/refinement.py`](examples/refinement.py) as evidence that existing integrations keep working, not as the shape for a new one.
 
 The four plan-producing operators expose raw `refiner()` and normalized `refine()` calls. `refiner()` keeps the v1 serialized-record shape. `refine()` returns `(list[DataPipeline], ExecMeta)` and reports empty or failed refinement through the same metadata model as `run()`.
 
@@ -399,6 +403,8 @@ assert [step.operator_id for step in run.planning.selected.steps] == [
 `plan(request)` returns a `PlanningResult` without executing anything: a copy of the `request`, the `discovery` snapshot, the generated `candidates`, the `selected` draft, the compiled `pipeline`, its `preflight`, and the `data_context` retained for the run. `run(request, input_data)` returns a `PlannerRun` holding that `PlanningResult` and the `PipelineRun` from executing it. `execute(planning, input_data)` executes a `PlanningResult` produced earlier; it runs a copy, so the result's own pipeline record stays unchanged.
 
 The planner compiles only `@2.0.0` operator ids, and only ones its own discovery returned. `RequireSinglePlan` is the shipped selector and accepts exactly one candidate; pass a `selector` of your own to choose among several. `PlanningRequest` carries the bounds: `max_discovery_cards`, `max_candidates`, `max_steps`, `max_nodes`, and `max_edges`.
+
+`plan()` admits active cards only. `discover()` is unchanged and still returns deprecated cards, so the two can disagree; see [Deprecations in 2.8.0](#deprecations-in-280).
 
 ### Rule templates
 
@@ -499,11 +505,86 @@ Provider failures map to provider-independent codes chosen by exception class an
 
 ### Planning from refinement candidates
 
+`plan_refinement()` is deprecated in 2.8.0 and removed in 3.0.0, along with the refinement sources it accepts. Its behavior is unchanged for the rest of 2.x.
+
 `plan_refinement()` accepts one explicit package-built `@2.0.0` refinement source and its call input. The request must have a nonempty exact-ID allowlist that admits the source and every child. The planner calls normalized `refine()` once, rejects an error-bearing, over-limit, or invalid batch as a whole, projects each complete portable graph into a draft, and then uses the configured selector before fresh compilation and preflight.
 
 The eligible sources are `multipart_query@2.0.0`, `nl2query_router@2.0.0`, `plan_discover@2.0.0`, and `query_breakdown@2.0.0`. The default `RequireSinglePlan` selector still rejects a batch with more than one candidate. A scoped request remains anchored throughout projection and compilation, including a matching `nl2query_router` to `nl2sql` path.
 
 Planning remains one pass. There is no refinement loop, retry, or replanning after execution. This path does not load operator skill resources, collect a data-context snapshot, or send skill text to a planner, provider, or MCP response.
+
+## Deprecations in 2.8.0
+
+Two groups of surfaces are deprecated in this release and removed in 3.0.0. Everything named here still imports, resolves, and runs for the rest of 2.x.
+
+The four plan-producing operators are the first group. Both registered versions of `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` carry the lifecycle flag, so eight of the 72 cards are marked. The second group is the refinement seam for every operator: `refiner()`, `refine()`, `PipelinePlanner.plan_refinement()`, `RefinableOperator`, `DeclarativeOperator`, the refiner helpers those operator modules export, and the four `__refine` tools on the MCP adapter.
+
+Read the flag off a card rather than keeping your own list of names:
+
+```python
+from blue_data_ops.operators import versioned_registry
+
+registry = versioned_registry()
+going_away = sorted(card.operator_id for card in registry.list_cards() if card.deprecated)
+
+assert len(going_away) == 8
+assert registry.resolve("plan_discover@2.0.0") is not None
+```
+
+Discovery and exact resolution are unchanged. `find()`, embedding search, `get_card()`, and `resolve()` all still return deprecated cards.
+
+### Warnings
+
+A deprecated call emits one `BlueDataOpsDeprecationWarning` per top-level entry, reported against your calling line. The category subclasses `DeprecationWarning`, so CPython's default filters hide it outside `__main__`. Where the compatibility use is deliberate, silence that one category rather than promoting warnings process-wide:
+
+```python
+import warnings
+
+from blue_data_ops import BlueDataOpsDeprecationWarning
+
+warnings.filterwarnings("ignore", category=BlueDataOpsDeprecationWarning)
+```
+
+### Planning admits active cards only
+
+`discover()` still returns deprecated cards, and `plan()` drops them before admission without charging them against `max_discovery_cards`. The same request can therefore report different cards through the two calls, and `plan()` can reach active cards that the limit used to hide behind deprecated ones:
+
+```python
+from blue_data_ops.plan import DiscoveryQuery, PipelinePlanner, PlanningRequest, RulePlanGenerator
+
+planner = PipelinePlanner(registry, RulePlanGenerator())
+request = PlanningRequest(
+    goal="summarize a query",
+    discovery_queries=(DiscoveryQuery("query"),),
+    max_discovery_cards=2,
+)
+
+assert [card.operator_id for card in planner.discover(request).cards] == [
+    "multipart_query@2.0.0",
+    "nl2query_router@2.0.0",
+]
+```
+
+`DataPipeline`, `PipelineExecutor`, rule-based generation, and the injected-client LLM path are unaffected and stay the supported way to plan and run operators locally.
+
+### Stored plans
+
+A saved plan record that names a deprecated operator still parses, and its ids still resolve. Given a `record` written earlier by `DataPipeline.to_dict()`, walk the restored plan to see what it depends on:
+
+```python
+from blue_data_ops.plan import DataPipeline
+
+restored = DataPipeline.from_dict(record)
+inventory = {}
+for entity in restored.get_entities(type="OPERATOR").values():
+    operator_id = entity["operator_id"]
+    registry.resolve(operator_id)
+    inventory[operator_id] = registry.get_card(operator_id).deprecated
+```
+
+Whether that plan can execute has not changed. A node holding a plan-producing operator was rejected by `PipelineExecutor.preflight()` before this release and still is, because such a node is not materialized.
+
+See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280) for the full statement, including what 3.0.0 removes.
 
 ## Utility compatibility
 

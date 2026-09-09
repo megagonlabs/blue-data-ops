@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, ClassVar, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators._discovery import (
     DiscoveryError,
     DiscoverySpec,
@@ -24,6 +25,7 @@ from blue_data_ops.plan.refiner import (
 )
 
 
+@_deprecation.entry(subject="plan_discover_operator_function()")
 def plan_discover_operator_function(
     input_data: DataBundle,
     attributes: Attributes,
@@ -34,6 +36,7 @@ def plan_discover_operator_function(
     return [[]]
 
 
+@_deprecation.entry(subject="plan_discover_operator_refiner()")
 def plan_discover_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -78,6 +81,7 @@ def plan_discover_operator_refiner(
     return plans
 
 
+@_deprecation.entry(subject="plan_discover_operator_validator()")
 def plan_discover_operator_validator(
     input_data: DataBundle,
     attributes: Attributes,
@@ -126,6 +130,7 @@ def _plan_discover_constraints(attributes: Attributes) -> bool:
     return True
 
 
+@_deprecation.entry(subject="plan_discover_operator_explainer()")
 def plan_discover_operator_explainer(
     output: DataBundle,
     input_data: DataBundle,

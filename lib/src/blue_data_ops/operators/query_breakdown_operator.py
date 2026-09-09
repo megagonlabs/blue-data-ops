@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.llm import resolve_llm_client
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._multipart_plan import build_multipart_pipelines
@@ -96,6 +97,7 @@ def _call_provider(attributes: Attributes, properties: Properties | None) -> Any
     return client.execute_api_call({}, properties=merged, additional_data=additional_data)
 
 
+@_deprecation.entry(subject="query_breakdown_operator_function()")
 def query_breakdown_operator_function(
     input_data: DataBundle,
     attributes: Attributes,
@@ -106,6 +108,7 @@ def query_breakdown_operator_function(
     return cast(DataBundle, _call_provider(attributes, properties))
 
 
+@_deprecation.entry(subject="query_breakdown_operator_refiner()")
 def query_breakdown_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -121,6 +124,7 @@ def query_breakdown_operator_refiner(
     )
 
 
+@_deprecation.entry(subject="query_breakdown_operator_explainer()")
 def query_breakdown_operator_explainer(
     output: DataBundle,
     input_data: DataBundle,

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators import (
     ErrorRecord,
     ExecMeta,
@@ -65,6 +66,10 @@ V2_OPERATOR_IDS: tuple[str, ...] = (
 _SELECTED_VERSION = "2.0.0"
 REFINE_SUFFIX = "__refine"
 REFINE_DESCRIPTION_PREFIX = "Build candidate data-pipeline plans."
+DEPRECATION_SENTENCE = "Deprecated in blue-data-ops 2.8.0; removed in 3.0.0."
+REFINE_DEPRECATION_SENTENCE = (
+    f"{DEPRECATION_SENTENCE} The refinement seam is deprecated for every operator."
+)
 
 
 @dataclass(frozen=True)
@@ -202,9 +207,13 @@ def make_run_handler(operator: Operator) -> Any:
         properties: dict[str, Any] | None = None,
     ) -> RunResult:
         call_attributes: dict[str, Any] = {} if attributes is None else attributes
-        payload = await asyncio.to_thread(
-            lambda: run_payload(operator.run(input_data, call_attributes, properties))
-        )
+        # A deprecated operator's own warning is expected here, so promoting the category must
+        # not change the wire envelope. The scope is task-local rather than process-global, and
+        # gates only the package emitter: a caller-supplied operator's warnings still escape.
+        with _deprecation.expected():
+            payload = await asyncio.to_thread(
+                lambda: run_payload(operator.run(input_data, call_attributes, properties))
+            )
         return RunResult.model_validate(payload)
 
     handler.__name__ = operator.name
@@ -219,9 +228,11 @@ def make_refine_handler(operator: RefinableOperator) -> Any:
         properties: dict[str, Any] | None = None,
     ) -> RefineResult:
         call_attributes: dict[str, Any] = {} if attributes is None else attributes
-        payload = await asyncio.to_thread(
-            lambda: refine_payload(operator.refine(input_data, call_attributes, properties))
-        )
+        # The refinement seam warns for every operator, so the same task-local scope applies.
+        with _deprecation.expected():
+            payload = await asyncio.to_thread(
+                lambda: refine_payload(operator.refine(input_data, call_attributes, properties))
+            )
         return RefineResult.model_validate(payload)
 
     handler.__name__ = f"{operator.name}{REFINE_SUFFIX}"
@@ -229,18 +240,39 @@ def make_refine_handler(operator: RefinableOperator) -> Any:
     return handler
 
 
-def _compose_description(card: OperatorCard) -> str:
+def _annotated(binding: OperatorBinding) -> bool:
+    """Whether this binding carries the lifecycle notice.
+
+    Read the card's flag and the binding's kind, never the operator's name or runtime type: the
+    refinement seam is deprecated for every operator, so a companion over a retained card is
+    annotated while its own primary is not.
+    """
+    return binding.card.deprecated or binding.kind == "refine"
+
+
+def _compose_description(binding: OperatorBinding) -> str:
+    card = binding.card
+    parts: list[str] = []
+    if binding.kind == "refine":
+        parts += [REFINE_DESCRIPTION_PREFIX, REFINE_DEPRECATION_SENTENCE]
+    elif card.deprecated:
+        parts.append(DEPRECATION_SENTENCE)
     if card.when_to_invoke.strip():
-        return f"{card.when_to_invoke}\n\n{card.description}"
-    return card.description
+        parts.append(card.when_to_invoke)
+    parts.append(card.description)
+    return "\n\n".join(parts)
 
 
-def _meta(card: OperatorCard) -> dict[str, Any]:
-    return {
+def _meta(binding: OperatorBinding) -> dict[str, Any]:
+    card = binding.card
+    meta: dict[str, Any] = {
         "operator_id": card.operator_id,
         "version": card.version,
         "tags": list(card.tags),
     }
+    if _annotated(binding):
+        meta["deprecated"] = True
+    return meta
 
 
 def register_snapshot(server: FastMCP[Any], snapshot: DeploymentSnapshot) -> None:
@@ -250,8 +282,8 @@ def register_snapshot(server: FastMCP[Any], snapshot: DeploymentSnapshot) -> Non
             server.add_tool(
                 make_run_handler(binding.operator),
                 name=card.name,
-                description=_compose_description(card),
-                meta=_meta(card),
+                description=_compose_description(binding),
+                meta=_meta(binding),
                 structured_output=True,
             )
         else:
@@ -260,7 +292,7 @@ def register_snapshot(server: FastMCP[Any], snapshot: DeploymentSnapshot) -> Non
             server.add_tool(
                 make_refine_handler(companion),
                 name=f"{card.name}{REFINE_SUFFIX}",
-                description=f"{REFINE_DESCRIPTION_PREFIX}\n\n{_compose_description(card)}",
-                meta=_meta(card),
+                description=_compose_description(binding),
+                meta=_meta(binding),
                 structured_output=True,
             )

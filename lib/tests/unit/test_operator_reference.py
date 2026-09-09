@@ -37,6 +37,53 @@ def test_operator_reference_matches_live_registry_and_fixtures() -> None:
     assert "When omitted, source, database, and collection do not construct one" in generated
 
 
+def _sections(generated: str) -> list[str]:
+    """Split the reference on its per-operator headings, keeping each heading's body."""
+    blocks = generated.split("\n## `")[1:]
+    return [f"## `{block}" for block in blocks]
+
+
+def test_the_reference_marks_the_deprecated_cards_the_registry_reports() -> None:
+    from blue_data_ops.operators import versioned_registry
+
+    generated = _generator().render_reference()
+    sections = _sections(generated)
+    marked = {section.split("`")[1] for section in sections if "**Deprecated in 2.8.0" in section}
+    live = {
+        card.operator_id
+        for card in versioned_registry().list_cards()
+        if card.version == "2.0.0" and card.deprecated
+    }
+
+    assert len(sections) == 36
+    assert marked == live
+    assert marked == {
+        "multipart_query@2.0.0",
+        "nl2query_router@2.0.0",
+        "plan_discover@2.0.0",
+        "query_breakdown@2.0.0",
+    }
+    assert len(sections) - len(marked) == 32
+
+
+def test_a_marked_section_keeps_its_ordinary_reference_content() -> None:
+    sections = _sections(_generator().render_reference())
+    section = next(block for block in sections if "plan_discover@2.0.0" in block)
+
+    assert "removed in 3.0.0" in section
+    assert "COMPATIBILITY.md#deprecated-in-280" in section
+    for expected in ("When to invoke:", "Tags: ", "| Attribute |", "Fixture-backed call:"):
+        assert expected in section, expected
+
+
+def test_the_tag_taxonomy_survives_the_lifecycle_marking() -> None:
+    generated = _generator().render_reference()
+
+    assert "## Tag taxonomy" in generated
+    for axis in ("capability", "domain", "flow", "accepts", "produces", "requires"):
+        assert f"| `{axis}-*` |" in generated, axis
+
+
 def test_operator_reference_check_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     generator = _generator()
     output = tmp_path / "OPERATORS.md"

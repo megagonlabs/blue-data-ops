@@ -12,6 +12,8 @@ from blue_data_ops.operators import (
     ResolveError,
     versioned_registry,
 )
+from blue_data_ops.plan import RefinableOperator
+from blue_data_ops.plan.types import PlanRecord
 
 from blue_data_ops_mcp.registration import (
     REFINE_SUFFIX,
@@ -29,6 +31,25 @@ REFINE_NAMES = (
     "plan_discover__refine",
     "query_breakdown__refine",
 )
+# The eight tools the default deployment annotates, written out rather than derived, so a change
+# in how the adapter decides has to be reconciled against a fixed list.
+ANNOTATED_DEFAULT_NAMES = frozenset(
+    {
+        "multipart_query",
+        "nl2query_router",
+        "plan_discover",
+        "query_breakdown",
+        "multipart_query__refine",
+        "nl2query_router__refine",
+        "plan_discover__refine",
+        "query_breakdown__refine",
+    }
+)
+PRIMARY_SENTENCE = "Deprecated in blue-data-ops 2.8.0; removed in 3.0.0."
+COMPANION_SENTENCE = (
+    "Deprecated in blue-data-ops 2.8.0; removed in 3.0.0. "
+    "The refinement seam is deprecated for every operator."
+)
 
 
 class EchoOperator(Operator):
@@ -44,6 +65,30 @@ class EchoOperator(Operator):
     ) -> list[list[dict[str, Any]]]:
         del input_data, properties
         return [[attributes]]
+
+
+class RetainedRefiner(RefinableOperator):
+    name: ClassVar[str] = "retained_refiner"
+    description: ClassVar[str] = "Return no refinement plan."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        return [[]]
+
+    def refiner(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[PlanRecord]:
+        del input_data, attributes, properties
+        return []
 
 
 class MismatchRegistry(OperatorRegistry):
@@ -271,17 +316,144 @@ def test_register_snapshot_binds_primary_and_companion_metadata() -> None:
 
     tools = server._tool_manager.list_tools()  # pyright: ignore[reportPrivateUsage]
     assert [tool.name for tool in tools] == ["multipart_query", "multipart_query__refine"]
-    expected_meta = {
+    # The hand-made card is retained, so the primary stays unannotated and the companion is
+    # annotated by its kind alone.
+    assert tools[0].meta == {
         "operator_id": "multipart_query@2.0.0",
         "version": "2.0.0",
         "tags": ["domain-plan", "flow-plan"],
     }
-    assert [tool.meta for tool in tools] == [expected_meta, expected_meta]
-    # composed description; companion prefixes the fixed refinement sentence
+    assert tools[1].meta == {
+        "operator_id": "multipart_query@2.0.0",
+        "version": "2.0.0",
+        "tags": ["domain-plan", "flow-plan"],
+        "deprecated": True,
+    }
+    # composed description; companion prefixes the fixed refinement and lifecycle sentences
     assert tools[0].description == f"when to invoke text\n\n{refinable.description}"
     assert tools[1].description == (
-        f"Build candidate data-pipeline plans.\n\nwhen to invoke text\n\n{refinable.description}"
+        "Build candidate data-pipeline plans.\n\n"
+        "Deprecated in blue-data-ops 2.8.0; removed in 3.0.0. The refinement seam is deprecated "
+        "for every operator.\n\n"
+        f"when to invoke text\n\n{refinable.description}"
     )
+
+
+# Lifecycle annotation
+
+
+def _meta_of(tool: Any) -> dict[str, Any]:
+    meta: dict[str, Any] = tool.meta or {}
+    return meta
+
+
+def _annotated_names(tools: list[Any]) -> set[str]:
+    return {tool.name for tool in tools if _meta_of(tool).get("deprecated") is True}
+
+
+async def test_default_surface_annotates_the_four_pairs_and_nothing_else() -> None:
+    tools = await create_server().list_tools()
+    assert len(tools) == 40
+    assert _annotated_names(tools) == set(ANNOTATED_DEFAULT_NAMES)
+    # a retained tool carries no lifecycle key at all, rather than a false one
+    for tool in tools:
+        if tool.name not in ANNOTATED_DEFAULT_NAMES:
+            assert "deprecated" not in (tool.meta or {})
+
+
+async def test_the_32_retained_primaries_keep_their_description_and_metadata() -> None:
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    cards = {card.operator_id: card for card in versioned_registry().list_cards()}
+    retained = [
+        cards[operator_id] for operator_id in V2_OPERATOR_IDS if not cards[operator_id].deprecated
+    ]
+    assert len(retained) == 32
+    for card in retained:
+        tool = tools[card.name]
+        assert tool.description == f"{card.when_to_invoke}\n\n{card.description}"
+        assert tool.meta == {
+            "operator_id": card.operator_id,
+            "version": "2.0.0",
+            "tags": list(card.tags),
+        }
+
+
+async def test_deprecated_primaries_prepend_the_lifecycle_sentence() -> None:
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    cards = {card.operator_id: card for card in versioned_registry().list_cards()}
+    for name in ("multipart_query", "nl2query_router", "plan_discover", "query_breakdown"):
+        card = cards[f"{name}@2.0.0"]
+        assert tools[name].description == (
+            f"{PRIMARY_SENTENCE}\n\n{card.when_to_invoke}\n\n{card.description}"
+        )
+        assert tools[name].meta == {
+            "operator_id": f"{name}@2.0.0",
+            "version": "2.0.0",
+            "tags": list(card.tags),
+            "deprecated": True,
+        }
+
+
+async def test_every_companion_states_that_the_seam_is_deprecated() -> None:
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    cards = {card.operator_id: card for card in versioned_registry().list_cards()}
+    for name in REFINE_NAMES:
+        card = cards[f"{name.removesuffix(REFINE_SUFFIX)}@2.0.0"]
+        assert tools[name].description == (
+            "Build candidate data-pipeline plans.\n\n"
+            f"{COMPANION_SENTENCE}\n\n{card.when_to_invoke}\n\n{card.description}"
+        )
+        assert (tools[name].meta or {})["deprecated"] is True
+
+
+async def test_a_retained_custom_refinable_annotates_its_companion_only() -> None:
+    registry = versioned_registry()
+    registry.register(RetainedRefiner(), "2.0.0", when_to_invoke="when to invoke text")
+    server = create_server(
+        registry=registry,
+        operator_ids=(*V2_OPERATOR_IDS, "retained_refiner@2.0.0"),
+    )
+    tools = await server.list_tools()
+    assert len(tools) == 42
+    annotated = _annotated_names(tools)
+    assert annotated == set(ANNOTATED_DEFAULT_NAMES) | {"retained_refiner__refine"}
+    assert len(annotated) == 9
+
+    by_name = {tool.name: tool for tool in tools}
+    assert by_name["retained_refiner"].meta == {
+        "operator_id": "retained_refiner@2.0.0",
+        "version": "2.0.0",
+        "tags": [],
+    }
+    assert by_name["retained_refiner"].description == (
+        "when to invoke text\n\nReturn no refinement plan."
+    )
+    assert by_name["retained_refiner__refine"].meta == {
+        "operator_id": "retained_refiner@2.0.0",
+        "version": "2.0.0",
+        "tags": [],
+        "deprecated": True,
+    }
+    assert by_name["retained_refiner__refine"].description == (
+        "Build candidate data-pipeline plans.\n\n"
+        f"{COMPANION_SENTENCE}\n\n"
+        "when to invoke text\n\nReturn no refinement plan."
+    )
+
+
+async def test_a_custom_primary_registered_deprecated_is_annotated() -> None:
+    registry = versioned_registry()
+    registry.register(EchoOperator(), "2.0.0", ("legacy",), deprecated=True)
+    [tool] = await create_server(registry=registry, operator_ids=("echo@2.0.0",)).list_tools()
+    assert tool.name == "echo"
+    # `echo` declares no invocation guidance, so the sentence sits directly on the description
+    assert tool.description == f"{PRIMARY_SENTENCE}\n\nReturn the supplied attributes."
+    assert tool.meta == {
+        "operator_id": "echo@2.0.0",
+        "version": "2.0.0",
+        "tags": ["legacy"],
+        "deprecated": True,
+    }
 
 
 async def test_no_partial_registration_on_failure() -> None:

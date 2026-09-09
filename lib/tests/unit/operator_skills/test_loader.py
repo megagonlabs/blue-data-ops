@@ -121,6 +121,24 @@ def test_operator_id_must_be_exact_and_path_safe(operator_id: object) -> None:
     )
 
 
+@pytest.mark.parametrize("operator_id", [".@1.0.0", "..@1.0.0"])
+def test_dot_segment_ids_fail_id_validation_before_the_index_is_read(
+    tmp_path: Path, operator_id: str
+) -> None:
+    root = _copy_resources(tmp_path)
+    index_path = root / "_index.json"
+    index = _load_json(index_path)
+    index["packages"][operator_id] = f"{operator_id.replace('@', '/')}/manifest.json"
+    _write_json(index_path, index)
+    reads: list[str] = []
+    loader = OperatorSkillLoader(versioned_registry(), _resource_root=root, _on_read=reads.append)
+
+    _error(lambda: loader.describe(operator_id), OperatorSkillErrorCode.INVALID_OPERATOR_ID)
+    _error(lambda: loader.load(operator_id), OperatorSkillErrorCode.INVALID_OPERATOR_ID)
+    _error(lambda: loader.read(operator_id, "guide"), OperatorSkillErrorCode.INVALID_OPERATOR_ID)
+    assert reads == []
+
+
 def test_custom_registration_cannot_claim_package_resources(tmp_path: Path) -> None:
     registry = OperatorRegistry()
     registry.register(NL2SQLOperator(), "2.0.0")
@@ -146,6 +164,8 @@ INDEX_MUTATIONS: list[Callable[[dict[str, Any]], None]] = [
     lambda value: value["packages"].update({"bad": "bad/1.0.0/manifest.json"}),
     lambda value: value["packages"].update({"other@1.0.0": "nl2sql/2.0.0/manifest.json"}),
     lambda value: value["packages"].update({OPERATOR_ID: "../manifest.json"}),
+    lambda value: value["packages"].update({"..@1.0.0": "../1.0.0/manifest.json"}),
+    lambda value: value["packages"].update({".@1.0.0": "./1.0.0/manifest.json"}),
 ]
 
 

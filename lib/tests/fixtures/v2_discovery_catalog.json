@@ -2,6 +2,7 @@
   "card_count": 72,
   "cards": [
     {
+      "deprecated": false,
       "description": "Given an input data, find the record(s) that contain the maximum value for a specified key.",
       "name": "argmax",
       "operator_id": "argmax@2.0.0",
@@ -17,6 +18,7 @@
       "when_to_invoke": "Use when the result must retain the input record or tied records with the largest value for one key."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the record(s) that contain the maximum value for a specified key.",
       "name": "argmax",
       "operator_id": "argmax@1.0.0",
@@ -32,6 +34,7 @@
       "when_to_invoke": "Use when the result must retain the input record or tied records with the largest value for one key."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the record(s) that contain the minimum value for a specified key.",
       "name": "argmin",
       "operator_id": "argmin@2.0.0",
@@ -47,6 +50,7 @@
       "when_to_invoke": "Use when the result must retain the input record or tied records with the smallest value for one key."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the record(s) that contain the minimum value for a specified key.",
       "name": "argmin",
       "operator_id": "argmin@1.0.0",
@@ -62,6 +66,7 @@
       "when_to_invoke": "Use when the result must retain the input record or tied records with the smallest value for one key."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, calculate the average (arithmetic mean) of values for a specified key across all records.",
       "name": "avg",
       "operator_id": "avg@2.0.0",
@@ -77,6 +82,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its arithmetic mean across records."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, calculate the average (arithmetic mean) of values for a specified key across all records.",
       "name": "avg",
       "operator_id": "avg@1.0.0",
@@ -92,6 +98,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its arithmetic mean across records."
     },
     {
+      "deprecated": false,
       "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier, KNeighborsClassifier, or MultinomialNB.",
       "name": "classify",
       "operator_id": "classify@2.0.0",
@@ -107,6 +114,7 @@
       "when_to_invoke": "Use when labeled numeric vectors are available and class labels are needed for input samples."
     },
     {
+      "deprecated": false,
       "description": "Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier, KNeighborsClassifier, or MultinomialNB.",
       "name": "classify",
       "operator_id": "classify@1.0.0",
@@ -122,6 +130,7 @@
       "when_to_invoke": "Use when labeled numeric vectors are available and class labels are needed for input samples."
     },
     {
+      "deprecated": false,
       "description": "Given input data with numeric vectors, compute clusters and predict cluster index for each sample using KMeans, DBSCAN, or GaussianMixture.",
       "name": "cluster",
       "operator_id": "cluster@2.0.0",
@@ -137,6 +146,7 @@
       "when_to_invoke": "Use when unlabeled numeric vectors must be assigned to clusters."
     },
     {
+      "deprecated": false,
       "description": "Given input data with numeric vectors, compute clusters and predict cluster index for each sample using KMeans, DBSCAN, or GaussianMixture.",
       "name": "cluster",
       "operator_id": "cluster@1.0.0",
@@ -152,6 +162,7 @@
       "when_to_invoke": "Use when unlabeled numeric vectors must be assigned to clusters."
     },
     {
+      "deprecated": false,
       "description": "Creates databases in data sources using the data registry. If the database already exists, it will be overwritten if overwrite is True.",
       "name": "create_database",
       "operator_id": "create_database@2.0.0",
@@ -170,6 +181,7 @@
       "when_to_invoke": "Use when one or more databases must be created or overwritten through the data registry."
     },
     {
+      "deprecated": false,
       "description": "Creates databases in data sources using the data registry. If the database already exists, it will be overwritten if overwrite is True.",
       "name": "create_database",
       "operator_id": "create_database@1.0.0",
@@ -188,6 +200,7 @@
       "when_to_invoke": "Use when one or more databases must be created or overwritten through the data registry."
     },
     {
+      "deprecated": false,
       "description": "Creates tables (entities) in database collections using the data registry. If the table already exists, it will be overwritten if overwrite is True.",
       "name": "create_table",
       "operator_id": "create_table@2.0.0",
@@ -206,6 +219,7 @@
       "when_to_invoke": "Use when tables or entities must be created or overwritten in registry-backed database collections."
     },
     {
+      "deprecated": false,
       "description": "Creates tables (entities) in database collections using the data registry. If the table already exists, it will be overwritten if overwrite is True.",
       "name": "create_table",
       "operator_id": "create_table@1.0.0",
@@ -224,6 +238,7 @@
       "when_to_invoke": "Use when tables or entities must be created or overwritten in registry-backed database collections."
     },
     {
+      "deprecated": false,
       "description": "Discovers data sources using the data registry",
       "name": "data_discover",
       "operator_id": "data_discover@2.0.0",
@@ -240,6 +255,7 @@
       "when_to_invoke": "Use when data sources, databases, collections, or entities must be found through registry search."
     },
     {
+      "deprecated": false,
       "description": "Discovers data sources using the data registry",
       "name": "data_discover",
       "operator_id": "data_discover@1.0.0",
@@ -256,6 +272,7 @@
       "when_to_invoke": "Use when data sources, databases, collections, or entities must be found through registry search."
     },
     {
+      "deprecated": false,
       "description": "Given input data, delete records from the first data source at specified positions",
       "name": "delete",
       "operator_id": "delete@2.0.0",
@@ -270,6 +287,7 @@
       "when_to_invoke": "Use when records must be removed from the first input group by position."
     },
     {
+      "deprecated": false,
       "description": "Given input data, delete records from the first data source at specified positions",
       "name": "delete",
       "operator_id": "delete@1.0.0",
@@ -284,6 +302,7 @@
       "when_to_invoke": "Use when records must be removed from the first input group by position."
     },
     {
+      "deprecated": false,
       "description": "Given input data, insert records by position(s)",
       "name": "insert",
       "operator_id": "insert@2.0.0",
@@ -299,6 +318,7 @@
       "when_to_invoke": "Use when records from input groups must be inserted at specified positions."
     },
     {
+      "deprecated": false,
       "description": "Given input data, insert records by position(s)",
       "name": "insert",
       "operator_id": "insert@1.0.0",
@@ -314,6 +334,7 @@
       "when_to_invoke": "Use when records from input groups must be inserted at specified positions."
     },
     {
+      "deprecated": false,
       "description": "Inserts data rows into database tables in a data source.",
       "name": "insert_table",
       "operator_id": "insert_table@2.0.0",
@@ -331,6 +352,7 @@
       "when_to_invoke": "Use when record rows must be persisted into a registry-backed database table."
     },
     {
+      "deprecated": false,
       "description": "Inserts data rows into database tables in a data source.",
       "name": "insert_table",
       "operator_id": "insert_table@1.0.0",
@@ -348,6 +370,7 @@
       "when_to_invoke": "Use when record rows must be persisted into a registry-backed database table."
     },
     {
+      "deprecated": false,
       "description": "Given multiple input data sources, return only records that exist in all data sources",
       "name": "intersect",
       "operator_id": "intersect@2.0.0",
@@ -362,6 +385,7 @@
       "when_to_invoke": "Use when only records shared by all input groups should remain under the configured match rule."
     },
     {
+      "deprecated": false,
       "description": "Given multiple input data sources, return only records that exist in all data sources",
       "name": "intersect",
       "operator_id": "intersect@1.0.0",
@@ -376,6 +400,7 @@
       "when_to_invoke": "Use when only records shared by all input groups should remain under the configured match rule."
     },
     {
+      "deprecated": false,
       "description": "Joins multiple JSON array data sources using N-way join operations",
       "name": "join",
       "operator_id": "join@2.0.0",
@@ -390,6 +415,7 @@
       "when_to_invoke": "Use when two or more JSON record groups must be joined on configured keys and join types."
     },
     {
+      "deprecated": false,
       "description": "Joins multiple JSON array data sources using N-way join operations",
       "name": "join",
       "operator_id": "join@1.0.0",
@@ -404,6 +430,7 @@
       "when_to_invoke": "Use when two or more JSON record groups must be joined on configured keys and join types."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the maximum value for a specified key across all records.",
       "name": "max",
       "operator_id": "max@2.0.0",
@@ -419,6 +446,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its largest value."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the maximum value for a specified key across all records.",
       "name": "max",
       "operator_id": "max@1.0.0",
@@ -434,6 +462,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its largest value."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the minimum value for a specified key across all records.",
       "name": "min",
       "operator_id": "min@2.0.0",
@@ -449,6 +478,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its smallest value."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, find the minimum value for a specified key across all records.",
       "name": "min",
       "operator_id": "min@1.0.0",
@@ -464,6 +494,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its smallest value."
     },
     {
+      "deprecated": true,
       "description": "Orchestrates the execution of multi-part query, starting with data discovery, leading to execution",
       "name": "multipart_query",
       "operator_id": "multipart_query@2.0.0",
@@ -478,6 +509,7 @@
       "when_to_invoke": "Use when alternative multi-part query specifications must be refined into ordered data-query plans."
     },
     {
+      "deprecated": true,
       "description": "Orchestrates the execution of multi-part query, starting with data discovery, leading to execution",
       "name": "multipart_query",
       "operator_id": "multipart_query@1.0.0",
@@ -492,6 +524,7 @@
       "when_to_invoke": "Use when alternative multi-part query specifications must be refined into ordered data-query plans."
     },
     {
+      "deprecated": false,
       "description": "Translates natural language questions into Bayesian Network queries using LLM models",
       "name": "nl2bn",
       "operator_id": "nl2bn@2.0.0",
@@ -511,6 +544,7 @@
       "when_to_invoke": "Use when a natural-language question must be translated into a Bayesian-network query."
     },
     {
+      "deprecated": false,
       "description": "Translates natural language questions into Bayesian Network queries using LLM models",
       "name": "nl2bn",
       "operator_id": "nl2bn@1.0.0",
@@ -530,6 +564,7 @@
       "when_to_invoke": "Use when a natural-language question must be translated into a Bayesian-network query."
     },
     {
+      "deprecated": false,
       "description": "Processes natural language query using LLM models and returns structured data",
       "name": "nl2llm",
       "operator_id": "nl2llm@2.0.0",
@@ -545,6 +580,7 @@
       "when_to_invoke": "Use when a natural-language request should be sent to the configured reasoning provider and returned as structured data."
     },
     {
+      "deprecated": false,
       "description": "Processes natural language query using LLM models and returns structured data",
       "name": "nl2llm",
       "operator_id": "nl2llm@1.0.0",
@@ -560,6 +596,7 @@
       "when_to_invoke": "Use when a natural-language request should be sent to the configured reasoning provider and returned as structured data."
     },
     {
+      "deprecated": true,
       "description": "Routees the execution of query, based on source",
       "name": "nl2query_router",
       "operator_id": "nl2query_router@2.0.0",
@@ -574,6 +611,7 @@
       "when_to_invoke": "Use when discovered source metadata must be refined into a source-specific query plan."
     },
     {
+      "deprecated": true,
       "description": "Routees the execution of query, based on source",
       "name": "nl2query_router",
       "operator_id": "nl2query_router@1.0.0",
@@ -588,6 +626,7 @@
       "when_to_invoke": "Use when discovered source metadata must be refined into a source-specific query plan."
     },
     {
+      "deprecated": false,
       "description": "Translates natural language questions into SQL queries using LLM models",
       "name": "nl2sql",
       "operator_id": "nl2sql@2.0.0",
@@ -608,6 +647,7 @@
       "when_to_invoke": "Use when a natural-language question must be translated into SQL, with optional execution."
     },
     {
+      "deprecated": false,
       "description": "Translates natural language questions into SQL queries using LLM models",
       "name": "nl2sql",
       "operator_id": "nl2sql@1.0.0",
@@ -628,6 +668,7 @@
       "when_to_invoke": "Use when a natural-language question must be translated into SQL, with optional execution."
     },
     {
+      "deprecated": false,
       "description": "Normalize raw text into a stable canonical form for downstream extraction and segmentation.",
       "name": "normalize_text",
       "operator_id": "normalize_text@2.0.0",
@@ -642,6 +683,7 @@
       "when_to_invoke": "Use when text needs canonical Unicode, whitespace, case, or recognized-date normalization before later text work."
     },
     {
+      "deprecated": false,
       "description": "Normalize raw text into a stable canonical form for downstream extraction and segmentation.",
       "name": "normalize_text",
       "operator_id": "normalize_text@1.0.0",
@@ -656,6 +698,7 @@
       "when_to_invoke": "Use when text needs canonical Unicode, whitespace, case, or recognized-date normalization before later text work."
     },
     {
+      "deprecated": true,
       "description": "Discovers plans using the operator registry to search for top-level operators as plan starters",
       "name": "plan_discover",
       "operator_id": "plan_discover@2.0.0",
@@ -671,6 +714,7 @@
       "when_to_invoke": "Use when a task description must be matched to pinned operators and emitted as starter plans."
     },
     {
+      "deprecated": true,
       "description": "Discovers plans using the operator registry to search for top-level operators as plan starters",
       "name": "plan_discover",
       "operator_id": "plan_discover@1.0.0",
@@ -686,6 +730,7 @@
       "when_to_invoke": "Use when a task description must be matched to pinned operators and emitted as starter plans."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, return only a set of attributes for each data element (key-wise)",
       "name": "project",
       "operator_id": "project@2.0.0",
@@ -700,6 +745,7 @@
       "when_to_invoke": "Use when each record should retain and optionally rename a specified set of keys without semantic inference."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, return only a set of attributes for each data element (key-wise)",
       "name": "project",
       "operator_id": "project@1.0.0",
@@ -714,6 +760,7 @@
       "when_to_invoke": "Use when each record should retain and optionally rename a specified set of keys without semantic inference."
     },
     {
+      "deprecated": true,
       "description": "Processes natural language query and break it down to subqueries using common table expressions",
       "name": "query_breakdown",
       "operator_id": "query_breakdown@2.0.0",
@@ -730,6 +777,7 @@
       "when_to_invoke": "Use when a natural-language query must be decomposed into alternative common-table-expression plans."
     },
     {
+      "deprecated": true,
       "description": "Processes natural language query and break it down to subqueries using common table expressions",
       "name": "query_breakdown",
       "operator_id": "query_breakdown@1.0.0",
@@ -746,6 +794,7 @@
       "when_to_invoke": "Use when a natural-language query must be decomposed into alternative common-table-expression plans."
     },
     {
+      "deprecated": false,
       "description": "Split normalized text into stable segments with offsets and flat metadata.",
       "name": "segment_text",
       "operator_id": "segment_text@2.0.0",
@@ -760,6 +809,7 @@
       "when_to_invoke": "Use when normalized text must be split into stable segments with offsets and metadata."
     },
     {
+      "deprecated": false,
       "description": "Split normalized text into stable segments with offsets and flat metadata.",
       "name": "segment_text",
       "operator_id": "segment_text@1.0.0",
@@ -774,6 +824,7 @@
       "when_to_invoke": "Use when normalized text must be split into stable segments with offsets and metadata."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, filter data elements based on a specified condition by type-aware comparison (record-wise)",
       "name": "select",
       "operator_id": "select@2.0.0",
@@ -788,6 +839,7 @@
       "when_to_invoke": "Use when records should be filtered by a type-aware comparison against one key."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, filter data elements based on a specified condition by type-aware comparison (record-wise)",
       "name": "select",
       "operator_id": "select@1.0.0",
@@ -802,6 +854,7 @@
       "when_to_invoke": "Use when records should be filtered by a type-aware comparison against one key."
     },
     {
+      "deprecated": false,
       "description": "Extracts entities from natural language text fields using LLM models",
       "name": "semantic_extract",
       "operator_id": "semantic_extract@2.0.0",
@@ -817,6 +870,7 @@
       "when_to_invoke": "Use when entities must be extracted from text fields using natural-language instructions."
     },
     {
+      "deprecated": false,
       "description": "Extracts entities from natural language text fields using LLM models",
       "name": "semantic_extract",
       "operator_id": "semantic_extract@1.0.0",
@@ -832,6 +886,7 @@
       "when_to_invoke": "Use when entities must be extracted from text fields using natural-language instructions."
     },
     {
+      "deprecated": false,
       "description": "Filters records based on natural language conditions using LLM models",
       "name": "semantic_filter",
       "operator_id": "semantic_filter@2.0.0",
@@ -847,6 +902,7 @@
       "when_to_invoke": "Use when records must be filtered by a natural-language condition that cannot be expressed as a simple comparison."
     },
     {
+      "deprecated": false,
       "description": "Filters records based on natural language conditions using LLM models",
       "name": "semantic_filter",
       "operator_id": "semantic_filter@1.0.0",
@@ -862,6 +918,7 @@
       "when_to_invoke": "Use when records must be filtered by a natural-language condition that cannot be expressed as a simple comparison."
     },
     {
+      "deprecated": false,
       "description": "Joins two datasets based on natural language join predicate using LLM models",
       "name": "semantic_join",
       "operator_id": "semantic_join@2.0.0",
@@ -878,6 +935,7 @@
       "when_to_invoke": "Use when two datasets must be joined by a natural-language relationship rather than exact keys."
     },
     {
+      "deprecated": false,
       "description": "Joins two datasets based on natural language join predicate using LLM models",
       "name": "semantic_join",
       "operator_id": "semantic_join@1.0.0",
@@ -894,6 +952,7 @@
       "when_to_invoke": "Use when two datasets must be joined by a natural-language relationship rather than exact keys."
     },
     {
+      "deprecated": false,
       "description": "Projects records to select and rename columns using LLM-based mapping resolution",
       "name": "semantic_project",
       "operator_id": "semantic_project@2.0.0",
@@ -909,6 +968,7 @@
       "when_to_invoke": "Use when fields must be selected or renamed using semantic mapping."
     },
     {
+      "deprecated": false,
       "description": "Projects records to select and rename columns using LLM-based mapping resolution",
       "name": "semantic_project",
       "operator_id": "semantic_project@1.0.0",
@@ -924,6 +984,7 @@
       "when_to_invoke": "Use when fields must be selected or renamed using semantic mapping."
     },
     {
+      "deprecated": false,
       "description": "Transforms data into target fields and values using LLM-based transformations",
       "name": "semantic_transform",
       "operator_id": "semantic_transform@2.0.0",
@@ -939,6 +1000,7 @@
       "when_to_invoke": "Use when records must be converted into requested target fields or values using natural-language transformations."
     },
     {
+      "deprecated": false,
       "description": "Transforms data into target fields and values using LLM-based transformations",
       "name": "semantic_transform",
       "operator_id": "semantic_transform@1.0.0",
@@ -954,6 +1016,7 @@
       "when_to_invoke": "Use when records must be converted into requested target fields or values using natural-language transformations."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, calculate the sum of values for a specified key across all records.",
       "name": "sum",
       "operator_id": "sum@2.0.0",
@@ -969,6 +1032,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its total across records."
     },
     {
+      "deprecated": false,
       "description": "Given an input data, calculate the sum of values for a specified key across all records.",
       "name": "sum",
       "operator_id": "sum@1.0.0",
@@ -984,6 +1048,7 @@
       "when_to_invoke": "Use when a numeric key must be reduced to its total across records."
     },
     {
+      "deprecated": false,
       "description": "Given multiple input data sources, combine all records and remove exact duplicates",
       "name": "union",
       "operator_id": "union@2.0.0",
@@ -998,6 +1063,7 @@
       "when_to_invoke": "Use when input groups must be combined and duplicate records removed under the configured match rule."
     },
     {
+      "deprecated": false,
       "description": "Given multiple input data sources, combine all records and remove exact duplicates",
       "name": "union",
       "operator_id": "union@1.0.0",
@@ -1012,6 +1078,7 @@
       "when_to_invoke": "Use when input groups must be combined and duplicate records removed under the configured match rule."
     },
     {
+      "deprecated": false,
       "description": "Convert text data into vector embeddings using a specified model.",
       "name": "vector_embed",
       "operator_id": "vector_embed@2.0.0",
@@ -1027,6 +1094,7 @@
       "when_to_invoke": "Use when text fields must be encoded as vectors for later similarity work."
     },
     {
+      "deprecated": false,
       "description": "Convert text data into vector embeddings using a specified model.",
       "name": "vector_embed",
       "operator_id": "vector_embed@1.0.0",
@@ -1042,6 +1110,7 @@
       "when_to_invoke": "Use when text fields must be encoded as vectors for later similarity work."
     },
     {
+      "deprecated": false,
       "description": "Perform semantic search within each dataset using text or vector queries.",
       "name": "vector_search",
       "operator_id": "vector_search@2.0.0",
@@ -1057,6 +1126,7 @@
       "when_to_invoke": "Use when records in each group must be ranked by similarity to a text or vector query."
     },
     {
+      "deprecated": false,
       "description": "Perform semantic search within each dataset using text or vector queries.",
       "name": "vector_search",
       "operator_id": "vector_search@1.0.0",
@@ -1072,6 +1142,7 @@
       "when_to_invoke": "Use when records in each group must be ranked by similarity to a text or vector query."
     },
     {
+      "deprecated": false,
       "description": "Compute similarity between two lists of records using embeddings.",
       "name": "vector_similarity",
       "operator_id": "vector_similarity@2.0.0",
@@ -1087,6 +1158,7 @@
       "when_to_invoke": "Use when records from two groups must be compared by embedding-based similarity in pairwise or cartesian mode."
     },
     {
+      "deprecated": false,
       "description": "Compute similarity between two lists of records using embeddings.",
       "name": "vector_similarity",
       "operator_id": "vector_similarity@1.0.0",
@@ -1114,7 +1186,7 @@
   "registry": "versioned_registry",
   "schema_version": "operator-discovery/1",
   "source_manifest": {
-    "aggregate_sha256": "7d1306ae6455a232eabfa9c6ccc700303278c375369b4ea8851e77688c7edabf",
+    "aggregate_sha256": "5eff836bfcf613be7395ac0dd339a2fcc2c5f412a60484e382105eb4133af06e",
     "files": {
       "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
       "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
@@ -1131,15 +1203,15 @@
       "join": "c28ff17ee207b271a671a054f5585c7606d5b8773d4b0b892a5965bd8d272401",
       "max": "5d9a4d2de8b402ca848e5553a726deeff18c18d28a54d4cb96b4ac2c61c6e4e2",
       "min": "5ad7edbfc06b5d61af50c29c9255b48825679f94ca856bf9a4e0b631aa7a9c5c",
-      "multipart_query": "e14c0202b1978b0b30a80e418634b9c55e8bf3d2478cd8a80a6ef3c86ef24ed1",
+      "multipart_query": "a9a134cea558c5e0f2b4f1d9dcc57fae3355269bf6c50fe816e1837c5ad375eb",
       "nl2bn": "2f7d03c95a7d330a18f5ae1f593fb820559a6a17fd927c137a530707c1556a31",
       "nl2llm": "123b9b10041d9c89dadc0ad3abae25e3fef65e9397fbf8729c743c618ff564f4",
-      "nl2query_router": "944d92fc977034dce953f325908a8aa6a9eb8be21520d0c8b76d9c7fd59186b8",
+      "nl2query_router": "e3c4c25b46e2f0e1950c84fbcb3f43998dc6136070574686dc305dbffe8934d0",
       "nl2sql": "24e45552027691d0e1da3f526e9fe4a49af92a112c0ff5c5aeecd2b024df5b73",
       "normalize_text": "3ba875420c503489f90865e655ea5494161be9cec59eff6702d259470db43014",
-      "plan_discover": "3c06a6828c3051101fd1805f3ff8b32715967aee284052a5478540bfc4dab70f",
+      "plan_discover": "3b1414db7579ab85a17a7bd3a24c58c883d61506f70f0cb87d76d475de7af68d",
       "project": "ededc1a16f129310f44047b1fa013624ebc4d466c619d4712d1cb1583c239000",
-      "query_breakdown": "9236fd1ef7458ec2c13516d0b158d1d9ac42acf39562b0eb1be1ac318a2d63a7",
+      "query_breakdown": "2ca98aabeb34a874fc7a7db57f0c58f6994afef4126298fd4528f4bf5d120356",
       "segment_text": "8565aa50bed2e1124ee0d29b041453debbb05a89aac9fdc0323482eb64297153",
       "select": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c",
       "semantic_extract": "bcd21ac95965245564c7dd77d054e71de22bb245f47c264595e26a8efe0c9a9e",

@@ -534,6 +534,8 @@ The fixture profile is `none`; non-`none` profiles use deterministic test double
 
 ## `multipart_query@2.0.0`
 
+**Deprecated in 2.8.0; removed in 3.0.0.** Both registered versions carry the lifecycle flag, and calls emit a `BlueDataOpsDeprecationWarning`. See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280).
+
 Orchestrates the execution of multi-part query, starting with data discovery, leading to execution
 
 When to invoke: Use when alternative multi-part query specifications must be refined into ordered data-query plans.
@@ -632,6 +634,8 @@ The fixture profile is `llm`; non-`none` profiles use deterministic test doubles
 - Failure: `EXECUTION_FAILED` at `EXECUTE`.
 
 ## `nl2query_router@2.0.0`
+
+**Deprecated in 2.8.0; removed in 3.0.0.** Both registered versions carry the lifecycle flag, and calls emit a `BlueDataOpsDeprecationWarning`. See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280).
 
 Routees the execution of query, based on source
 
@@ -740,6 +744,8 @@ The fixture profile is `none`; non-`none` profiles use deterministic test double
 
 ## `plan_discover@2.0.0`
 
+**Deprecated in 2.8.0; removed in 3.0.0.** Both registered versions carry the lifecycle flag, and calls emit a `BlueDataOpsDeprecationWarning`. See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280).
+
 Discovers plans using the operator registry to search for top-level operators as plan starters
 
 When to invoke: Use when a task description must be matched to pinned operators and emitted as starter plans.
@@ -807,6 +813,8 @@ The fixture profile is `none`; non-`none` profiles use deterministic test double
 - Failure: No separate fixture case.
 
 ## `query_breakdown@2.0.0`
+
+**Deprecated in 2.8.0; removed in 3.0.0.** Both registered versions carry the lifecycle flag, and calls emit a `BlueDataOpsDeprecationWarning`. See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280).
 
 Processes natural language query and break it down to subqueries using common table expressions
 

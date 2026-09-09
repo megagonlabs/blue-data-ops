@@ -4,7 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from blue_data_ops.operator_skills import OperatorSkillLoader
+import pytest
+
+from blue_data_ops.operator_skills import (
+    OperatorSkillErrorCode,
+    OperatorSkillLoader,
+    OperatorSkillLoadError,
+)
 from blue_data_ops.operators import Attributes, DataBundle, Operator, OperatorRegistry, Properties
 
 _RESOURCE_FILES = {
@@ -137,3 +143,31 @@ def test_synthetic_catalog_proves_order_intersection_and_sparse_levels(tmp_path:
 
     _register_builtin(registry, "gamma@1.0.0")
     assert loader.available_operator_ids() == (*expected, "gamma@1.0.0")
+
+
+def test_a_dotted_name_stays_ordinary_while_a_dot_segment_name_poisons_the_index(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "operator_skills"
+    root.mkdir()
+    operator_ids = ("a.1@1.0.0", "zeta@1.0.0")
+    for operator_id in operator_ids:
+        _write_package(root, operator_id, ("guide", "examples"))
+    _write_index(root, operator_ids)
+    registry = OperatorRegistry()
+    for operator_id in operator_ids:
+        _register_builtin(registry, operator_id)
+
+    loader = OperatorSkillLoader(registry, _resource_root=root)
+    assert loader.available_operator_ids() == operator_ids
+
+    descriptor = loader.describe("a.1@1.0.0")
+    assert descriptor.card is registry.get_card("a.1@1.0.0")
+    assert descriptor.declared_kinds == ("guide", "examples")
+    assert descriptor.declared_levels == (2, 3)
+    assert loader.load("a.1@1.0.0", level=3).guide == "# a.1@1.0.0 guide\n"
+
+    _write_index(root, (*operator_ids, "..@1.0.0"))
+    with pytest.raises(OperatorSkillLoadError) as raised:
+        loader.available_operator_ids()
+    assert raised.value.code is OperatorSkillErrorCode.MANIFEST_INVALID

@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from blue_data_ops._deprecation import DEPRECATED_OPERATOR_NAMES
 from blue_data_ops.operators._discovery import (
     DiscoverySpec,
     normalize_filter_tag,
@@ -53,6 +54,7 @@ class OperatorCard:
     description: str
     tags: tuple[str, ...] = field(default=())
     when_to_invoke: str = field(default="")
+    deprecated: bool = field(default=False)
 
 
 class OperatorRegistry:
@@ -74,12 +76,14 @@ class OperatorRegistry:
         tags: Sequence[str] = (),
         *,
         when_to_invoke: str = "",
+        deprecated: bool = False,
     ) -> OperatorCard:
         """Register operator under its class name at version; returns the pinned card.
 
-        Legacy positional ``register(operator, version, tags)`` remains valid; ``when_to_invoke`` is
-        keyword-only with an empty default, so custom registrations keep their permissive behavior.
-        Built-in registration passes validated discovery metadata.
+        Legacy positional ``register(operator, version, tags)`` remains valid; ``when_to_invoke``
+        and ``deprecated`` are keyword-only with inert defaults, so custom registrations keep their
+        permissive behavior and stay active unless the caller says otherwise. Built-in registration
+        passes validated discovery metadata and derives the lifecycle flag.
         """
         name = operator.name
         if not name:
@@ -110,6 +114,7 @@ class OperatorRegistry:
             description=operator.description,
             tags=tuple(tags),
             when_to_invoke=when_to_invoke,
+            deprecated=deprecated,
         )
         self._operators[operator_id] = bound_operator
         self._cards[operator_id] = card
@@ -125,10 +130,17 @@ class OperatorRegistry:
     ) -> OperatorCard:
         """Register through the package factory and record built-in provenance.
 
-        The only writer of `_builtin_ids`. Public `register()` stays permissive and
-        leaves a card unmarked, including when it is called on a factory-built registry.
+        The only writer of `_builtin_ids`, and the only place the lifecycle flag is derived.
+        Public `register()` stays permissive and leaves a card unmarked and active, including
+        when it is called on a factory-built registry.
         """
-        card = self.register(operator, version, tags, when_to_invoke=when_to_invoke)
+        card = self.register(
+            operator,
+            version,
+            tags,
+            when_to_invoke=when_to_invoke,
+            deprecated=operator.name in DEPRECATED_OPERATOR_NAMES,
+        )
         self._builtin_ids.add(card.operator_id)
         return card
 

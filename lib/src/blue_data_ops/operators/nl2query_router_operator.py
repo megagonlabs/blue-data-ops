@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
+from blue_data_ops import _deprecation
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.types import (
     Attributes,
@@ -23,6 +24,7 @@ _NL2QUERY_ROUTER = "nl2query_router@1.0.0"
 _NL2SQL = "nl2sql@1.0.0"
 
 
+@_deprecation.entry(subject="nl2query_router_operator_function()")
 def nl2query_router_operator_function(
     input_data: DataBundle,
     attributes: Attributes,
@@ -33,6 +35,7 @@ def nl2query_router_operator_function(
     return [[]]
 
 
+@_deprecation.entry(subject="parse_scope()")
 def parse_scope(scope: str) -> dict[str, str]:
     """Parse alternating scope keys and values using the source ordering."""
     parts = scope.split("/")[1:]
@@ -46,6 +49,7 @@ def parse_scope(scope: str) -> dict[str, str]:
     return parsed
 
 
+@_deprecation.entry(subject="nl2query_router_operator_refiner()")
 def nl2query_router_operator_refiner(
     input_data: DataBundle,
     attributes: Attributes,
@@ -159,6 +163,7 @@ def nl2query_router_operator_refiner(
     return pipelines
 
 
+@_deprecation.entry(subject="nl2query_router_operator_validator()")
 def nl2query_router_operator_validator(
     attributes: Attributes,
     properties: Properties | None = None,
@@ -170,6 +175,7 @@ def nl2query_router_operator_validator(
     )
 
 
+@_deprecation.entry(subject="nl2query_router_operator_explainer()")
 def nl2query_router_operator_explainer(
     output: DataBundle,
     input_data: DataBundle,

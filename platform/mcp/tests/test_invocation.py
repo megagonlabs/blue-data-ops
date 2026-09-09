@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import logging
 import threading
-from collections.abc import Callable
+import warnings
+from collections.abc import Callable, Generator
 from typing import Any, ClassVar, cast
 
 import pytest
+from blue_data_ops import BlueDataOpsDeprecationWarning
 from blue_data_ops.operators import (
     AttributeSpec,
     ExecMeta,
@@ -23,7 +28,7 @@ from blue_data_ops.plan.types import PlanRecord
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from blue_data_ops_mcp.registration import refine_payload, run_payload
+from blue_data_ops_mcp.registration import make_refine_handler, refine_payload, run_payload
 from blue_data_ops_mcp.server import create_server
 
 VALID_INPUT: list[list[dict[str, Any]]] = [[{"id": 1, "score": 8}, {"id": 2, "score": 2}]]
@@ -120,6 +125,18 @@ def _resolver(client: RecordingClient) -> Callable[[Any], RecordingClient]:
         return client
 
     return resolve
+
+
+@contextlib.contextmanager
+def _promoted() -> Generator[None, None, None]:
+    """Turn the package's own deprecation warnings into errors for the duration."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", category=BlueDataOpsDeprecationWarning)
+        yield
+
+
+def _package_warnings(caught: list[warnings.WarningMessage]) -> list[warnings.WarningMessage]:
+    return [entry for entry in caught if isinstance(entry.message, BlueDataOpsDeprecationWarning)]
 
 
 # Run families
@@ -434,6 +451,225 @@ async def test_refine_timeout_is_contained() -> None:
         )
     finally:
         operator.release.set()
+
+
+# Lifecycle warnings
+
+
+class CallerNotice(DeprecationWarning):
+    """A caller-owned category. The adapter gates its own emitter, not this one."""
+
+
+class WarningRefiner(RefinableOperator):
+    name: ClassVar[str] = "warning_refiner"
+    description: ClassVar[str] = "Raise the caller's own warning from the refiner."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        return [[]]
+
+    def refiner(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[PlanRecord]:
+        del input_data, attributes, properties
+        warnings.warn("caller-owned notice", CallerNotice, stacklevel=2)
+        return []
+
+
+async def test_deprecated_primary_answers_identically_under_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = RecordingClient([[_cte("answer")]])
+    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
+    arguments: dict[str, Any] = {"input_data": [[]], "attributes": {"query": "q"}}
+    ordinary = await _call(create_server(), "query_breakdown", arguments)
+    with _promoted():
+        promoted = await _call(create_server(), "query_breakdown", arguments)
+    assert promoted.isError is False
+    assert promoted.structuredContent == ordinary.structuredContent
+    assert json.loads(promoted.content[0].text) == promoted.structuredContent
+    assert promoted.structuredContent["output_data"] == [[_cte("answer")]]
+    assert _errors(promoted) == []
+    assert len(client.calls) == 2  # one body call per invocation, promoted or not
+
+
+async def test_deprecated_companion_answers_identically_under_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_data = [[_cte("orders")]]
+    arguments: dict[str, Any] = {"input_data": input_data, "attributes": {}}
+    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
+    ordinary = await _call(create_server(), "multipart_query__refine", arguments)
+    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
+    with _promoted():
+        promoted = await _call(create_server(), "multipart_query__refine", arguments)
+    assert promoted.isError is False
+    assert promoted.structuredContent == ordinary.structuredContent
+    assert json.loads(promoted.content[0].text) == promoted.structuredContent
+    assert len(promoted.structuredContent["plans"]) == 1
+    assert _errors(promoted) == []
+
+
+async def test_six_concurrent_companion_calls_succeed_under_promotion() -> None:
+    arguments: dict[str, Any] = {"input_data": [[_cte("orders")]], "attributes": {}}
+    results: list[Any]
+    with _promoted():
+        async with create_connected_server_and_client_session(create_server()) as client:
+            results = list(
+                await asyncio.gather(
+                    *(client.call_tool("multipart_query__refine", arguments) for _ in range(6))
+                )
+            )
+    assert [result.isError for result in results] == [False] * 6
+    assert [len(result.structuredContent["plans"]) for result in results] == [1] * 6
+    assert [_errors(result) for result in results] == [[]] * 6
+
+
+class _HeldRefine:
+    """A direct call made while a real refine handler is parked inside its own warning scope.
+
+    Cleanup releases the handler before anything else and then settles both tasks under bounded
+    waits, so a direct call that fails or is cancelled leaves nothing running and still reaches
+    the caller as itself. `held_done` and `left_running` are how things stood at that point.
+    """
+
+    def __init__(self) -> None:
+        self.operator = cast(
+            RefinableOperator, versioned_registry().resolve("multipart_query@2.0.0")
+        )
+        self.input_data = [[_cte("orders")]]
+        self.held_done = False
+        self.left_running = 0
+
+    def refine_directly(self) -> None:
+        self.operator.refine(self.input_data, {})
+
+    async def observe(
+        self, monkeypatch: pytest.MonkeyPatch, direct_call: Callable[[], None]
+    ) -> tuple[int, Any]:
+        dispatched = asyncio.Event()
+        release = asyncio.Event()
+        to_thread = asyncio.to_thread
+
+        async def held_to_thread(function: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
+            dispatched.set()
+            await asyncio.wait_for(release.wait(), timeout=5)
+            return await to_thread(function, *args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "to_thread", held_to_thread)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            async def counted_call() -> int:
+                before = len(_package_warnings(list(caught)))
+                direct_call()
+                return len(_package_warnings(list(caught))) - before
+
+            held = asyncio.create_task(make_refine_handler(self.operator)(self.input_data, {}))
+            caller: asyncio.Task[int] | None = None
+            try:
+                await asyncio.wait_for(dispatched.wait(), timeout=5)
+                caller = asyncio.create_task(counted_call())
+                visible = await asyncio.wait_for(caller, timeout=5)
+            finally:
+                release.set()
+                started: list[asyncio.Task[Any]] = [held]
+                if caller is not None:
+                    started.append(caller)
+                # collect both outcomes rather than re-raising one, so whatever the direct call
+                # did is still what leaves this method
+                _, running = await asyncio.wait(started, timeout=5)
+                self.left_running = len(running)
+                self.held_done = held.done()
+
+        assert self.left_running == 0
+        return visible, held.result()
+
+
+async def test_one_handlers_scope_does_not_reach_another_callers_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The second task calls while the handler is parked inside its own scope. An adapter that
+    # suppressed its own warning by editing the process-wide filters would take this caller's too.
+    overlap = _HeldRefine()
+    visible, refinement = await overlap.observe(monkeypatch, overlap.refine_directly)
+    assert visible == 1  # the other task saw its own call warn, once
+    assert len(refinement.plans) == 1  # and the held handler still answered normally
+    assert refinement.exec_meta.errors == []
+
+
+@pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
+async def test_a_broken_direct_call_still_settles_the_held_handler(
+    failure: type[BaseException],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overlap = _HeldRefine()
+
+    def fail() -> None:
+        raise failure("injected caller failure")
+
+    with pytest.raises(failure) as raised:
+        await overlap.observe(monkeypatch, fail)
+    assert raised.value.args == ("injected caller failure",)  # the caller's own outcome, unchanged
+    assert overlap.held_done  # and the handler had already finished when it left
+    assert overlap.left_running == 0
+
+
+async def test_a_caller_warning_stays_visible_inside_the_adapter_scope() -> None:
+    # Observed at the handler, which is where the scope lives. The MCP server records every
+    # warning raised while it processes a message and logs it, so a wire-level call cannot show
+    # this directly; the next test covers what the wire does report.
+    registry = OperatorRegistry()
+    registry.register(WarningRefiner(), "2.0.0")
+    operator = cast(RefinableOperator, registry.resolve("warning_refiner@2.0.0"))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = await make_refine_handler(operator)([[]], {})
+    assert result.plans == []
+    assert result.exec_meta.errors == []
+    assert [str(entry.message) for entry in caught if isinstance(entry.message, CallerNotice)] == [
+        "caller-owned notice"
+    ]
+    # the seam warning the package raised for this same call did not escape
+    assert _package_warnings(list(caught)) == []
+
+
+async def test_the_server_reports_the_caller_warning_and_no_package_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="mcp.server.lowlevel.server"):
+        result = await _call(
+            _single_server(WarningRefiner()), "warning_refiner__refine", {"input_data": [[]]}
+        )
+    assert result.isError is False
+    assert result.structuredContent["plans"] == []
+    assert _errors(result) == []
+    reported = [record.getMessage() for record in caplog.records]
+    assert "Warning: CallerNotice: caller-owned notice" in reported
+    assert not any("BlueDataOpsDeprecationWarning" in message for message in reported)
+
+
+async def test_the_adapter_scope_is_released_when_the_handler_returns() -> None:
+    operator = cast(RefinableOperator, versioned_registry().resolve("multipart_query@2.0.0"))
+    handler = make_refine_handler(operator)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        await handler([[_cte("orders")]], {})
+        during = len(_package_warnings(list(caught)))
+        operator.refine([[_cte("orders")]], {})
+        after = len(_package_warnings(list(caught)))
+    assert during == 0  # the scope covered the handler's own dispatch
+    assert after == 1  # and ordinary Python use warns again once the handler returns
 
 
 # Dispatch boundary

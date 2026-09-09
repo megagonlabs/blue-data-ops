@@ -16,7 +16,7 @@ from typing import Any, cast
 
 import pytest
 
-from blue_data_ops.operators.registry import OperatorRegistry, versioned_registry
+from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, versioned_registry
 from blue_data_ops.operators.select_operator import SelectOperator
 from blue_data_ops.operators.types import ErrorCategory
 from blue_data_ops.plan import (
@@ -373,6 +373,104 @@ def test_an_allowlist_of_only_write_cards_never_reaches_a_provider() -> None:
         generator.generate(orders_request(), discovery_of(registry, writes), None)
 
     assert client.calls == []
+
+
+# --- 3b. Deprecated cards are never offered and never accepted ---------------------- #
+DEPRECATED_ID = "plan_discover@2.0.0"
+DEPRECATED_IDS = (
+    DEPRECATED_ID,
+    "multipart_query@2.0.0",
+    "nl2query_router@2.0.0",
+    "query_breakdown@2.0.0",
+)
+AVG_ONLY_PAYLOAD = candidates(step("average", "avg@2.0.0", AVG_ATTRIBUTES))
+
+
+def test_a_deprecated_card_is_never_offered_to_the_model() -> None:
+    registry = versioned_registry()
+    allowed = (DEPRECATED_ID, "avg@2.0.0")
+    generator, _, client = build(
+        registry=registry,
+        client=RecordingClient(completed(AVG_ONLY_PAYLOAD)),
+        allowed_operator_ids=allowed,
+    )
+
+    generator.generate(orders_request(), discovery_of(registry, allowed), None)
+
+    document = json.loads(client.create_calls[0]["input"][0]["content"])
+    assert [entry["operator_id"] for entry in document["operators"]] == ["avg@2.0.0"]
+
+
+def test_a_model_selected_deprecated_card_is_rejected_at_decode() -> None:
+    registry = versioned_registry()
+    allowed = (DEPRECATED_ID, "avg@2.0.0")
+    payload = candidates(step("plan", DEPRECATED_ID, {"goal": "plan it"}))
+    generator, _, _ = build(
+        registry=registry,
+        client=RecordingClient(completed(payload)),
+        allowed_operator_ids=allowed,
+    )
+
+    with pytest.raises(PlanningError, match="unauthorized operator") as caught:
+        generator.generate(orders_request(), discovery_of(registry, allowed), None)
+
+    assert caught.value.record.code is PlanningErrorCode.GENERATION_RESULT_INVALID
+
+
+def test_a_snapshot_of_only_deprecated_cards_never_reaches_a_provider() -> None:
+    registry = versioned_registry()
+    generator, _, client = build(registry=registry, allowed_operator_ids=DEPRECATED_IDS)
+
+    with pytest.raises(PlanningError, match="no authorized operators were discovered") as caught:
+        generator.generate(orders_request(), discovery_of(registry, DEPRECATED_IDS), None)
+
+    assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("forged_flag", [True, False])
+def test_a_forged_card_fails_provenance_rather_than_the_lifecycle_skip(forged_flag: bool) -> None:
+    """Ordering: the flag read has to be the registry's own value, not the caller's.
+
+    A caller can hand the generator any object shaped like a card. The lifecycle skip sits
+    after `is_builtin_card`, so neither flag value changes the outcome: a forged card is a
+    wiring error, reported. Moved ahead of the provenance test, the `True` case would be
+    dropped in silence and this would report the empty-catalog error instead.
+    """
+
+    registry = versioned_registry()
+    forged = OperatorCard(
+        DEPRECATED_ID,
+        "plan_discover",
+        "2.0.0",
+        "Discover operators for a plan.",
+        deprecated=forged_flag,
+    )
+    generator, _, client = build(
+        registry=registry, allowed_operator_ids=(DEPRECATED_ID, "avg@2.0.0")
+    )
+
+    with pytest.raises(PlanningError, match="requires built-in v2 operator cards") as caught:
+        generator.generate(orders_request(), DiscoverySnapshot((forged,)), None)
+
+    assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
+    assert client.calls == []
+
+
+def test_a_deprecated_card_outside_the_allowlist_is_still_skipped_by_the_allowlist() -> None:
+    """The allowlist must not be what hides the cohort in the tests above."""
+
+    registry = versioned_registry()
+    generator, _, client = build(
+        registry=registry,
+        client=RecordingClient(completed(AVG_ONLY_PAYLOAD)),
+        allowed_operator_ids=("avg@2.0.0",),
+    )
+
+    generator.generate(orders_request(), discovery_of(registry, (DEPRECATED_ID, "avg@2.0.0")), None)
+
+    document = json.loads(client.create_calls[0]["input"][0]["content"])
+    assert [entry["operator_id"] for entry in document["operators"]] == ["avg@2.0.0"]
 
 
 # --- 4. Disclosure ordering --------------------------------------------------------- #

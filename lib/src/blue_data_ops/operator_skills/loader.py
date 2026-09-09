@@ -300,7 +300,7 @@ class OperatorSkillLoader:
         if type(value) is not str:
             raise OperatorSkillLoadError(OperatorSkillErrorCode.MANIFEST_INVALID)
         match = _PINNED_ID.fullmatch(operator_id)
-        if match is None:
+        if match is None or match.group("name") in {".", ".."}:
             raise OperatorSkillLoadError(OperatorSkillErrorCode.MANIFEST_INVALID)
         path = Path(value)
         expected = (match.group("name"), match.group("version"), "manifest.json")

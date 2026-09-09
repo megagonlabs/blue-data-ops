@@ -24,6 +24,7 @@ REFINE_NAMES = frozenset(
         "query_breakdown__refine",
     }
 )
+LIFECYCLE_META_KEYS = {"operator_id", "version", "tags", "deprecated"}
 CATEGORY_VALUES = {"RECOVERABLE", "FAILED", "TIMEOUT"}
 STAGE_VALUES = {"DEFAULTS", "VALIDATE", "EXECUTE", "NORMALIZE", "REFINE"}
 CODE_VALUES = {
@@ -99,11 +100,12 @@ def _single_server(
 # Tool metadata
 
 
-async def test_meta_is_operator_id_version_tags_only() -> None:
+async def test_meta_is_operator_id_version_tags_plus_the_lifecycle_flag() -> None:
     tools = await create_server().list_tools()
     by_name = {tool.name: tool for tool in tools}
     for tool in tools:
-        assert set(tool.meta or {}) == {"operator_id", "version", "tags"}
+        keys = set(tool.meta or {})
+        assert keys in ({"operator_id", "version", "tags"}, LIFECYCLE_META_KEYS)
         assert (tool.meta or {})["version"] == "2.0.0"
     select = by_name["select"]
     assert select.meta == {
@@ -117,14 +119,16 @@ async def test_meta_is_operator_id_version_tags_only() -> None:
             "capability-filter",
         ],
     }
-    # a companion's metadata agrees with its primary
+    # a companion's metadata agrees with its primary — both are annotated here, because this
+    # primary's own card is deprecated as well as its seam
     assert by_name["multipart_query__refine"].meta == by_name["multipart_query"].meta
+    assert (by_name["multipart_query"].meta or {})["deprecated"] is True
 
 
 # Tool description
 
 
-async def test_description_composes_invocation_and_refinement_prefix() -> None:
+async def test_description_composes_invocation_refinement_and_lifecycle_text() -> None:
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     cards = {card.operator_id: card for card in versioned_registry().list_cards()}
     select_card = cards["select@2.0.0"]
@@ -133,9 +137,13 @@ async def test_description_composes_invocation_and_refinement_prefix() -> None:
     )
     mq_card = cards["multipart_query@2.0.0"]
     base = f"{mq_card.when_to_invoke}\n\n{mq_card.description}"
-    assert tools["multipart_query"].description == base
+    assert tools["multipart_query"].description == (
+        f"Deprecated in blue-data-ops 2.8.0; removed in 3.0.0.\n\n{base}"
+    )
     assert tools["multipart_query__refine"].description == (
-        f"Build candidate data-pipeline plans.\n\n{base}"
+        "Build candidate data-pipeline plans.\n\n"
+        "Deprecated in blue-data-ops 2.8.0; removed in 3.0.0. The refinement seam is deprecated "
+        f"for every operator.\n\n{base}"
     )
 
 

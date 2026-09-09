@@ -1,6 +1,54 @@
 # Compatibility
 
-`blue-data-ops` tracks the Blue operator contract while installing on its own. If you are porting code off Blue, the sections near the end on utilities, errors, the service client, and similarity tell you where behavior differs and what to use instead. The earlier sections record deliberate differences from Blue's reference behavior; maintainers should preserve them across upgrades and change them only through a versioned compatibility decision.
+`blue-data-ops` tracks the Blue operator contract while installing on its own. The first section records what 2.8.0 deprecates and when it goes away. If you are porting code off Blue, the sections near the end on utilities, errors, the service client, and similarity tell you where behavior differs and what to use instead. The sections between them record deliberate differences from Blue's reference behavior; maintainers should preserve them across upgrades and change them only through a versioned compatibility decision.
+
+## Deprecated in 2.8.0
+
+Two groups of public surfaces are deprecated in 2.8.0 and removed in 3.0.0. Both keep working for the rest of 2.x. This release adds a lifecycle flag and a warning; it does not stop importing, resolving, or calling anything.
+
+The first group is the four plan-producing operators. Both registered versions of `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` carry `OperatorCard.deprecated`, so eight of the registry's 72 cards are flagged and the other 64 are not. Registry lookup, `find()`, embedding search, and exact `resolve()` all still return them.
+
+The second group is the refinement seam, and it covers every operator rather than only those four: raw `refiner()`, normalized `refine()`, `PipelinePlanner.plan_refinement()`, the `RefinableOperator` and `DeclarativeOperator` classes, the `*_operator_refiner` and sibling module helpers those operators export, and the four `__refine` companions on the MCP adapter.
+
+`OperatorCard.deprecated`, the keyword-only `register(..., deprecated=...)` argument, and the `BlueDataOpsDeprecationWarning` category are themselves public for the rest of 2.x. Reading the flag is the supported way to ask whether a card is on its way out; a name list in caller code goes stale.
+
+### The warning
+
+A deprecated public call emits one `BlueDataOpsDeprecationWarning` per top-level entry, attributed to the calling line rather than to package internals. Package calls nested inside that entry add no further warnings, so a loop over records reports once per call you made, not once per operator the package touched.
+
+The category is exported from `blue_data_ops` and subclasses `DeprecationWarning`, so CPython's default filters hide it outside `__main__`. Where compatibility use is intentional, silence that one category:
+
+```python
+import warnings
+
+from blue_data_ops import BlueDataOpsDeprecationWarning
+
+warnings.filterwarnings("ignore", category=BlueDataOpsDeprecationWarning)
+```
+
+Running the interpreter under `-W error` promotes every deprecation in the process, including ones from unrelated libraries. Use it to find call sites during a migration; it is not a setting to ship with.
+
+### Planning admission
+
+`PipelinePlanner.discover()` still returns deprecated `@2.0.0` cards, so compatibility discovery and `plan_refinement()` keep their v2 results. Ordinary `plan()` now drops deprecated cards before admission, and it drops them without spending the request's `max_discovery_cards` budget. A discovery limit that used to fill with deprecated cards therefore admits active ones instead, which is a visible change in what `plan()` can select even though no operator was removed.
+
+`DataPipeline`, `PipelineExecutor`, rule-based generation, and the injected-client LLM planning path are unaffected and remain the supported local integration paths.
+
+### Saved plans that name a deprecated operator
+
+A stored `DataPipeline` record whose nodes name a deprecated operator still parses through `from_dict()`, and each `operator_id` still resolves. Take inventory by walking the restored plan's operator entities and reading `deprecated` off each resolved card; the README shows the loop.
+
+Executing such a plan was already rejected before 2.8.0 and still is. `PipelineExecutor.preflight()` and `execute()` raise `PipelineError` because a plan-producing operator is not a materialized execution node, which is the established boundary rather than a new lifecycle check.
+
+### What 3.0.0 removes
+
+3.0.0 removes the deprecated calls and their resolution. Planned effects, none of which apply to 2.8.0:
+
+- the v1 registry view goes from 36 cards to 32 and the dual-version view from 72 to 64, dropping all eight flagged cards;
+- the MCP catalog goes from 40 tools to 32, dropping four primaries and all four `__refine` companions;
+- operator-skill packages go from 33 to 32 as the retained `multipart_query@2.0.0` package goes with its operator;
+- twenty public names disappear: sixteen module-level functions and the four operator classes;
+- nine tags carried only by those cards leave the taxonomy, among them `capability-query-routing`, `flow-plan`, and `produces-plan`. `domain-plan` stays, carried by `data_discover`.
 
 ## Maximum of non-numeric input
 
@@ -73,6 +121,12 @@ Planning raises `PlanningError` where operator execution returns errors inside `
 A data-context snapshot is disclosed to the provider only when the caller sets `send_data_context=True`. Absent that opt-in, a snapshot reaching `generate()` raises `DATA_CONTEXT_DISCLOSURE_REQUIRED` before the SDK import, the client, and any request. Preserve this failure rather than relaxing it to a silent drop: the caller asked for schema-aware planning, and quietly planning without the schema would answer a different question.
 
 Provider failures map to codes that name the planning outcome (`GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, `GENERATOR_UNAVAILABLE`, and the rest) by exception class and HTTP status. No provider exception text, response body, request payload, credential, or provider identifier is interpolated into a record, so the record shape does not change if the SDK's messages do.
+
+## Operator skill index validation
+
+`OperatorSkillLoader` treats its package index as a closed exact-path map. A manifest name whose key carries a `.` or `..` path segment invalidates the whole index, so every index-backed entry point (`available_operator_ids()`, `describe()`, `load()`, and `read()`) raises `OperatorSkillLoadError` with code `MANIFEST_INVALID`. One poisoned row closes the index instead of being skipped, so a legitimate operator whose own row is intact fails the same way.
+
+Direct calls keep their established precedence: `describe()`, `load()`, or `read()` given a malformed operator id such as `..@1.0.0` raises `OperatorSkillLoadError` with code `INVALID_OPERATOR_ID` before the index is read at all. A malformed id is never reported as a manifest problem.
 
 ## Utility functions
 

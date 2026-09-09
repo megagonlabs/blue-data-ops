@@ -200,3 +200,47 @@ def test_operator_card_is_frozen() -> None:
     card = OperatorCard(operator_id="x@1.0.0", name="x", version="1.0.0", description="")
     with pytest.raises(dataclasses.FrozenInstanceError):
         card.name = "y"  # type: ignore[misc]
+
+
+# --- lifecycle ---
+def test_a_card_is_active_unless_the_caller_says_otherwise(registry: OperatorRegistry) -> None:
+    card = registry.register(_op("select"), "1.0.0")
+    assert card.deprecated is False
+    assert registry.get_card("select@1.0.0") == card
+
+
+def test_register_takes_the_lifecycle_flag_by_keyword_only(registry: OperatorRegistry) -> None:
+    card = registry.register(_op("select"), "1.0.0", ["relational"], deprecated=True)
+    assert card.deprecated is True
+    with pytest.raises(TypeError):
+        registry.register(_op("join"), "1.0.0", ["relational"], True)  # type: ignore[misc]
+
+
+def test_the_lifecycle_field_is_last_and_defaulted() -> None:
+    assert [f.name for f in dataclasses.fields(OperatorCard)][-1] == "deprecated"
+    positional = OperatorCard("x@1.0.0", "x", "1.0.0", "", ("t",), "when")
+    assert positional.deprecated is False
+    assert positional == OperatorCard(
+        operator_id="x@1.0.0",
+        name="x",
+        version="1.0.0",
+        description="",
+        tags=("t",),
+        when_to_invoke="when",
+    )
+
+
+def test_public_registration_never_derives_the_flag(registry: OperatorRegistry) -> None:
+    """A caller class sharing a built-in's name is still its own operator, and still active."""
+    assert registry.register(_op("plan_discover"), "2.0.0").deprecated is False
+
+
+def test_the_builtin_factory_deprecates_the_plan_producing_operators() -> None:
+    cards = default_registry().list_cards()
+    assert sorted(c.operator_id for c in cards if c.deprecated) == [
+        "multipart_query@1.0.0",
+        "nl2query_router@1.0.0",
+        "plan_discover@1.0.0",
+        "query_breakdown@1.0.0",
+    ]
+    assert len([c for c in cards if not c.deprecated]) == 32
