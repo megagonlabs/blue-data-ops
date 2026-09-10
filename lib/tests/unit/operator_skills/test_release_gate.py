@@ -134,7 +134,7 @@ def test_release_gate_rejects_a_self_consistent_package_omission(tmp_path: Path)
         )
 
 
-def test_release_gate_accepts_the_runtime_derived_33_package_set(
+def test_release_gate_accepts_the_runtime_derived_package_set(
     tmp_path: Path,
 ) -> None:
     core = tmp_path / "core.whl"

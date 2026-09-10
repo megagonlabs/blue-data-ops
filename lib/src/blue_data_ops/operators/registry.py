@@ -414,21 +414,27 @@ def default_registry(**versions: Any) -> OperatorRegistry:
     This is the frozen v1 compatibility surface: it validates the built-in discovery metadata
     fail-fast (so an invalid spec is caught), but registers **raw** cards without tags or
     ``when_to_invoke``. That keeps the v1 MCP deployment's raw 36-tool inventory and byte-identical
-    v1 discovery. The enriched six-namespace metadata lives on the 72-card ``versioned_registry()``.
+    v1 discovery. The enriched six-namespace metadata lives on ``versioned_registry()``.
     """
     _builtin_discovery_specs()  # fail-fast validation of the built-in metadata; raw v1 cards below
+    outcome_classes = _outcome_operator_classes()
     registry = OperatorRegistry()
     for operator_class in _builtin_operator_classes():
-        instance = operator_class()
-        version = str(versions.get(instance.name, "1.0.0"))
+        version = str(versions.get(operator_class.name, "1.0.0"))
+        selected_class = (
+            outcome_classes.get(operator_class.name, operator_class)
+            if version == "3.0.0"
+            else operator_class
+        )
+        instance = selected_class()
         registry._register_builtin(instance, version)  # pyright: ignore[reportPrivateUsage]
     return registry
 
 
 def versioned_registry() -> OperatorRegistry:
-    """Return the 36 built-ins as 72 pinned cards: one 2.0.0 and one 1.0.0 each.
+    """Return 75 pinned cards, including avg, insert_table, and join at 3.0.0.
 
-    Separate instances back the two versions of each built-in; the contract is
+    Separate instances back each exact version; the contract is
     the selected behavior and pinned ID, not object identity. The 2.0.0
     PlanDiscover instance discovers from this catalog itself, so its selected
     v2 refinement can see v2 cards; the 1.0.0 instance keeps the constructor's
@@ -438,6 +444,7 @@ def versioned_registry() -> OperatorRegistry:
     from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
 
     specs = _builtin_discovery_specs()
+    outcome_classes = _outcome_operator_classes()
     registry = OperatorRegistry()
     for operator_class in _builtin_operator_classes():
         spec = specs[operator_class]
@@ -452,4 +459,23 @@ def versioned_registry() -> OperatorRegistry:
         registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
             operator_class(), "1.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
         )
+        outcome_class = outcome_classes.get(operator_class.name)
+        if outcome_class is not None:
+            registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
+                outcome_class(), "3.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
+            )
     return registry
+
+
+def _outcome_operator_classes() -> dict[str, type[Operator]]:
+    from blue_data_ops.operators._avg_outcome import AvgOutcomeOperator
+    from blue_data_ops.operators._insert_table_outcome import (
+        InsertTableOutcomeOperator,
+    )
+    from blue_data_ops.operators._join_outcome import JoinOutcomeOperator
+
+    return {
+        "avg": AvgOutcomeOperator,
+        "insert_table": InsertTableOutcomeOperator,
+        "join": JoinOutcomeOperator,
+    }

@@ -18,7 +18,7 @@ def main() -> None:
     descriptor = loader.describe(selected.operator_id)
     view = loader.load(selected.operator_id, level=max(descriptor.declared_levels))
 
-    assert selected.operator_id == "avg@2.0.0"
+    assert selected.name == "avg"
     assert descriptor.declared_kinds == ("guide", "examples")
     assert descriptor.declared_levels == (2, 3)
     assert view.card is selected

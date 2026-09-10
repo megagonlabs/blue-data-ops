@@ -24,6 +24,7 @@ SETTINGS_COLUMNS = (
 )
 SETTING_KINDS = frozenset({"scalar", "presence", "structured", "seam", "namespace"})
 COMPATIBILITY_PACKAGE = "multipart_query@2.0.0"
+ADDED_SKILL_PACKAGE_IDS = ("avg@3.0.0", "insert_table@3.0.0", "join@3.0.0")
 BASE_SETTING = "execution.timeout_seconds"
 _NAMESPACE_INPUT = re.compile(
     r"^properties:(?:<[A-Za-z_][A-Za-z0-9_]*>|[A-Za-z_][A-Za-z0-9_]*)\.\*$"
@@ -176,7 +177,7 @@ def parse_settings(guide: str) -> tuple[SettingRow, ...]:
     return tuple(rows)
 
 
-def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
+def expected_v2_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     cards = tuple(card for card in registry.list_cards() if card.version == "2.0.0")
     assert len(cards) == 36
     refinable = {
@@ -193,6 +194,17 @@ def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     }
     assert len(expected) == 33
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
+
+
+def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
+    legacy = expected_v2_skill_package_ids(registry)
+    expected = (*legacy, *ADDED_SKILL_PACKAGE_IDS)
+    assert len(expected) == len(set(expected)) == 36
+    return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
+
+
+def assert_skill_package_inventory(actual: tuple[str, ...], registry: OperatorRegistry) -> None:
+    assert actual == expected_skill_package_ids(registry), "skill package inventory differs"
 
 
 def _literal_key(node: ast.AST) -> str | None:

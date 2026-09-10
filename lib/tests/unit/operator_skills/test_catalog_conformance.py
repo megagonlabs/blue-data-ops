@@ -30,10 +30,13 @@ from ._conformance_support import (
     inspect_catalog,
 )
 from ._settings_conformance import (
+    ADDED_SKILL_PACKAGE_IDS,
     EffectiveReadCensus,
     assert_guide_matches_operator,
+    assert_skill_package_inventory,
     effective_read_census,
     expected_skill_package_ids,
+    expected_v2_skill_package_ids,
     parse_settings,
     render_expected_settings,
     runtime_metadata_reads,
@@ -45,7 +48,6 @@ EXPECTED_PACKAGE_COUNT = len(EXPECTED_PACKAGE_IDS)
 CATALOG = inspect_catalog(
     PACKAGE_ROOT,
     minimum_packages=1,
-    expected_package_count=EXPECTED_PACKAGE_COUNT,
 )
 EXERCISED_PACKAGE_IDS = frozenset(CATALOG.package_ids)
 ATTRIBUTE_SUMMARY_VERB = re.compile(
@@ -165,6 +167,7 @@ def test_shipped_catalog_sets_and_generic_test_ids_are_equal() -> None:
         exercised_package_ids=set(EXERCISED_PACKAGE_IDS),
     )
     assert observed.package_ids == CATALOG.package_ids
+    assert_skill_package_inventory(observed.package_ids, versioned_registry())
     assert all(
         set(package.resources) == {"guide", "examples"} for package in observed.packages.values()
     )
@@ -574,9 +577,57 @@ def _synthetic_census() -> EffectiveReadCensus:
     )
 
 
-def test_expected_membership_is_derived_from_runtime_refinability() -> None:
-    assert CATALOG.package_ids == EXPECTED_PACKAGE_IDS
-    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 33
+def test_expected_membership_adds_only_the_three_exact_versions() -> None:
+    assert_skill_package_inventory(CATALOG.package_ids, versioned_registry())
+    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 36
+
+
+def test_historical_package_membership_is_derived_from_runtime_refinability() -> None:
+    expected = expected_v2_skill_package_ids(versioned_registry())
+    assert len(expected) == 33
+    assert "multipart_query@2.0.0" in expected
+    assert all(operator_id.endswith("@2.0.0") for operator_id in expected)
+    assert tuple(operator_id for operator_id in CATALOG.package_ids if operator_id in expected) == (
+        expected
+    )
+    assert tuple(
+        operator_id for operator_id in EXPECTED_PACKAGE_IDS if operator_id in expected
+    ) == (expected)
+    assert set(EXPECTED_PACKAGE_IDS) - set(expected) == set(ADDED_SKILL_PACKAGE_IDS)
+
+
+def test_synthetic_inventory_accepts_exactly_the_expected_packages() -> None:
+    registry = versioned_registry()
+    assert_skill_package_inventory(expected_skill_package_ids(registry), registry)
+
+
+@pytest.mark.parametrize(
+    "missing_id", ("avg@2.0.0", "multipart_query@2.0.0", *ADDED_SKILL_PACKAGE_IDS)
+)
+def test_synthetic_inventory_rejects_missing_old_or_new_packages(missing_id: str) -> None:
+    registry = versioned_registry()
+    actual = tuple(oid for oid in expected_skill_package_ids(registry) if oid != missing_id)
+    with pytest.raises(AssertionError, match="skill package inventory differs"):
+        assert_skill_package_inventory(actual, registry)
+
+
+@pytest.mark.parametrize("unexpected_id", ("avg@3.0.1", "select@3.0.0", "ghost@2.0.0"))
+@pytest.mark.parametrize("replace_id", (None, "avg@2.0.0", "avg@3.0.0"))
+def test_synthetic_inventory_rejects_extra_or_replacement_packages(
+    unexpected_id: str, replace_id: str | None
+) -> None:
+    registry = versioned_registry()
+    expected = expected_skill_package_ids(registry)
+    actual = tuple(
+        sorted(
+            (*[oid for oid in expected if oid != replace_id], unexpected_id),
+            key=lambda item: item.encode("utf-8"),
+        )
+    )
+    if replace_id is not None:
+        assert len(actual) == len(expected) == 36
+    with pytest.raises(AssertionError, match="skill package inventory differs"):
+        assert_skill_package_inventory(actual, registry)
 
 
 def test_census_covers_all_layers_and_setting_kinds() -> None:

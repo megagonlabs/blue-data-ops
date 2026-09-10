@@ -31,6 +31,14 @@ from blue_data_ops.operators._discovery import (
 from blue_data_ops.operators.registry import (
     _builtin_discovery_specs,  # pyright: ignore[reportPrivateUsage]
 )
+from tests.unit.operators._registry_catalog_expectations import (
+    ADDED_OPERATOR_IDS,
+    FULL_OPERATOR_IDS,
+    LEGACY_CARDS,
+    assert_added_cards_active,
+    assert_full_inventory,
+    assert_legacy_cards,
+)
 
 _LIB = Path(__file__).resolve().parents[3]
 _FIXTURE_PATH = _LIB / "tests/fixtures/v2_discovery_catalog.json"
@@ -66,7 +74,9 @@ def test_source_manifest_matches_current_sources() -> None:
 
 
 def test_exactly_36_names_and_72_cards() -> None:
-    registry_names = sorted({c.name for c in versioned_registry().list_cards()})
+    cards = assert_legacy_cards(versioned_registry().list_cards())
+    registry_names = sorted({c.name for c in cards})
+    assert len(cards) == 72
     assert registry_names == _NAMES
     assert len(_NAMES) == 36
     assert _FIXTURE["operator_count"] == 36
@@ -77,13 +87,106 @@ def test_exactly_36_names_and_72_cards() -> None:
 # Card content and built-in metadata
 # --------------------------------------------------------------------------------------------------
 def test_live_cards_match_the_frozen_snapshot() -> None:
-    for card in versioned_registry().list_cards():
+    for card in assert_legacy_cards(versioned_registry().list_cards()):
         expected = _CARDS[card.operator_id]
         assert card.name == expected["name"]
         assert card.version == expected["version"]
         assert card.description == expected["description"]
         assert list(card.tags) == expected["tags"]
         assert card.when_to_invoke == expected["when_to_invoke"]
+
+
+def test_live_inventory_contains_only_the_three_added_versions() -> None:
+    cards = versioned_registry().list_cards()
+    assert_full_inventory(cards)
+    assert_added_cards_active(cards)
+
+
+def _synthetic_catalog() -> list[OperatorCard]:
+    cards = {card.operator_id: card for card in LEGACY_CARDS}
+    for operator_id in ADDED_OPERATOR_IDS:
+        name = operator_id.split("@")[0]
+        cards[operator_id] = OperatorCard(operator_id, name, "3.0.0", "")
+    return [cards[operator_id] for operator_id in FULL_OPERATOR_IDS]
+
+
+def _assert_catalog(cards: list[OperatorCard]) -> None:
+    assert_full_inventory(cards)
+    assert_legacy_cards(cards)
+    assert_added_cards_active(cards)
+
+
+def test_catalog_comparator_accepts_exact_synthetic_inventory() -> None:
+    _assert_catalog(_synthetic_catalog())
+
+
+@pytest.mark.parametrize("mutation", ["missing-old", "duplicate-old", "missing-added"])
+def test_catalog_comparator_rejects_missing_or_duplicate_cards(mutation: str) -> None:
+    cards = _synthetic_catalog()
+    if mutation == "missing-old":
+        cards = [card for card in cards if card.operator_id != "avg@2.0.0"]
+    elif mutation == "duplicate-old":
+        cards.append(cards[0])
+    else:
+        cards = [card for card in cards if card.operator_id != "avg@3.0.0"]
+    with pytest.raises(AssertionError, match="75 distinct"):
+        _assert_catalog(cards)
+    if mutation != "missing-added":
+        with pytest.raises(AssertionError, match="legacy inventory/order"):
+            assert_legacy_cards(cards)
+
+
+@pytest.mark.parametrize("operator_id", ["ghost@1.0.0", "select@3.0.0", "avg@3.0.1"])
+@pytest.mark.parametrize("replace_added", [False, True])
+def test_catalog_comparator_rejects_unexpected_ids(operator_id: str, replace_added: bool) -> None:
+    cards = _synthetic_catalog()
+    name, version = operator_id.split("@")
+    unexpected = OperatorCard(operator_id, name, version, "")
+    if replace_added:
+        index = next(i for i, card in enumerate(cards) if card.operator_id == "avg@3.0.0")
+        cards[index] = unexpected
+    else:
+        cards.append(unexpected)
+    with pytest.raises(AssertionError, match="inventory|75 distinct"):
+        _assert_catalog(cards)
+    with pytest.raises(AssertionError, match="unexpected operator IDs"):
+        assert_legacy_cards(cards)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"name": "changed"},
+        {"version": "2.0.1"},
+        {"description": "changed"},
+        {"tags": ("changed",)},
+        {"when_to_invoke": "changed"},
+        {"deprecated": True},
+        {"deprecated": 0},
+    ],
+)
+def test_catalog_comparator_rejects_altered_old_metadata(change: dict[str, Any]) -> None:
+    cards = _synthetic_catalog()
+    index = next(i for i, card in enumerate(cards) if card.operator_id == "avg@2.0.0")
+    cards[index] = replace(cards[index], **change)
+    with pytest.raises(AssertionError, match="legacy metadata|legacy lifecycle"):
+        _assert_catalog(cards)
+
+
+@pytest.mark.parametrize("operator_id", ["avg@3.0.0", "plan_discover@2.0.0"])
+def test_catalog_comparator_rejects_wrong_lifecycle_flags(operator_id: str) -> None:
+    cards = _synthetic_catalog()
+    index = next(i for i, card in enumerate(cards) if card.operator_id == operator_id)
+    cards[index] = replace(cards[index], deprecated=not cards[index].deprecated)
+    with pytest.raises(AssertionError, match="legacy metadata|not active"):
+        _assert_catalog(cards)
+
+
+def test_catalog_comparator_rejects_changed_legacy_order() -> None:
+    cards = _synthetic_catalog()
+    cards[0], cards[1] = cards[1], cards[0]
+    with pytest.raises(AssertionError, match="inventory/order"):
+        assert_legacy_cards(cards)
 
 
 @pytest.mark.parametrize("operator_id", sorted(_CARDS))
@@ -325,7 +428,7 @@ def test_frozen_v2_selection_is_36_ids_inside_the_72_card_catalog() -> None:
 def test_default_registry_is_36_raw_v1_cards_preserving_the_frozen_mcp_surface() -> None:
     # default_registry() is the frozen v1 compatibility surface: raw cards (no tags/when_to_invoke),
     # so the v1 MCP deployment's raw 36-tool inventory and byte-identical v1 discovery are kept.
-    # The enriched six-namespace metadata lives on versioned_registry()'s 72 cards.
+    # The enriched six-namespace metadata lives on versioned_registry()'s 75 cards.
     cards = default_registry().list_cards()
     assert len(cards) == 36
     assert all(c.version == "1.0.0" for c in cards)

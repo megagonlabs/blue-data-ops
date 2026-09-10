@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any, cast
+
+from blue_data_ops.operators import OperatorCard
+
+_LIB = Path(__file__).resolve().parents[3]
+_FIXTURE = json.loads((_LIB / "tests/fixtures/v2_discovery_catalog.json").read_text())
+LEGACY_CARDS = tuple(
+    OperatorCard(**cast(dict[str, Any], {**card, "tags": tuple(card["tags"])}))
+    for card in _FIXTURE["cards"]
+)
+LEGACY_OPERATOR_IDS = tuple(card.operator_id for card in LEGACY_CARDS)
+ADDED_OPERATOR_IDS = ("avg@3.0.0", "insert_table@3.0.0", "join@3.0.0")
+FULL_OPERATOR_IDS = tuple(
+    sorted(
+        (*LEGACY_OPERATOR_IDS, *ADDED_OPERATOR_IDS),
+        key=lambda oid: (
+            oid.split("@")[0],
+            tuple(-int(part) for part in oid.split("@")[1].split(".")),
+        ),
+    )
+)
+
+
+def assert_legacy_cards(cards: Sequence[OperatorCard]) -> list[OperatorCard]:
+    unexpected = {card.operator_id for card in cards} - set(FULL_OPERATOR_IDS)
+    assert not unexpected, f"unexpected operator IDs: {sorted(unexpected)}"
+    legacy = [card for card in cards if card.operator_id in LEGACY_OPERATOR_IDS]
+    assert tuple(card.operator_id for card in legacy) == LEGACY_OPERATOR_IDS, (
+        "legacy inventory/order changed"
+    )
+    for card, expected in zip(legacy, LEGACY_CARDS, strict=True):
+        assert card == expected, f"legacy metadata changed: {card.operator_id}"
+        assert card.deprecated is expected.deprecated, (
+            f"legacy lifecycle changed: {card.operator_id}"
+        )
+    return legacy
+
+
+def assert_full_inventory(cards: Sequence[OperatorCard]) -> None:
+    ids = tuple(card.operator_id for card in cards)
+    assert len(ids) == len(set(ids)) == 75, "expected 75 distinct operator IDs"
+    assert ids == FULL_OPERATOR_IDS, "full inventory/order changed"
+
+
+def assert_added_cards_active(cards: Sequence[OperatorCard]) -> None:
+    added = [card for card in cards if card.operator_id in ADDED_OPERATOR_IDS]
+    assert tuple(card.operator_id for card in added) == ADDED_OPERATOR_IDS
+    for card in added:
+        assert card.name == card.operator_id.split("@")[0]
+        assert card.version == "3.0.0"
+        assert card.deprecated is False, f"added card is not active: {card.operator_id}"

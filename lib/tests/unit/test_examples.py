@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import OperatorCard, versioned_registry
 
 LIB_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,7 @@ ACTIVE_OFFLINE_EXAMPLES = (
     "embedding_planner.py",
     "operator_skill_discovery.py",
     "operator_skill_integrations.py",
+    "operator_outcomes.py",
 )
 LEGACY_OFFLINE_EXAMPLES = ("refinement.py",)
 OFFLINE_EXAMPLES = ACTIVE_OFFLINE_EXAMPLES + LEGACY_OFFLINE_EXAMPLES
@@ -57,15 +59,19 @@ def _run_example(name: str) -> subprocess.CompletedProcess[str]:
 
 def _registry_view() -> tuple[dict[str, OperatorCard], dict[str, str]]:
     registry = versioned_registry()
-    cards = {card.operator_id: card for card in registry.list_cards() if card.version == "2.0.0"}
-    class_ids = {type(registry.resolve(operator_id)).__name__: operator_id for operator_id in cards}
+    cards = {card.operator_id: card for card in registry.list_cards()}
+    class_ids = {
+        type(registry.resolve(operator_id)).__name__: operator_id
+        for operator_id, card in cards.items()
+        if card.version == "2.0.0"
+    }
     return cards, class_ids
 
 
 def _source_operator_ids(
     path: Path, cards: Mapping[str, OperatorCard], class_ids: Mapping[str, str]
 ) -> set[str]:
-    """Operator ids an example names outright: a constructor call or a ``resolve("…")`` literal.
+    """Ids named by constructors or literal ``resolve`` / ``define_operator`` calls.
 
     An example that reaches operators through ``registry.find(...)`` names none of them here,
     and this returns an empty set for it. That boundary is why the skill-discovery example
@@ -80,7 +86,7 @@ def _source_operator_ids(
             source_ids.add(class_ids[node.func.id])
         if (
             isinstance(node.func, ast.Attribute)
-            and node.func.attr == "resolve"
+            and node.func.attr in {"resolve", "define_operator"}
             and node.args
             and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)
@@ -194,13 +200,24 @@ def test_the_legacy_example_surfaces_the_package_deprecation_warning() -> None:
 
 
 def test_the_skill_discovery_example_expands_only_the_eligible_card() -> None:
+    registry = versioned_registry()
+    loader = OperatorSkillLoader(registry)
+    eligible_ids = set(loader.available_operator_ids())
+    expected = next(
+        card
+        for card in registry.find("average", tags=["domain-arithmetic"])
+        if card.operator_id in eligible_ids
+    )
+    descriptor = loader.describe(expected.operator_id)
     result = _run_example(SKILL_DISCOVERY_EXAMPLE)
 
     assert result.returncode == 0, result.stderr
     assert "BlueDataOpsDeprecationWarning" not in result.stderr
     lines = result.stdout.strip().splitlines()
-    assert lines[0].startswith("expanded: avg@2.0.0 ")
-    assert lines[1] == f"skipped without loading: {SKILL_INELIGIBLE_OPERATOR_ID}"
+    assert lines == [
+        f"expanded: {expected.operator_id} {descriptor.declared_levels}",
+        f"skipped without loading: {SKILL_INELIGIBLE_OPERATOR_ID}",
+    ]
 
 
 def test_example_map_covers_public_tag_families() -> None:

@@ -8,17 +8,21 @@ discovery is rule-based over name/description/tags and returns pinned cards.
 from __future__ import annotations
 
 import dataclasses
+from typing import Any
 
 import pytest
 
+from blue_data_ops import ErrorCode, ErrorStage
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.registry import (
     OperatorCard,
     OperatorRegistry,
     ResolveError,
     default_registry,
+    versioned_registry,
 )
 from blue_data_ops.operators.types import Attributes, DataBundle, Properties
+from tests.unit.operators._registry_catalog_expectations import ADDED_OPERATOR_IDS
 
 
 def _op(name: str, description: str = "") -> Operator:
@@ -194,6 +198,151 @@ def test_default_registry_version_override() -> None:
     assert registry.find_latest("nl2sql") is not None
     assert registry.resolve("nl2sql@1.1.0").name == "nl2sql"
     assert registry.get_card("nl2sql@1.0.0") is None
+
+
+@pytest.mark.parametrize("operator_id", ADDED_OPERATOR_IDS)
+def test_added_card_identity_schema_and_latest_selection(operator_id: str) -> None:
+    registry = versioned_registry()
+    operator = registry.resolve(operator_id)
+    card = registry.get_card(operator_id)
+    assert card is not None
+    assert operator.operator_id == card.operator_id == operator_id
+    assert operator.name == card.name == operator_id.split("@")[0]
+    assert card.version == "3.0.0"
+    assert card.deprecated is False
+    assert registry.find_latest(card.name) == card
+    assert card in registry.find(card.name)
+    expected_schema = {
+        "avg": {"avg_key": ("str", True), "output_key": ("str", False)},
+        "insert_table": {
+            "source": ("str", True),
+            "database": ("str", True),
+            "collection": ("str", False),
+            "table": ("str", True),
+            "batch_size": ("int", False),
+        },
+        "join": {
+            "join_on": ("list[list[str]]", True),
+            "join_type": ("str", False),
+            "join_suffix": ("list[str]", False),
+            "keep_keys": ("str", False),
+        },
+    }
+    assert {key: (spec.type, spec.required) for key, spec in operator.attributes.items()} == (
+        expected_schema[card.name]
+    )
+
+
+def _known_version_outcome(operator: Operator) -> tuple[Any, ...]:
+    if operator.name == "avg":
+        data, attributes, meta = operator.run([[{"score": 0}, {"score": 0}]], {"avg_key": "score"})
+        assert data == [[{"avg": 0.0}]]
+        assert attributes == {"num_values_used": 2}
+        assert type(attributes["num_values_used"]) is int
+        assert meta.is_empty is False
+        assert meta.errors == []
+    elif operator.name == "insert_table":
+        from blue_data_ops.data import RegistrySeam
+        from tests.doubles.data import RegistrySeamDouble, SQLSourceDouble
+
+        class EmptyInsertRegistry(RegistrySeamDouble, RegistrySeam):
+            pass
+
+        seam = EmptyInsertRegistry()
+        source = SQLSourceDouble("src")
+        seam.sources["src"] = source
+        data, attributes, meta = operator.run(
+            [[]],
+            {"source": "src", "database": "db", "table": "t"},
+            {"data_registry": seam},
+        )
+        assert data == [[]]
+        assert attributes == {"num_rows_insert": 0}
+        assert type(attributes["num_rows_insert"]) is int
+        assert meta.is_empty is True
+        assert meta.errors == []
+        assert source.connections == {}
+    else:
+        assert operator.name == "join"
+        data, attributes, meta = operator.run(
+            [[{"id": 1, "value": 1}], [{"id": 1, "value": 2}]],
+            {"join_on": [["id"], ["id"]], "join_suffix": ["_same", "_same"]},
+        )
+        assert data == [[]]
+        assert attributes == {}
+        assert meta.is_empty is False
+        assert any(
+            error.code is ErrorCode.INVALID_INPUT and error.stage is ErrorStage.VALIDATE
+            for error in meta.errors
+        )
+    assert all(error.operator_id == operator.operator_id for error in meta.errors)
+    return (
+        data,
+        attributes,
+        meta.is_empty,
+        tuple((error.operator_id, error.code, error.stage) for error in meta.errors),
+    )
+
+
+@pytest.mark.parametrize("operator_id", ADDED_OPERATOR_IDS)
+def test_known_default_override_selects_the_new_outcome(operator_id: str) -> None:
+    name = operator_id.split("@")[0]
+    registry = default_registry(**{name: "3.0.0"})
+    cards = registry.list_cards()
+    assert len(cards) == 36
+    assert all(card.tags == () and card.when_to_invoke == "" for card in cards)
+    assert registry.get_card(f"{name}@1.0.0") is None
+    assert all(card.version == "1.0.0" for card in cards if card.name != name)
+    card = registry.get_card(operator_id)
+    assert card is not None and card.deprecated is False
+    operator = registry.resolve(operator_id)
+    assert operator.name == name
+    assert operator.operator_id == operator_id
+    _known_version_outcome(operator)
+
+
+@pytest.mark.parametrize("operator_id", ADDED_OPERATOR_IDS)
+def test_known_default_override_agrees_with_versioned_outcome(operator_id: str) -> None:
+    name = operator_id.split("@")[0]
+    versioned = versioned_registry().resolve(operator_id)
+    overridden = default_registry(**{name: "3.0.0"}).resolve(operator_id)
+    assert versioned.operator_id == overridden.operator_id == operator_id
+    assert versioned.attributes == overridden.attributes
+    assert _known_version_outcome(versioned) == _known_version_outcome(overridden)
+
+
+def test_all_known_default_overrides_keep_unselected_raw_cards() -> None:
+    registry = default_registry(avg="3.0.0", insert_table="3.0.0", join="3.0.0")
+    baseline = default_registry()
+    selected_names = {operator_id.split("@")[0] for operator_id in ADDED_OPERATOR_IDS}
+    assert len(registry.list_cards()) == 36
+    assert (
+        tuple(card.operator_id for card in registry.list_cards() if card.name in selected_names)
+        == ADDED_OPERATOR_IDS
+    )
+    assert [card for card in registry.list_cards() if card.name not in selected_names] == [
+        card for card in baseline.list_cards() if card.name not in selected_names
+    ]
+    for operator_id in ADDED_OPERATOR_IDS:
+        _known_version_outcome(registry.resolve(operator_id))
+
+
+def test_unrelated_arbitrary_default_override_keeps_legacy_outcome() -> None:
+    registry = default_registry(select="9.8.7", unknown_operator="3.0.0")
+    operator = registry.resolve("select@9.8.7")
+    baseline = default_registry().resolve("select@1.0.0")
+    assert operator.operator_id == "select@9.8.7"
+    assert registry.get_card("select@1.0.0") is None
+    assert registry.get_card("unknown_operator@3.0.0") is None
+    assert len(registry.list_cards()) == 36
+    data = [[{"score": 1}, {"score": 3}]]
+    attributes = {"operand_key": "score", "operand": ">", "operand_val": 1}
+    observed = operator.run(data, attributes)
+    expected = baseline.run(data, attributes)
+    assert observed[0] == expected[0] == [[{"score": 3}]]
+    assert observed[1] == expected[1] == {}
+    assert observed[2].errors == expected[2].errors == []
+    assert observed[2].is_empty is expected[2].is_empty is False
 
 
 def test_operator_card_is_frozen() -> None:

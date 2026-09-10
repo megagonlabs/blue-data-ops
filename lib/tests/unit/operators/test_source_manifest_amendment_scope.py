@@ -22,6 +22,7 @@ from typing import Any, cast
 import pytest
 
 from blue_data_ops.operators import versioned_registry
+from tests.unit.operators._registry_catalog_expectations import assert_legacy_cards
 from tests.unit.operators._v2_source_manifest_baseline import (
     BASELINE_COMMIT,
     DEPRECATED_OPERATOR_IDS,
@@ -227,7 +228,7 @@ def test_discovery_fixture_lifecycle_oracle() -> None:
 def test_live_cards_carry_the_frozen_lifecycle_flags() -> None:
     # Fails until OperatorCard gains `deprecated`. getattr keeps this module type-checkable
     # against 2.7.0, where the attribute does not exist.
-    cards = versioned_registry().list_cards()
+    cards = assert_legacy_cards(versioned_registry().list_cards())
     assert len(cards) == 72
     lifecycle = {card.operator_id: getattr(card, "deprecated", _ABSENT) for card in cards}
     missing = sorted(oid for oid, flag in lifecycle.items() if flag is _ABSENT)

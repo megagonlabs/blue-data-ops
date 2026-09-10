@@ -1,6 +1,6 @@
 """Dual-version registry and refinement compatibility.
 
-The suite covers the 36-card default registry, the 72-card versioned registry,
+The suite covers the 36-card default registry, the 75-card versioned registry,
 selection behavior, and refinement at both versions.
 """
 
@@ -28,6 +28,11 @@ from blue_data_ops.operators import query_breakdown_operator as query_breakdown_
 from blue_data_ops.plan import DataPipeline, RefinableOperator
 from blue_data_ops.plan import pipeline as pipeline_module
 from tests.unit.operators._plan_operator_helpers import cte, operator_ids
+from tests.unit.operators._registry_catalog_expectations import (
+    ADDED_OPERATOR_IDS,
+    assert_full_inventory,
+    assert_legacy_cards,
+)
 
 # The 36 built-in logical operators in name order.
 BUILTIN_NAMES: tuple[str, ...] = (
@@ -127,7 +132,7 @@ def test_default_registry_v1_inventory_and_resolution_identity() -> None:
 
 # --- 72-card dual inventory and deterministic order ---------------------------------
 def test_versioned_registry_dual_inventory_and_order() -> None:
-    cards = versioned_registry().list_cards()
+    cards = assert_legacy_cards(versioned_registry().list_cards())
     ids = [card.operator_id for card in cards]
 
     assert len(ids) == 72
@@ -135,6 +140,10 @@ def test_versioned_registry_dual_inventory_and_order() -> None:
     # name-ascending, version-descending: 2.0.0 precedes 1.0.0 for each name.
     expected = [f"{name}@{version}" for name in BUILTIN_NAMES for version in ("2.0.0", "1.0.0")]
     assert ids == expected
+
+
+def test_versioned_registry_full_inventory_and_order() -> None:
+    assert_full_inventory(versioned_registry().list_cards())
 
 
 # --- unrelated exported subclasses do not change inventory --------------------------
@@ -162,7 +171,8 @@ def test_bogus_export_cannot_change_either_inventory(
     versioned_cards = versioned_registry().list_cards()
 
     assert len(default_cards) == 36
-    assert len(versioned_cards) == 72
+    assert len(assert_legacy_cards(versioned_cards)) == 72
+    assert_full_inventory(versioned_cards)
     assert all(not card.operator_id.startswith("bogus@") for card in default_cards)
     assert all(not card.operator_id.startswith("bogus@") for card in versioned_cards)
 
@@ -240,6 +250,12 @@ def test_empty_and_subset_selections_remain_valid() -> None:
     )
 
 
+def test_added_versions_are_explicitly_selectable() -> None:
+    snapshot = _select_deployment(versioned_registry(), ADDED_OPERATOR_IDS)
+    assert tuple(card.operator_id for card in snapshot) == ADDED_OPERATOR_IDS
+    assert all(card.deprecated is False for card in snapshot)
+
+
 # --- invalid selections and ids -----------------------------------------------------
 def test_duplicate_ids_fail() -> None:
     with pytest.raises(ValueError, match="repeated operator id"):
@@ -284,7 +300,7 @@ def test_mcp_gets_v1_registry_and_no_root_versioned_export() -> None:
     assert len(cards) == 36
     assert all(card.operator_id.endswith("@1.0.0") for card in cards)
 
-    # No 72-card catalog can reach the v1 MCP implicitly: versioned_registry() is
+    # No enriched catalog can reach the v1 MCP implicitly: versioned_registry() is
     # published only under blue_data_ops.operators, never at the root package.
     assert not hasattr(blue_data_ops, "versioned_registry")
     assert "versioned_registry" not in getattr(blue_data_ops, "__all__", ())

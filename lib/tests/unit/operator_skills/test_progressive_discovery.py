@@ -23,7 +23,7 @@ from blue_data_ops.operators import (
 )
 from blue_data_ops.operators.registry import is_builtin_card
 
-from ._settings_conformance import expected_skill_package_ids
+from ._settings_conformance import ADDED_SKILL_PACKAGE_IDS, expected_skill_package_ids
 
 RESOURCE_ROOT = Path(__file__).parents[3] / "src" / "blue_data_ops" / "operator_skills"
 OPERATOR_ID = "nl2sql@2.0.0"
@@ -68,6 +68,24 @@ def test_default_registry_has_no_eligible_skill_packages() -> None:
     assert OperatorSkillLoader(default_registry()).available_operator_ids() == ()
 
 
+@pytest.mark.parametrize("operator_id", ADDED_SKILL_PACKAGE_IDS)
+def test_added_skill_packages_resolve_and_load_explicitly(operator_id: str) -> None:
+    registry = versioned_registry()
+    operator = registry.resolve(operator_id)
+    card = registry.get_card(operator_id)
+    assert card is not None and card.deprecated is False
+    assert operator.operator_id == card.operator_id == operator_id
+    loader = OperatorSkillLoader(registry)
+    assert operator_id in loader.available_operator_ids()
+    descriptor = loader.describe(operator_id)
+    assert descriptor.card is card
+    assert descriptor.declared_levels == (2, 3)
+    loaded = loader.load(operator_id, level=3)
+    assert loaded.card is card
+    assert loaded.loaded_kinds == ("guide", "examples")
+    assert loaded.guide and loaded.examples
+
+
 # The retained v1 average card is the one the skill-discovery example skips. Visibility,
 # lifecycle, and resource eligibility are three different properties of these cards, so each is
 # observed on its own: a card can be searchable and current and still ship no skill package.
@@ -75,7 +93,10 @@ def test_the_v1_average_card_stays_publicly_discoverable() -> None:
     registry = versioned_registry()
     matches = registry.find("average", tags=["domain-arithmetic"])
 
-    assert [card.operator_id for card in matches] == [ELIGIBLE_AVERAGE_ID, INELIGIBLE_AVERAGE_ID]
+    assert [card.operator_id for card in matches if card.operator_id != "avg@3.0.0"] == [
+        ELIGIBLE_AVERAGE_ID,
+        INELIGIBLE_AVERAGE_ID,
+    ]
     assert registry.get_card(INELIGIBLE_AVERAGE_ID) is not None
     assert registry.resolve(INELIGIBLE_AVERAGE_ID) is not None
 

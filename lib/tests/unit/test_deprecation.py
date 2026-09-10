@@ -600,7 +600,9 @@ def test_binding_construction_and_lookup_stay_silent() -> None:
 
 def test_the_builtin_registry_contains_no_bindings() -> None:
     registry = versioned_registry()
-    assert len(registry.list_cards()) == 72
+    from tests.unit.operators._registry_catalog_expectations import assert_full_inventory
+
+    assert_full_inventory(registry.list_cards())
     assert not any(
         removed_flag(registry.resolve(card.operator_id)) is not None
         for card in registry.list_cards()

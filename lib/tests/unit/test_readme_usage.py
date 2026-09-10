@@ -126,21 +126,29 @@ def test_readme_embedding_discovery_example() -> None:
 
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
-    assert metadata["project"]["version"] == "2.8.0"
+    assert metadata["project"]["version"] == "2.9.0"
     assert metadata["project"]["requires-python"] == ">=3.11"
     assert metadata["tool"]["ruff"]["target-version"] == "py311"
     assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"
 
 
 def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
+    from tests.unit.operator_skills._settings_conformance import (
+        expected_skill_package_ids,
+        expected_v2_skill_package_ids,
+    )
+
     package_root = Path(__file__).parents[2]
     readme = (package_root / "README.md").read_text(encoding="utf-8")
     index_path = package_root / "src/blue_data_ops/operator_skills/_index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
     operator_ids = tuple(index["packages"])
 
-    assert len(operator_ids) == 33
-    assert all(operator_id.endswith("@2.0.0") for operator_id in operator_ids)
+    registry = versioned_registry()
+    historical_ids = expected_v2_skill_package_ids(registry)
+    assert tuple(oid for oid in operator_ids if oid in historical_ids) == historical_ids
+    assert len(operator_ids) == 36
+    assert operator_ids == expected_skill_package_ids(registry)
     assert "all 32 active execution operators" in readme
     assert "`multipart_query@2.0.0` package" in readme
     lowered = readme.lower()
@@ -256,7 +264,7 @@ print(len(versioned_registry().list_cards()))
     result = subprocess.run(
         [sys.executable, "-c", program], capture_output=True, text=True, check=True
     )
-    assert result.stdout.strip() == "72"
+    assert result.stdout.strip() == "75"
 
 
 def _readme_planning_request() -> PlanningRequest:
@@ -330,7 +338,9 @@ def test_readme_deprecated_card_inventory_example() -> None:
         "query_breakdown@1.0.0",
         "query_breakdown@2.0.0",
     ]
-    assert len(registry.list_cards()) == 72
+    from tests.unit.operators._registry_catalog_expectations import assert_full_inventory
+
+    assert_full_inventory(registry.list_cards())
 
 
 def test_readme_deprecation_warning_category_and_filter() -> None:
@@ -448,11 +458,11 @@ def test_readme_and_mcp_readme_carry_no_stale_current_version() -> None:
     lib_readme = (Path(__file__).parents[2] / "README.md").read_text(encoding="utf-8")
     mcp_readme = (Path(__file__).parents[3] / "platform/mcp/README.md").read_text(encoding="utf-8")
 
-    assert "blue-data-ops 2.8.0" in lib_readme
-    assert 'version("blue-data-ops") == "2.8.0"' in lib_readme
+    assert "blue-data-ops 2.9.0" in lib_readme
+    assert 'version("blue-data-ops") == "2.9.0"' in lib_readme
     assert "2.7.0" not in lib_readme
-    assert 'version("blue-data-ops-mcp") == "0.10.0"' in mcp_readme
-    assert "blue-data-ops==2.8.0" in mcp_readme
+    assert 'version("blue-data-ops-mcp") == "0.11.0"' in mcp_readme
+    assert "blue-data-ops==2.9.0" in mcp_readme
     # the four historical literals stay put; they describe the 0.9.0 release, not this one
     assert mcp_readme.count("blue-data-ops-mcp==0.9.0") == 1
     assert mcp_readme.count("blue-data-ops[ml,vector,llm]==2.7.0") == 1
