@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import pytest
 
+import blue_data_ops.operator_skills as operator_skills
 from blue_data_ops.operator_skills import (
     INDEX_BYTE_LIMIT,
     JSON_DEPTH_LIMIT,
@@ -42,7 +43,7 @@ from ._settings_conformance import (
     runtime_metadata_reads,
 )
 
-PACKAGE_ROOT = Path(__file__).parents[3] / "src" / "blue_data_ops" / "operator_skills"
+PACKAGE_ROOT = Path(operator_skills.__file__).parent
 EXPECTED_PACKAGE_IDS = expected_skill_package_ids(versioned_registry())
 EXPECTED_PACKAGE_COUNT = len(EXPECTED_PACKAGE_IDS)
 CATALOG = inspect_catalog(
@@ -577,9 +578,9 @@ def _synthetic_census() -> EffectiveReadCensus:
     )
 
 
-def test_expected_membership_adds_only_the_three_exact_versions() -> None:
+def test_expected_membership_matches_the_exact_version_inventory() -> None:
     assert_skill_package_inventory(CATALOG.package_ids, versioned_registry())
-    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 36
+    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 54
 
 
 def test_historical_package_membership_is_derived_from_runtime_refinability() -> None:
@@ -625,7 +626,7 @@ def test_synthetic_inventory_rejects_extra_or_replacement_packages(
         )
     )
     if replace_id is not None:
-        assert len(actual) == len(expected) == 36
+        assert len(actual) == len(expected) == 54
     with pytest.raises(AssertionError, match="skill package inventory differs"):
         assert_skill_package_inventory(actual, registry)
 

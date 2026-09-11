@@ -4,6 +4,7 @@ import hashlib
 import json
 import traceback
 import warnings
+from collections.abc import Callable
 from importlib import import_module
 from typing import Any, ClassVar, cast
 
@@ -240,7 +241,11 @@ def _as_match(value: Any) -> bool:
     return value
 
 
-def _evaluate_join_predicate_batch(
+class _JoinResponseFormatError(ValueError):
+    pass
+
+
+def _request_join_predicate_batch(
     pairs: list[tuple[Record, Record, int, int]],
     join_predicate: str,
     left_fields: list[str],
@@ -249,9 +254,7 @@ def _evaluate_join_predicate_batch(
     demonstrations: str,
     client: LLMClient,
     properties: dict[str, Any],
-) -> dict[tuple[int, int], bool]:
-    if not pairs:
-        return {}
+) -> Any:
     pairs_data: list[dict[str, Any]] = []
     for left_record, right_record, left_index, right_index in pairs:
         left_filtered = {
@@ -282,7 +285,7 @@ def _evaluate_join_predicate_batch(
     # key from its copy because it expects structured results. The caller dict keeps it.
     if "output_cast" in batch_properties:
         del batch_properties["output_cast"]
-    result = client.execute_api_call(
+    return client.execute_api_call(
         {},
         properties=batch_properties,
         additional_data={
@@ -292,6 +295,30 @@ def _evaluate_join_predicate_batch(
             "demonstrations": demonstrations,
             "num_pairs": len(pairs),
         },
+    )
+
+
+def _evaluate_join_predicate_batch(
+    pairs: list[tuple[Record, Record, int, int]],
+    join_predicate: str,
+    left_fields: list[str],
+    right_fields: list[str],
+    context: str,
+    demonstrations: str,
+    client: LLMClient,
+    properties: dict[str, Any],
+) -> dict[tuple[int, int], bool]:
+    if not pairs:
+        return {}
+    result = _request_join_predicate_batch(
+        pairs,
+        join_predicate,
+        left_fields,
+        right_fields,
+        context,
+        demonstrations,
+        client,
+        properties,
     )
     if isinstance(result, str):
         try:
@@ -324,6 +351,69 @@ def _evaluate_join_predicate_batch(
         for _, _, left_index, right_index in pairs:
             results[(left_index, right_index)] = False
     return results
+
+
+def _evaluate_join_predicate_batch_strict(  # pyright: ignore[reportUnusedFunction]
+    pairs: list[tuple[Record, Record, int, int]],
+    join_predicate: str,
+    left_fields: list[str],
+    right_fields: list[str],
+    context: str,
+    demonstrations: str,
+    client: LLMClient,
+    properties: dict[str, Any],
+) -> dict[tuple[int, int], bool]:
+    if not pairs:
+        return {}
+    result = _request_join_predicate_batch(
+        pairs,
+        join_predicate,
+        left_fields,
+        right_fields,
+        context,
+        demonstrations,
+        client,
+        properties,
+    )
+    if isinstance(result, str):
+        clean_result = result.strip()
+        if clean_result.startswith("```json"):
+            clean_result = clean_result[7:]
+        if clean_result.startswith("```"):
+            clean_result = clean_result[3:]
+        if clean_result.endswith("```"):
+            clean_result = clean_result[:-3]
+        try:
+            result = json.loads(clean_result.strip())
+        except (json.JSONDecodeError, ValueError) as error:
+            raise _JoinResponseFormatError("join response is not valid JSON") from error
+    if not isinstance(result, dict):
+        raise _JoinResponseFormatError("join response must be an object")
+    response = cast(dict[Any, Any], result)
+    expected_keys = {f"pair_{index}" for index in range(1, len(pairs) + 1)}
+    if set(response) != expected_keys or any(
+        type(value) is not bool for value in response.values()
+    ):
+        raise _JoinResponseFormatError("join response has invalid pair results")
+    return {
+        (left_index, right_index): cast(bool, response[f"pair_{index}"])
+        for index, (_, _, left_index, right_index) in enumerate(pairs, 1)
+    }
+
+
+_JoinBatchEvaluator = Callable[
+    [
+        list[tuple[Record, Record, int, int]],
+        str,
+        list[str],
+        list[str],
+        str,
+        str,
+        LLMClient,
+        dict[str, Any],
+    ],
+    dict[tuple[int, int], bool],
+]
 
 
 def _merge_records(
@@ -671,6 +761,8 @@ def _perform_semantic_join_optimized(
     cache: dict[str, bool] | None,
     use_embedding_filter: bool,
     embedding_threshold: float,
+    response_evaluator: _JoinBatchEvaluator = _evaluate_join_predicate_batch,
+    propagate_optimization_errors: bool = False,
 ) -> list[Record]:
     del use_embedding_filter
     if not join_predicate or not join_predicate.strip():
@@ -717,7 +809,7 @@ def _perform_semantic_join_optimized(
                         )
                         for index in sample_indices
                     ]
-                    sample_results = _evaluate_join_predicate_batch(
+                    sample_results = response_evaluator(
                         sample_pairs,
                         join_predicate,
                         left_fields,
@@ -743,6 +835,8 @@ def _perform_semantic_join_optimized(
                     )
                     print(f"Cascade Optimization Learned: t_neg={t_neg:.4f}, t_pos={t_pos:.4f}")
                 except Exception as error:
+                    if propagate_optimization_errors:
+                        raise
                     traceback.print_exc()
                     print(
                         f"Error in Cascade Optimization: {error}. Falling back to static threshold."
@@ -758,6 +852,8 @@ def _perform_semantic_join_optimized(
                     elif score > t_neg:
                         candidate_pairs.append((row, column))
         except Exception as error:
+            if propagate_optimization_errors:
+                raise
             warnings.warn(
                 f"Embedding/Optimization failed: {error}. Fallback to all pairs.",
                 UserWarning,
@@ -815,7 +911,7 @@ def _perform_semantic_join_optimized(
             else:
                 uncached_pairs.append((left_record, right_record, left_index, right_index))
         if uncached_pairs:
-            batch_results = _evaluate_join_predicate_batch(
+            batch_results = response_evaluator(
                 uncached_pairs,
                 join_predicate,
                 left_fields,

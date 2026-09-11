@@ -50,9 +50,23 @@ def main() -> None:
         )
         assert empty.succeeded and empty.output_data == [[]]
         assert len(empty.node_runs) == 2
-        for node in empty.node_runs:
+        expected_empty_shapes = [
+            (
+                {"groups": 2, "rows_per_group": [0, 0]},
+                {"groups": 1, "rows_per_group": [0]},
+            ),
+            (
+                {"groups": 1, "rows_per_group": [0]},
+                {"groups": 1, "rows_per_group": [0]},
+            ),
+        ]
+        for node, (input_shape, output_shape) in zip(
+            empty.node_runs, expected_empty_shapes, strict=True
+        ):
             assert not node.exec_meta.errors and node.exec_meta.is_empty
             assert node.output_data == [[]]
+            assert node.exec_meta.traces["input_shape"] == input_shape
+            assert node.exec_meta.traces["output_shape"] == output_shape
         assert empty.node_runs[0].output_attributes == {"num_rows_insert": 0}
         assert empty.node_runs[1].output_attributes == {"num_values_used": 0}
 
@@ -66,6 +80,11 @@ def main() -> None:
         assert rejection.exec_meta.errors[0].code.value == "INVALID_INPUT"
         assert rejection.output_data == [[]] and rejection.output_attributes == {}
         assert not rejection.exec_meta.is_empty
+        assert rejection.exec_meta.traces["input_shape"] == {
+            "groups": 2,
+            "rows_per_group": [1, 1],
+        }
+        assert "output_shape" not in rejection.exec_meta.traces
         with sqlite3.connect(database_path) as connection:
             assert connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone() == (0,)
 
@@ -89,8 +108,23 @@ def main() -> None:
         used = average.output_attributes.get("num_values_used")
         if used is not None:
             assert used == 3
-        for node in run.node_runs:
+        expected_shapes = [
+            (
+                {"groups": 1, "rows_per_group": [3]},
+                {"groups": 1, "rows_per_group": [3]},
+            ),
+            (
+                {"groups": 1, "rows_per_group": [3]},
+                {"groups": 1, "rows_per_group": [1]},
+            ),
+        ]
+        for node, (input_shape, output_shape) in zip(run.node_runs, expected_shapes, strict=True):
             assert not node.exec_meta.errors and not node.exec_meta.is_empty
+            traces = node.exec_meta.traces
+            assert traces["input_shape"] == input_shape
+            assert traces["output_shape"] == output_shape
+            elapsed_ms = traces.get("elapsed_ms")
+            assert elapsed_ms is None or elapsed_ms >= 0
             print(
                 json.dumps(
                     {
@@ -98,6 +132,11 @@ def main() -> None:
                         "output_data": node.output_data,
                         "output_attributes": node.output_attributes,
                         "exec_meta": node.exec_meta._asdict(),
+                        "actual_execution": {
+                            "input_shape": traces.get("input_shape"),
+                            "output_shape": traces.get("output_shape"),
+                            "elapsed_ms": elapsed_ms,
+                        },
                     },
                     sort_keys=True,
                 )

@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 2.9.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 2.10.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.9.0"
+  "blue-data-ops[ml,vector,llm]==2.10.0"
 ```
 
 The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
@@ -48,7 +48,7 @@ After installation, read the distribution version separately from an exact opera
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.9.0"
+assert version("blue-data-ops") == "2.10.0"
 ```
 
 ## Usage
@@ -68,17 +68,19 @@ python examples/refinement.py
 from blue_data_ops import SelectOperator
 
 op = SelectOperator()
-data = [[
-    {"name": "a", "score": 3},
-    {"name": "b", "score": 9},
-]]
+data = [
+    [
+        {"name": "a", "score": 3},
+        {"name": "b", "score": 9},
+    ]
+]
 
 # Raw v1-compatible call: validate, then apply.
 out = op.invoke(data, {"operand_key": "score", "operand": ">", "operand_val": 5})
 # [[{"name": "b", "score": 9}]]
 
-op.attributes            # declared attribute schema (name -> AttributeSpec)
-op.validate(data, {})    # False: operand_key/operand/operand_val are required
+op.attributes  # declared attribute schema (name -> AttributeSpec)
+op.validate(data, {})  # False: operand_key/operand/operand_val are required
 ```
 
 ### Registry-backed data operations
@@ -153,7 +155,7 @@ Install `[llm]` and configure the provider credential before running it. The com
 
 `OperatorRegistry` (in `blue_data_ops.operators`) registers operators under an immutable `name@<MAJOR.MINOR.PATCH>` id. `resolve()` accepts only an exact pinned id and raises `ResolveError` when it cannot resolve one.
 
-`default_registry()` is the frozen v1 view: 36 raw cards at `1.0.0`. `versioned_registry()` has 75 cards: the same `1.0.0` and `2.0.0` cards for every operator, plus `avg@3.0.0`, `insert_table@3.0.0`, and `join@3.0.0`. Its cards add ordered tags and `when_to_invoke` guidance. Resolve a new exact ID explicitly, or select it with a factory override such as `default_registry(avg="3.0.0")`. Constructing either catalog does not query a data registry. Ordinary `PipelinePlanner` and MCP selection still use `@2.0.0`.
+`default_registry()` is the frozen v1 view: 36 raw cards at `1.0.0`. `versioned_registry()` has 93 cards: the same `1.0.0` and `2.0.0` cards for every operator, plus 21 outcome operators at `3.0.0`. Its cards add ordered tags and `when_to_invoke` guidance. Resolve a new exact ID explicitly, or select it with a factory override such as `default_registry(avg="3.0.0")`. Constructing either catalog does not query a data registry. Ordinary `PipelinePlanner` and MCP selection still use `@2.0.0`.
 
 ```python
 from blue_data_ops.operators import default_registry, versioned_registry
@@ -190,10 +192,7 @@ class KeywordEmbedder:
 
     def __call__(self, texts: tuple[str, ...]) -> list[list[float]]:
         terms = ("filter", "join", "query")
-        return [
-            [1.0, *(float(term in text.casefold()) for term in terms)]
-            for text in texts
-        ]
+        return [[1.0, *(float(term in text.casefold()) for term in terms)] for text in texts]
 
 
 catalog = versioned_registry()
@@ -206,7 +205,7 @@ op = catalog.resolve(cards[0].operator_id) if cards else None
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Its 36 packages include the unchanged `@2.0.0` packages for all 32 active execution operators and the `multipart_query@2.0.0` package, plus `avg@3.0.0`, `insert_table@3.0.0`, and `join@3.0.0`. It also lets callers inspect package availability and resource metadata before loading text. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Its 54 packages include `@2.0.0` packages for all 32 active execution operators and the `multipart_query@2.0.0` package, plus 21 outcome packages at `@3.0.0`. It also lets callers inspect package availability and resource metadata before loading text. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -271,7 +270,31 @@ assert meta.errors == []
 
 `ExecMeta` has four fields: `is_empty`, `errors`, `logs`, and `traces`. Each `ErrorRecord` has `category`, `code`, `operator_id`, `stage`, `message`, `retryable`, and `suggestion`. Categories are `RECOVERABLE`, `FAILED`, or `TIMEOUT`; stages are `DEFAULTS`, `VALIDATE`, `EXECUTE`, `NORMALIZE`, or `REFINE`.
 
-Continuing the structured-execution example, an empty result is still successful. `run()` normalizes any empty group shape to `[[]]`, sets `is_empty=True`, and leaves `errors` empty:
+`nl2llm@3.0.0` has a synchronous cost pilot for its built-in client. After a successful `run()`, `meta.traces` contains numeric `cost` in USD and `cost_basis="estimated"` when the call made exactly one provider attempt with an available finite nonnegative LiteLLM price. A proven local response-cache hit reports `cost=0.0`; provider prompt caching still counts as a provider attempt. The two fields are absent for unknown pricing, retries, errors, timeouts, and every caller-supplied `llm_client`. Treat absence as unavailable rather than zero:
+
+```python
+cost = meta.traces.get("cost")
+if cost is not None:
+    compare_execution_cost(cost, meta.traces["cost_basis"])
+```
+
+The 21 exact outcome operators at `@3.0.0` may add shallow bundle counts to `traces`:
+
+```python
+{
+    "input_shape": {"groups": 2, "rows_per_group": [3, 0]},
+    "output_shape": {"groups": 1, "rows_per_group": [2]},
+}
+```
+
+`input_shape` is captured before validation and execution for structurally valid bundles. Its counts
+are independent of later caller-data mutation. Invalid bundle structure omits it. `output_shape` is
+captured after successful normalization; failures and timeouts omit it. Both keys are optional, so
+callers should distinguish a missing measurement from a zero-row group.
+
+Continuing the structured-execution example, an empty result is still successful. `run()` normalizes
+an empty outer bundle or an output whose groups are all empty to `[[]]`, sets `is_empty=True`, and
+leaves `errors` empty. Mixed multi-group output keeps every group, including empty ones:
 
 ```python
 empty_data, _, empty_meta = op.run(
@@ -304,9 +327,13 @@ Set a canonical wrapper deadline with `properties={"execution.timeout_seconds": 
 
 The rest of the compatibility surface remains public. The ordinary three-argument `validate(input_data, attributes, properties)` path checks the live attribute schema and returns `False` for invalid attribute values. The two plan-producing exceptions above use their Blue call shape. `explain()` describes a completed transform, and `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes.
 
-### Newer outcomes for average, insert, and join
+### Outcome guides for exact `@3.0.0` versions
 
-The [average guide](src/blue_data_ops/operator_skills/avg/3.0.0/Operator.md), [insert guide](src/blue_data_ops/operator_skills/insert_table/3.0.0/Operator.md), and [join guide](src/blue_data_ops/operator_skills/join/3.0.0/Operator.md) describe the three explicitly selected `@3.0.0` versions. Average returns successful empty when no values contribute and reports `num_values_used` on success. Insert keeps records flowing on successful nonempty output and supplies `num_rows_insert` only when the whole successful count is reliable. Join rejects invalid group/key counts and supplied suffixes before joining, including on empty groups. Their `run()` metadata may include monotonic wall-clock `traces["elapsed_ms"]`, including validation and time until a timeout result. Existing exact IDs keep their behavior.
+These exact versions may record `input_shape`, successful `output_shape`, and monotonic wall-clock
+`elapsed_ms` in `ExecMeta.traces`. Shape values contain `groups` and `rows_per_group`; elapsed time
+includes validation and the wait until a timeout result. Existing exact IDs keep their behavior.
+
+The catalog includes guides for [`avg@3.0.0`](src/blue_data_ops/operator_skills/avg/3.0.0/Operator.md), [`classify@3.0.0`](src/blue_data_ops/operator_skills/classify/3.0.0/Operator.md), [`cluster@3.0.0`](src/blue_data_ops/operator_skills/cluster/3.0.0/Operator.md), [`insert@3.0.0`](src/blue_data_ops/operator_skills/insert/3.0.0/Operator.md), [`insert_table@3.0.0`](src/blue_data_ops/operator_skills/insert_table/3.0.0/Operator.md), [`intersect@3.0.0`](src/blue_data_ops/operator_skills/intersect/3.0.0/Operator.md), [`join@3.0.0`](src/blue_data_ops/operator_skills/join/3.0.0/Operator.md), [`max@3.0.0`](src/blue_data_ops/operator_skills/max/3.0.0/Operator.md), [`min@3.0.0`](src/blue_data_ops/operator_skills/min/3.0.0/Operator.md), [`nl2bn@3.0.0`](src/blue_data_ops/operator_skills/nl2bn/3.0.0/Operator.md), [`nl2llm@3.0.0`](src/blue_data_ops/operator_skills/nl2llm/3.0.0/Operator.md), [`nl2sql@3.0.0`](src/blue_data_ops/operator_skills/nl2sql/3.0.0/Operator.md), [`project@3.0.0`](src/blue_data_ops/operator_skills/project/3.0.0/Operator.md), [`semantic_extract@3.0.0`](src/blue_data_ops/operator_skills/semantic_extract/3.0.0/Operator.md), [`semantic_filter@3.0.0`](src/blue_data_ops/operator_skills/semantic_filter/3.0.0/Operator.md), [`semantic_join@3.0.0`](src/blue_data_ops/operator_skills/semantic_join/3.0.0/Operator.md), [`semantic_project@3.0.0`](src/blue_data_ops/operator_skills/semantic_project/3.0.0/Operator.md), [`semantic_transform@3.0.0`](src/blue_data_ops/operator_skills/semantic_transform/3.0.0/Operator.md), [`vector_embed@3.0.0`](src/blue_data_ops/operator_skills/vector_embed/3.0.0/Operator.md), [`vector_search@3.0.0`](src/blue_data_ops/operator_skills/vector_search/3.0.0/Operator.md), and [`vector_similarity@3.0.0`](src/blue_data_ops/operator_skills/vector_similarity/3.0.0/Operator.md). Average returns successful empty when no values contribute and reports `num_values_used` on success. `insert_table` keeps records flowing on successful nonempty output and supplies `num_rows_insert` only when the whole successful count is reliable. Join rejects invalid group/key counts and supplied suffixes before joining, including on empty groups. Their `run()` metadata may include monotonic wall-clock `traces["elapsed_ms"]`, including validation and time until a timeout result. Existing exact IDs keep their behavior.
 
 ```python
 from blue_data_ops.operators import versioned_registry
@@ -319,14 +346,18 @@ data, attributes, meta = average.run(
 if meta.errors:
     raise RuntimeError(meta.errors)
 assert data == [[{"avg": 13.0}]] and not meta.is_empty
+assert meta.traces["input_shape"] == {"groups": 1, "rows_per_group": [3]}
+assert meta.traces["output_shape"] == {"groups": 1, "rows_per_group": [1]}
 count = attributes.get("num_values_used")
 if count is not None:
     assert count == 2
     print(f"Average of {count} readings: {data[0][0]['avg']}")
 
-empty, empty_attributes, empty_meta = average.run([[]], {"avg_key": "reading"})
+empty, empty_attributes, empty_meta = average.run([[], []], {"avg_key": "reading"})
 assert not empty_meta.errors and empty_meta.is_empty and empty == [[]]
 assert empty_attributes["num_values_used"] == 0
+assert empty_meta.traces["input_shape"] == {"groups": 2, "rows_per_group": [0, 0]}
+assert empty_meta.traces["output_shape"] == {"groups": 1, "rows_per_group": [0]}
 ```
 
 Check errors before reading the data, attributes, or successful-empty flag. A missing count is unavailable, not zero. The runnable [operator_outcomes.py](examples/operator_outcomes.py) example creates disposable SQLite data, passes inserted records through a materialized `DataPipeline` to an average node, and reads all three outputs from each `NodeRun`. It also checks successful empty and caller-input rejection. Run it with `python examples/operator_outcomes.py` from `lib/`. A write may partly complete before an error or timeout; inspect the target before repeating it. The generated [OPERATORS.md](OPERATORS.md) remains the `@2.0.0` reference.
@@ -429,7 +460,9 @@ assert [step.operator_id for step in run.planning.selected.steps] == [
 
 `plan(request)` returns a `PlanningResult` without executing anything: a copy of the `request`, the `discovery` snapshot, the generated `candidates`, the `selected` draft, the compiled `pipeline`, its `preflight`, and the `data_context` retained for the run. `run(request, input_data)` returns a `PlannerRun` holding that `PlanningResult` and the `PipelineRun` from executing it. `execute(planning, input_data)` executes a `PlanningResult` produced earlier; it runs a copy, so the result's own pipeline record stays unchanged.
 
-The planner compiles only `@2.0.0` operator ids, and only ones its own discovery returned. `RequireSinglePlan` is the shipped selector and accepts exactly one candidate; pass a `selector` of your own to choose among several. `PlanningRequest` carries the bounds: `max_discovery_cards`, `max_candidates`, `max_steps`, `max_nodes`, and `max_edges`.
+The planner uses `@2.0.0` operators unless the request explicitly allowlists a current built-in `@3.0.0` ID. Once a request opts into v3, every allowlisted ID must name a package-built `@2.0.0` or `@3.0.0` card in the same registry. Generated steps must still be allowlisted, returned by discovery, active, and exactly resolvable. A rule template accepts one allowed version for each operator name; allowing two versions of the same required name raises `INVALID_REQUEST` instead of choosing one. A v2-only allowlist keeps its existing behavior, and `discover()` and `plan_refinement()` keep their v2 compatibility paths.
+
+`RequireSinglePlan` is the shipped selector and accepts exactly one candidate; pass a `selector` of your own to choose among several. `PlanningRequest` carries the bounds: `max_discovery_cards`, `max_candidates`, `max_steps`, `max_nodes`, and `max_edges`.
 
 `plan()` admits active cards only. `discover()` is unchanged and still returns deprecated cards, so the two can disagree; see [Deprecations in 2.8.0](#deprecations-in-280).
 
@@ -454,7 +487,13 @@ Planning raises `PlanningError` instead of reporting through `ExecMeta`. It is a
 
 ```python
 from blue_data_ops.operators import versioned_registry
-from blue_data_ops.plan import DiscoveryQuery, PipelinePlanner, PlanningError, PlanningRequest, RulePlanGenerator
+from blue_data_ops.plan import (
+    DiscoveryQuery,
+    PipelinePlanner,
+    PlanningError,
+    PlanningRequest,
+    RulePlanGenerator,
+)
 
 planner = PipelinePlanner(versioned_registry(), RulePlanGenerator())
 request = PlanningRequest(
@@ -511,7 +550,7 @@ generator = OpenAIPlanGenerator(
 planner = PipelinePlanner(registry, generator)
 ```
 
-`allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins `@2.0.0`, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set. A conflicting value raises `GENERATION_RESULT_INVALID` and fails the whole generator or planner call before any drafts are returned.
+`allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins a supported built-in `@2.0.0` or `@3.0.0` version, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set. A conflicting value raises `GENERATION_RESULT_INVALID` and fails the whole generator or planner call before any drafts are returned.
 
 To extend the preceding generator with data-context disclosure, set a second, explicit opt-in:
 
@@ -544,7 +583,7 @@ Planning remains one pass. There is no refinement loop, retry, or replanning aft
 
 Two groups of surfaces are deprecated in this release and removed in 3.0.0. Everything named here still imports, resolves, and runs for the rest of 2.x.
 
-The four plan-producing operators are the first group. Both registered versions of `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` carry the lifecycle flag, so eight of the 75 cards are marked. The second group is the refinement seam for every operator: `refiner()`, `refine()`, `PipelinePlanner.plan_refinement()`, `RefinableOperator`, `DeclarativeOperator`, the refiner helpers those operator modules export, and the four `__refine` tools on the MCP adapter.
+The four plan-producing operators are the first group. Both registered versions of `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` carry the lifecycle flag, so eight of the 93 cards are marked. The second group is the refinement seam for every operator: `refiner()`, `refine()`, `PipelinePlanner.plan_refinement()`, `RefinableOperator`, `DeclarativeOperator`, the refiner helpers those operator modules export, and the four `__refine` tools on the MCP adapter.
 
 Read the flag off a card rather than keeping your own list of names:
 
@@ -634,8 +673,8 @@ See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280) for the full statemen
 ```python
 from blue_data_ops.utils import validate_parameter_type, safe_substitute
 
-validate_parameter_type("3", "int")           # True: same lax coercion as Blue
-safe_substitute("$greeting", greeting="hi")   # "hi"
+validate_parameter_type("3", "int")  # True: same lax coercion as Blue
+safe_substitute("$greeting", greeting="hi")  # "hi"
 ```
 
 Helpers outside the operator surface are not carried over. Most of `json_utils`, the base64 helpers in `string_utils`, and the logging helpers are omitted. The similarity and service helpers work differently here; see [COMPATIBILITY.md](COMPATIBILITY.md).

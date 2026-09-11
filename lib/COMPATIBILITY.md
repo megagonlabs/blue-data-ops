@@ -6,7 +6,7 @@
 
 Two groups of public surfaces are deprecated in 2.8.0 and removed in 3.0.0. Both keep working for the rest of 2.x. This release adds a lifecycle flag and a warning; it does not stop importing, resolving, or calling anything.
 
-The first group is the four plan-producing operators. Both registered versions of `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` carry `OperatorCard.deprecated`, so eight of the registry's 72 cards are flagged and the other 64 are not. Registry lookup, `find()`, embedding search, and exact `resolve()` all still return them.
+The first group is the four plan-producing operators. Their `@1.0.0` and `@2.0.0` cards carry `OperatorCard.deprecated`, so eight of `versioned_registry()`'s 93 cards are flagged and the other 85 are not. The registry contains 36 cards at `@1.0.0`, 36 at `@2.0.0`, and 21 current additions at `@3.0.0`. Registry lookup, `find()`, embedding search, and exact `resolve()` all still return the flagged cards.
 
 The second group is the refinement seam, and it covers every operator rather than only those four: raw `refiner()`, normalized `refine()`, `PipelinePlanner.plan_refinement()`, the `RefinableOperator` and `DeclarativeOperator` classes, the `*_operator_refiner` and sibling module helpers those operators export, and the four `__refine` companions on the MCP adapter.
 
@@ -44,9 +44,9 @@ Executing such a plan was already rejected before 2.8.0 and still is. `PipelineE
 
 3.0.0 removes the deprecated calls and their resolution. Planned effects, none of which apply to 2.8.0:
 
-- the v1 registry view goes from 36 cards to 32 and the dual-version view from 72 to 64, dropping all eight flagged cards;
+- the 36-card v1 view and 36-card v2 view each lose four cards, while all 21 current `@3.0.0` cards remain; the exact catalog therefore goes from 93 cards to 85, dropping all eight flagged cards;
 - the MCP catalog goes from 40 tools to 32, dropping four primaries and all four `__refine` companions;
-- operator-skill packages go from 33 to 32 as the retained `multipart_query@2.0.0` package goes with its operator;
+- operator-skill packages go from 54 to 53 as the retained `multipart_query@2.0.0` package goes with its operator;
 - twenty public names disappear: sixteen module-level functions and the four operator classes;
 - nine tags carried only by those cards leave the taxonomy, among them `capability-query-routing`, `flow-plan`, and `produces-plan`. `domain-plan` stays, carried by `data_discover`.
 
@@ -157,7 +157,7 @@ from blue_data_ops.llm import LLMError
 
 op = versioned_registry().resolve("select@2.0.0")
 output_data, output_attributes, meta = op.run(data, attributes)
-for error in meta.errors:            # structured records instead of a raised BlueError
+for error in meta.errors:  # structured records instead of a raised BlueError
     print(error.category, error.code, error.message)
 ```
 

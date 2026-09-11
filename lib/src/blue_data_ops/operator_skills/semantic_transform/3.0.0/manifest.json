@@ -1,0 +1,14 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "semantic_transform@3.0.0",
+  "resources": {
+    "guide": {
+      "path": "Operator.md",
+      "sha256": "ce9cda7699b74144c0e93bfbd92ab0da1d49dfdac84981f62e35b485c9235590"
+    },
+    "examples": {
+      "path": "examples.md",
+      "sha256": "ed5aeff0720ebc5fdfefeb82cbcc120b4749d7693f9944de31462e271918241e"
+    }
+  }
+}

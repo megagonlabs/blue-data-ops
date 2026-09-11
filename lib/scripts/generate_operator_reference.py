@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -38,7 +40,37 @@ def _case_summary(case: dict[str, Any] | None) -> str:
     return "; ".join(parts) + "."
 
 
-def render_reference() -> str:
+def _format_reference(markdown: str) -> str:
+    command = [
+        sys.executable,
+        "-m",
+        "ruff",
+        "format",
+        "--no-cache",
+        "--config",
+        str(LIB_ROOT / "pyproject.toml"),
+        "--stdin-filename",
+        str(LIB_ROOT / "OPERATORS.md"),
+        "-",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            input=markdown,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RuntimeError("Could not run Ruff to format OPERATORS.md") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        message = "Ruff could not format OPERATORS.md"
+        raise RuntimeError(f"{message}: {detail}" if detail else message)
+    return result.stdout
+
+
+def _render_unformatted_reference() -> str:
     outcomes = json.loads(OUTCOMES_PATH.read_text(encoding="utf-8"))
     by_id = {row["operator_id"]: row for row in outcomes["rows"]}
     registry = versioned_registry()
@@ -167,6 +199,10 @@ def render_reference() -> str:
             ]
         )
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_reference() -> str:
+    return _format_reference(_render_unformatted_reference())
 
 
 def main() -> None:

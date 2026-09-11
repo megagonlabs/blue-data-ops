@@ -1,6 +1,6 @@
 """Dual-version registry and refinement compatibility.
 
-The suite covers the 36-card default registry, the 75-card versioned registry,
+The suite covers the 36-card default registry, the 93-card versioned registry,
 selection behavior, and refinement at both versions.
 """
 

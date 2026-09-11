@@ -432,7 +432,7 @@ def default_registry(**versions: Any) -> OperatorRegistry:
 
 
 def versioned_registry() -> OperatorRegistry:
-    """Return 75 pinned cards, including avg, insert_table, and join at 3.0.0.
+    """Return 93 pinned cards, including 21 outcome operators at 3.0.0.
 
     Separate instances back each exact version; the contract is
     the selected behavior and pinned ID, not object identity. The 2.0.0
@@ -469,13 +469,61 @@ def versioned_registry() -> OperatorRegistry:
 
 def _outcome_operator_classes() -> dict[str, type[Operator]]:
     from blue_data_ops.operators._avg_outcome import AvgOutcomeOperator
+    from blue_data_ops.operators._classify_outcome import ClassifyOutcomeOperator
+    from blue_data_ops.operators._cluster_outcome import ClusterOutcomeOperator
+    from blue_data_ops.operators._insert_outcome import InsertOutcomeOperator
     from blue_data_ops.operators._insert_table_outcome import (
         InsertTableOutcomeOperator,
     )
+    from blue_data_ops.operators._intersect_outcome import IntersectOutcomeOperator
     from blue_data_ops.operators._join_outcome import JoinOutcomeOperator
+    from blue_data_ops.operators._max_outcome import MaxOutcomeOperator
+    from blue_data_ops.operators._min_outcome import MinOutcomeOperator
+    from blue_data_ops.operators._nl2bn_outcome import NL2BNOutcomeOperator
+    from blue_data_ops.operators._nl2llm_outcome import NL2LLMOutcomeOperator
+    from blue_data_ops.operators._nl2sql_outcome import NL2SQLOutcomeOperator
+    from blue_data_ops.operators._project_outcome import ProjectOutcomeOperator
+    from blue_data_ops.operators._semantic_extract_outcome import (
+        SemanticExtractOutcomeOperator,
+    )
+    from blue_data_ops.operators._semantic_filter_outcome import (
+        SemanticFilterOutcomeOperator,
+    )
+    from blue_data_ops.operators._semantic_join_outcome import (
+        SemanticJoinOutcomeOperator,
+    )
+    from blue_data_ops.operators._semantic_project_outcome import (
+        SemanticProjectOutcomeOperator,
+    )
+    from blue_data_ops.operators._semantic_transform_outcome import (
+        SemanticTransformOutcomeOperator,
+    )
+    from blue_data_ops.operators._vector_embed_outcome import VectorEmbedOutcomeOperator
+    from blue_data_ops.operators._vector_search_outcome import VectorSearchOutcomeOperator
+    from blue_data_ops.operators._vector_similarity_outcome import (
+        VectorSimilarityOutcomeOperator,
+    )
 
     return {
         "avg": AvgOutcomeOperator,
+        "classify": ClassifyOutcomeOperator,
+        "cluster": ClusterOutcomeOperator,
+        "insert": InsertOutcomeOperator,
         "insert_table": InsertTableOutcomeOperator,
+        "intersect": IntersectOutcomeOperator,
         "join": JoinOutcomeOperator,
+        "max": MaxOutcomeOperator,
+        "min": MinOutcomeOperator,
+        "nl2bn": NL2BNOutcomeOperator,
+        "nl2llm": NL2LLMOutcomeOperator,
+        "nl2sql": NL2SQLOutcomeOperator,
+        "project": ProjectOutcomeOperator,
+        "semantic_extract": SemanticExtractOutcomeOperator,
+        "semantic_filter": SemanticFilterOutcomeOperator,
+        "semantic_join": SemanticJoinOutcomeOperator,
+        "semantic_project": SemanticProjectOutcomeOperator,
+        "semantic_transform": SemanticTransformOutcomeOperator,
+        "vector_embed": VectorEmbedOutcomeOperator,
+        "vector_search": VectorSearchOutcomeOperator,
+        "vector_similarity": VectorSimilarityOutcomeOperator,
     }

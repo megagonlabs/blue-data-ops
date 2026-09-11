@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import pytest
 
+from blue_data_ops import operator_skills
 from blue_data_ops.operator_skills import (
     INDEX_BYTE_LIMIT,
     RESOURCE_BYTE_LIMIT,
@@ -18,7 +19,7 @@ from blue_data_ops.operator_skills import (
 )
 from blue_data_ops.operators import NL2SQLOperator, OperatorRegistry, versioned_registry
 
-PACKAGE_ROOT = Path(__file__).parents[3] / "src" / "blue_data_ops" / "operator_skills"
+PACKAGE_ROOT = Path(operator_skills.__file__).resolve().parent
 OPERATOR_ID = "nl2sql@2.0.0"
 
 

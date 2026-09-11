@@ -14,7 +14,29 @@ LEGACY_CARDS = tuple(
     for card in _FIXTURE["cards"]
 )
 LEGACY_OPERATOR_IDS = tuple(card.operator_id for card in LEGACY_CARDS)
-ADDED_OPERATOR_IDS = ("avg@3.0.0", "insert_table@3.0.0", "join@3.0.0")
+ADDED_OPERATOR_IDS = (
+    "avg@3.0.0",
+    "classify@3.0.0",
+    "cluster@3.0.0",
+    "insert@3.0.0",
+    "insert_table@3.0.0",
+    "intersect@3.0.0",
+    "join@3.0.0",
+    "max@3.0.0",
+    "min@3.0.0",
+    "nl2bn@3.0.0",
+    "nl2llm@3.0.0",
+    "nl2sql@3.0.0",
+    "project@3.0.0",
+    "semantic_extract@3.0.0",
+    "semantic_filter@3.0.0",
+    "semantic_join@3.0.0",
+    "semantic_project@3.0.0",
+    "semantic_transform@3.0.0",
+    "vector_embed@3.0.0",
+    "vector_search@3.0.0",
+    "vector_similarity@3.0.0",
+)
 FULL_OPERATOR_IDS = tuple(
     sorted(
         (*LEGACY_OPERATOR_IDS, *ADDED_OPERATOR_IDS),
@@ -43,7 +65,7 @@ def assert_legacy_cards(cards: Sequence[OperatorCard]) -> list[OperatorCard]:
 
 def assert_full_inventory(cards: Sequence[OperatorCard]) -> None:
     ids = tuple(card.operator_id for card in cards)
-    assert len(ids) == len(set(ids)) == 75, "expected 75 distinct operator IDs"
+    assert len(ids) == len(set(ids)) == 93, "expected 93 distinct operator IDs"
     assert ids == FULL_OPERATOR_IDS, "full inventory/order changed"
 
 

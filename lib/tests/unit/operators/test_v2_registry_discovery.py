@@ -96,7 +96,7 @@ def test_live_cards_match_the_frozen_snapshot() -> None:
         assert card.when_to_invoke == expected["when_to_invoke"]
 
 
-def test_live_inventory_contains_only_the_three_added_versions() -> None:
+def test_live_inventory_contains_only_the_added_outcome_versions() -> None:
     cards = versioned_registry().list_cards()
     assert_full_inventory(cards)
     assert_added_cards_active(cards)
@@ -129,7 +129,7 @@ def test_catalog_comparator_rejects_missing_or_duplicate_cards(mutation: str) ->
         cards.append(cards[0])
     else:
         cards = [card for card in cards if card.operator_id != "avg@3.0.0"]
-    with pytest.raises(AssertionError, match="75 distinct"):
+    with pytest.raises(AssertionError, match="93 distinct"):
         _assert_catalog(cards)
     if mutation != "missing-added":
         with pytest.raises(AssertionError, match="legacy inventory/order"):
@@ -147,7 +147,7 @@ def test_catalog_comparator_rejects_unexpected_ids(operator_id: str, replace_add
         cards[index] = unexpected
     else:
         cards.append(unexpected)
-    with pytest.raises(AssertionError, match="inventory|75 distinct"):
+    with pytest.raises(AssertionError, match="inventory|93 distinct"):
         _assert_catalog(cards)
     with pytest.raises(AssertionError, match="unexpected operator IDs"):
         assert_legacy_cards(cards)
@@ -428,7 +428,7 @@ def test_frozen_v2_selection_is_36_ids_inside_the_72_card_catalog() -> None:
 def test_default_registry_is_36_raw_v1_cards_preserving_the_frozen_mcp_surface() -> None:
     # default_registry() is the frozen v1 compatibility surface: raw cards (no tags/when_to_invoke),
     # so the v1 MCP deployment's raw 36-tool inventory and byte-identical v1 discovery are kept.
-    # The enriched six-namespace metadata lives on versioned_registry()'s 75 cards.
+    # The enriched six-namespace metadata lives on versioned_registry()'s 93 cards.
     cards = default_registry().list_cards()
     assert len(cards) == 36
     assert all(c.version == "1.0.0" for c in cards)

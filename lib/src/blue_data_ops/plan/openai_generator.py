@@ -8,8 +8,9 @@ Two boundaries are worth stating up front because the rest of the module serves 
 
 The allowlist is an authorization boundary, not a filter. A card reaches the model only
 when the caller allowlisted it, discovery returned it, this exact registry built it, it
-pins `@2.0.0`, and it carries no side-effect tag. The decoder re-checks the same set, so
-a model naming anything else fails before a `PlanDraft` exists.
+pins a supported built-in `@2.0.0` or `@3.0.0` version, and it carries no side-effect
+tag. The decoder re-checks the same set, so a model naming anything else fails before a
+`PlanDraft` exists.
 
 Outbound content is opt-in twice. Constructing this generator opts into sending the goal,
 labels, operator metadata, and caller attributes. Sending a data-context snapshot needs a
@@ -27,6 +28,7 @@ from collections.abc import Collection, Mapping, Sequence
 from importlib import resources
 from typing import Any, cast
 
+from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, is_builtin_card
 from blue_data_ops.operators.types import ErrorCategory
 from blue_data_ops.plan.context import (
@@ -45,7 +47,7 @@ from blue_data_ops.plan.planner import (
 
 PLANNING_INPUT_FORMAT = "blue-data-ops/planning-input@1"
 
-_REQUIRED_CARD_VERSION = "2.0.0"
+_SUPPORTED_CARD_VERSIONS = frozenset({"2.0.0", "3.0.0"})
 _SIDE_EFFECT_TAG = "produces-side-effect"
 _FINE_TUNED_PREFIX = "ft:"
 _NL2SQL_NAME = "nl2sql"
@@ -172,7 +174,8 @@ def _builtin_cards_required() -> PlanningError:
     return planning_error(
         PlanningStage.DISCOVERY,
         PlanningErrorCode.DISCOVERY_RESULT_INVALID,
-        "OpenAI plan generator requires built-in v2 operator cards",
+        "OpenAI plan generator requires built-in v2 operator cards or explicitly "
+        "allowed built-in v3 cards",
         category=ErrorCategory.RECOVERABLE,
         suggestion=(
             "Pass one shared, unmodified versioned_registry() instance to the generator "
@@ -333,8 +336,14 @@ class OpenAIPlanGenerator:
         identifiers = cast("tuple[str, ...]", allowed)
         if len(set(identifiers)) != len(identifiers):
             raise _invalid_generator("allowed_operator_ids must be unique")
-        if any(not name.endswith(f"@{_REQUIRED_CARD_VERSION}") for name in identifiers):
-            raise _invalid_generator("allowed_operator_ids must be pinned 2.0.0 ids")
+        if any(
+            not name.partition("@")[0]
+            or "@" not in name
+            or "@" in name.partition("@")[2]
+            or name.partition("@")[2] not in _SUPPORTED_CARD_VERSIONS
+            for name in identifiers
+        ):
+            raise _invalid_generator("allowed_operator_ids must be pinned 2.0.0 or 3.0.0 ids")
 
         self._model = model
         self._registry = registry
@@ -364,7 +373,7 @@ class OpenAIPlanGenerator:
         return self._decode(raw, request, authorized, data_context)
 
     def _authorized_cards(self, discovery: DiscoverySnapshot) -> dict[str, OperatorCard]:
-        """The model-visible catalog: allowlisted, discovered, built-in, v2, active, read-only.
+        """The model-visible catalog: allowlisted, discovered, built-in, current, active, read-only.
 
         Provenance failure and an empty result are different outcomes on purpose. The
         first says the caller wired up a registry this generator cannot vouch for; the
@@ -382,12 +391,9 @@ class OpenAIPlanGenerator:
             # is a wiring error worth reporting, not something to quietly skip.
             if not is_builtin_card(self._registry, card):
                 raise _builtin_cards_required()
-            if card.version != _REQUIRED_CARD_VERSION:
+            if card.version not in _SUPPORTED_CARD_VERSIONS:
                 raise _builtin_cards_required()
-            try:
-                self._registry.resolve(card.operator_id)
-            except Exception:
-                raise _builtin_cards_required() from None
+            self._resolve_exact_operator(card.operator_id)
             if card.deprecated:
                 # Default-deny by lifecycle, and only after the provenance test above, so
                 # the flag read is the registry's own value rather than the caller's.
@@ -405,9 +411,19 @@ class OpenAIPlanGenerator:
             raise _no_authorized_operators()
         return authorized
 
-    def _declared_attribute_names(self, operator_id: str) -> frozenset[str]:
+    def _resolve_exact_operator(self, operator_id: str) -> Operator:
         try:
             resolved = self._registry.resolve(operator_id)
+            exact = resolved.operator_id == operator_id
+        except Exception:
+            raise _builtin_cards_required() from None
+        if exact is not True:
+            raise _builtin_cards_required()
+        return resolved
+
+    def _declared_attribute_names(self, operator_id: str) -> frozenset[str]:
+        resolved = self._resolve_exact_operator(operator_id)
+        try:
             declared = resolved.attributes
         except Exception:
             raise _builtin_cards_required() from None

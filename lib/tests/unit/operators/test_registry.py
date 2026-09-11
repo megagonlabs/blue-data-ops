@@ -22,7 +22,8 @@ from blue_data_ops.operators.registry import (
     versioned_registry,
 )
 from blue_data_ops.operators.types import Attributes, DataBundle, Properties
-from tests.unit.operators._registry_catalog_expectations import ADDED_OPERATOR_IDS
+
+LANDED_OUTCOME_IDS = ("avg@3.0.0", "insert_table@3.0.0", "join@3.0.0")
 
 
 def _op(name: str, description: str = "") -> Operator:
@@ -200,7 +201,7 @@ def test_default_registry_version_override() -> None:
     assert registry.get_card("nl2sql@1.0.0") is None
 
 
-@pytest.mark.parametrize("operator_id", ADDED_OPERATOR_IDS)
+@pytest.mark.parametrize("operator_id", LANDED_OUTCOME_IDS)
 def test_added_card_identity_schema_and_latest_selection(operator_id: str) -> None:
     registry = versioned_registry()
     operator = registry.resolve(operator_id)
@@ -284,7 +285,7 @@ def _known_version_outcome(operator: Operator) -> tuple[Any, ...]:
     )
 
 
-@pytest.mark.parametrize("operator_id", ADDED_OPERATOR_IDS)
+@pytest.mark.parametrize("operator_id", LANDED_OUTCOME_IDS)
 def test_known_default_override_selects_the_new_outcome(operator_id: str) -> None:
     name = operator_id.split("@")[0]
     registry = default_registry(**{name: "3.0.0"})
@@ -301,7 +302,7 @@ def test_known_default_override_selects_the_new_outcome(operator_id: str) -> Non
     _known_version_outcome(operator)
 
 
-@pytest.mark.parametrize("operator_id", ADDED_OPERATOR_IDS)
+@pytest.mark.parametrize("operator_id", LANDED_OUTCOME_IDS)
 def test_known_default_override_agrees_with_versioned_outcome(operator_id: str) -> None:
     name = operator_id.split("@")[0]
     versioned = versioned_registry().resolve(operator_id)
@@ -314,16 +315,16 @@ def test_known_default_override_agrees_with_versioned_outcome(operator_id: str) 
 def test_all_known_default_overrides_keep_unselected_raw_cards() -> None:
     registry = default_registry(avg="3.0.0", insert_table="3.0.0", join="3.0.0")
     baseline = default_registry()
-    selected_names = {operator_id.split("@")[0] for operator_id in ADDED_OPERATOR_IDS}
+    selected_names = {operator_id.split("@")[0] for operator_id in LANDED_OUTCOME_IDS}
     assert len(registry.list_cards()) == 36
     assert (
         tuple(card.operator_id for card in registry.list_cards() if card.name in selected_names)
-        == ADDED_OPERATOR_IDS
+        == LANDED_OUTCOME_IDS
     )
     assert [card for card in registry.list_cards() if card.name not in selected_names] == [
         card for card in baseline.list_cards() if card.name not in selected_names
     ]
-    for operator_id in ADDED_OPERATOR_IDS:
+    for operator_id in LANDED_OUTCOME_IDS:
         _known_version_outcome(registry.resolve(operator_id))
 
 

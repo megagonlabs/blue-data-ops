@@ -50,10 +50,10 @@ Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'value': 3}, {'value': '5'}, {'value': 5}]]
-attributes = {'argmax_key': 'value'}
+input_data = [[{"value": 3}, {"value": "5"}, {"value": 5}]]
+attributes = {"argmax_key": "value"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('argmax@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("argmax@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -80,10 +80,10 @@ Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'value': 3}, {'value': '5'}, {'value': 5}]]
-attributes = {'argmin_key': 'value'}
+input_data = [[{"value": 3}, {"value": "5"}, {"value": 5}]]
+attributes = {"argmin_key": "value"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('argmin@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("argmin@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -110,10 +110,10 @@ Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'value': 3}, {'value': '5'}, {'value': 5}]]
-attributes = {'avg_key': 'value'}
+input_data = [[{"value": 3}, {"value": "5"}, {"value": 5}]]
+attributes = {"avg_key": "value"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('avg@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("avg@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -151,10 +151,18 @@ Tags: `domain-ml`, `flow-transform`, `accepts-data`, `produces-data`, `capabilit
 Fixture-backed call:
 
 ```python
-input_data = [[{'label': 'a', 'vector': [0.0, 0.0]}, {'label': 'a', 'vector': [0.0, 1.0]}, {'label': 'b', 'vector': [10.0, 10.0]}, {'label': 'b', 'vector': [10.0, 11.0]}], [{'vector': [0.0, 0.0]}, {'vector': [10.0, 10.0]}]]
-attributes = {'label_key': 'label', 'random_state': 42, 'vector_key': 'vector'}
+input_data = [
+    [
+        {"label": "a", "vector": [0.0, 0.0]},
+        {"label": "a", "vector": [0.0, 1.0]},
+        {"label": "b", "vector": [10.0, 10.0]},
+        {"label": "b", "vector": [10.0, 11.0]},
+    ],
+    [{"vector": [0.0, 0.0]}, {"vector": [10.0, 10.0]}],
+]
+attributes = {"label_key": "label", "random_state": 42, "vector_key": "vector"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('classify@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("classify@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -188,10 +196,17 @@ Tags: `domain-ml`, `flow-transform`, `accepts-data`, `produces-data`, `capabilit
 Fixture-backed call:
 
 ```python
-input_data = [[{'vector': [0.0, 0.0]}, {'vector': [0.0, 1.0]}, {'vector': [10.0, 10.0]}, {'vector': [10.0, 11.0]}]]
-attributes = {'n_cluster': 2, 'vector_key': 'vector'}
+input_data = [
+    [
+        {"vector": [0.0, 0.0]},
+        {"vector": [0.0, 1.0]},
+        {"vector": [10.0, 10.0]},
+        {"vector": [10.0, 11.0]},
+    ]
+]
+attributes = {"n_cluster": 2, "vector_key": "vector"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('cluster@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("cluster@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -222,10 +237,10 @@ Tags: `domain-relational`, `flow-control`, `accepts-data`, `accepts-none`, `prod
 Fixture-backed call:
 
 ```python
-input_data = [[{'name': 'row', 'value': 1}]]
-attributes = {'database': 'db', 'source': 'src'}
+input_data = [[{"name": "row", "value": 1}]]
+attributes = {"database": "db", "source": "src"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('create_database@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("create_database@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -260,10 +275,15 @@ Tags: `domain-relational`, `flow-control`, `accepts-data`, `accepts-none`, `prod
 Fixture-backed call:
 
 ```python
-input_data = [[{'name': 'row', 'value': 1}]]
-attributes = {'columns': [{'name': 'a', 'type': 'INTEGER'}], 'database': 'db', 'source': 'src', 'table': 't'}
+input_data = [[{"name": "row", "value": 1}]]
+attributes = {
+    "columns": [{"name": "a", "type": "INTEGER"}],
+    "database": "db",
+    "source": "src",
+    "table": "t",
+}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('create_table@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("create_table@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -306,9 +326,9 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'approximate': False, 'search_query': 'orders'}
+attributes = {"approximate": False, "search_query": "orders"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('data_discover@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("data_discover@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -334,10 +354,10 @@ Tags: `domain-relational`, `flow-transform`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'name': 'A', 'score': 1}, {'id': 2, 'name': 'B', 'score': 2}]]
-attributes = {'delete_idx': 0}
+input_data = [[{"id": 1, "name": "A", "score": 1}, {"id": 2, "name": "B", "score": 2}]]
+attributes = {"delete_idx": 0}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('delete@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("delete@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -364,10 +384,10 @@ Tags: `domain-relational`, `flow-combine`, `flow-transform`, `accepts-data`, `pr
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'name': 'A', 'score': 1}, {'id': 2, 'name': 'B', 'score': 2}]]
-attributes = {'insert_idx': 1, 'insert_records': [{'id': 3, 'name': 'C', 'score': 3}]}
+input_data = [[{"id": 1, "name": "A", "score": 1}, {"id": 2, "name": "B", "score": 2}]]
+attributes = {"insert_idx": 1, "insert_records": [{"id": 3, "name": "C", "score": 3}]}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('insert@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("insert@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -397,10 +417,10 @@ Tags: `domain-relational`, `flow-sink`, `accepts-data`, `produces-data`, `produc
 Fixture-backed call:
 
 ```python
-input_data = [[{'a': 1}, {'a': 2}]]
-attributes = {'database': 'db', 'source': 'src', 'table': 't'}
+input_data = [[{"a": 1}, {"a": 2}]]
+attributes = {"database": "db", "source": "src", "table": "t"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('insert_table@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("insert_table@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -426,10 +446,10 @@ Tags: `domain-set`, `flow-combine`, `accepts-data`, `produces-data`, `capability
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1}, {'id': 2}], [{'id': 2}, {'id': 3}]]
+input_data = [[{"id": 1}, {"id": 2}], [{"id": 2}, {"id": 3}]]
 attributes = {}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('intersect@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("intersect@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -458,10 +478,13 @@ Tags: `domain-relational`, `flow-combine`, `accepts-data`, `produces-data`, `cap
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'left': 'L1'}, {'id': 2, 'left': 'L2'}], [{'id': 2, 'right': 'R2'}, {'id': 3, 'right': 'R3'}]]
-attributes = {'join_on': [['id'], ['id']]}
+input_data = [
+    [{"id": 1, "left": "L1"}, {"id": 2, "left": "L2"}],
+    [{"id": 2, "right": "R2"}, {"id": 3, "right": "R3"}],
+]
+attributes = {"join_on": [["id"], ["id"]]}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('join@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("join@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -488,10 +511,10 @@ Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'value': 3}, {'value': '5'}, {'value': 5}]]
-attributes = {'max_key': 'value'}
+input_data = [[{"value": 3}, {"value": "5"}, {"value": 5}]]
+attributes = {"max_key": "value"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('max@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("max@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -518,10 +541,10 @@ Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'value': 3}, {'value': '5'}, {'value': 5}]]
-attributes = {'min_key': 'value'}
+input_data = [[{"value": 3}, {"value": "5"}, {"value": 5}]]
+attributes = {"min_key": "value"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('min@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("min@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -552,7 +575,7 @@ Fixture-backed call:
 input_data = [[]]
 attributes = {}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('multipart_query@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("multipart_query@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -589,9 +612,15 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'collection': 'weather', 'database': 'default', 'protocol_variant': 'pgmpy', 'question': 'What is the probability of wet given rain?', 'source': 'bn'}
+attributes = {
+    "collection": "weather",
+    "database": "default",
+    "protocol_variant": "pgmpy",
+    "question": "What is the probability of wet given rain?",
+    "source": "bn",
+}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('nl2bn@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("nl2bn@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -620,9 +649,9 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'query': 'list roles'}
+attributes = {"query": "list roles"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('nl2llm@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("nl2llm@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -654,9 +683,14 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'columns': [{'name': 'value'}], 'execute_query': False, 'protocol': 'sqlite', 'search_query': 'find rows'}
+attributes = {
+    "columns": [{"name": "value"}],
+    "execute_query": False,
+    "protocol": "sqlite",
+    "search_query": "find rows",
+}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('nl2query_router@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("nl2query_router@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -692,9 +726,15 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'collection': 'public', 'database': 'analytics', 'protocol': 'postgres', 'question': 'Which role is most common?', 'source': 'pg'}
+attributes = {
+    "collection": "public",
+    "database": "analytics",
+    "protocol": "postgres",
+    "question": "Which role is most common?",
+    "source": "pg",
+}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('nl2sql@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("nl2sql@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -728,10 +768,10 @@ Tags: `domain-text`, `flow-transform`, `accepts-data`, `produces-data`, `capabil
 Fixture-backed call:
 
 ```python
-input_data = [[{'text': '  Hello\xa0world  '}]]
-attributes = {'text_field': ['text']}
+input_data = [[{"text": "  Hello\xa0world  "}]]
+attributes = {"text_field": ["text"]}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('normalize_text@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("normalize_text@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -769,9 +809,9 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'approximate': True, 'data': 'rows', 'task': 'starter'}
+attributes = {"approximate": True, "data": "rows", "task": "starter"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('plan_discover@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("plan_discover@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -798,10 +838,10 @@ Tags: `domain-relational`, `flow-transform`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'name': 'A', 'score': 1}, {'id': 2, 'name': 'B', 'score': 2}]]
-attributes = {'kept_keys': ['id']}
+input_data = [[{"id": 1, "name": "A", "score": 1}, {"id": 2, "name": "B", "score": 2}]]
+attributes = {"kept_keys": ["id"]}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('project@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("project@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -833,9 +873,9 @@ Fixture-backed call:
 
 ```python
 input_data = [[]]
-attributes = {'query': 'count roles'}
+attributes = {"query": "count roles"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('query_breakdown@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("query_breakdown@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -868,10 +908,10 @@ Tags: `domain-text`, `flow-transform`, `accepts-data`, `produces-data`, `capabil
 Fixture-backed call:
 
 ```python
-input_data = [[{'doc_id': 'doc', 'text': 'Hello world.'}]]
-attributes = {'text_field': 'text'}
+input_data = [[{"doc_id": "doc", "text": "Hello world."}]]
+attributes = {"text_field": "text"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('segment_text@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("segment_text@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -901,10 +941,10 @@ Tags: `domain-relational`, `flow-transform`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'name': 'A', 'score': 1}, {'id': 2, 'name': 'B', 'score': 2}]]
-attributes = {'operand': '>', 'operand_key': 'score', 'operand_val': 1}
+input_data = [[{"id": 1, "name": "A", "score": 1}, {"id": 2, "name": "B", "score": 2}]]
+attributes = {"operand": ">", "operand_key": "score", "operand_val": 1}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('select@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("select@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -933,10 +973,10 @@ Tags: `domain-semantic`, `flow-transform`, `accepts-data`, `produces-data`, `cap
 Fixture-backed call:
 
 ```python
-input_data = [[{'bio': 'Ada uses Python', 'id': 1, 'name': 'Ada'}]]
-attributes = {'entities': [{'name': 'skill'}]}
+input_data = [[{"bio": "Ada uses Python", "id": 1, "name": "Ada"}]]
+attributes = {"entities": [{"name": "skill"}]}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('semantic_extract@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("semantic_extract@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -965,10 +1005,10 @@ Tags: `domain-semantic`, `flow-transform`, `accepts-data`, `produces-data`, `cap
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'score': 8}]]
-attributes = {'filter_conditions': {'score': 'is high'}}
+input_data = [[{"id": 1, "score": 8}]]
+attributes = {"filter_conditions": {"score": "is high"}}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('semantic_filter@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("semantic_filter@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1013,10 +1053,15 @@ Tags: `domain-semantic`, `flow-combine`, `accepts-data`, `produces-data`, `capab
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'name': 'Ada'}], [{'id': 'a', 'name': 'ADA'}]]
-attributes = {'estimate_cost': False, 'join_predicate': 'names refer to the same person', 'left_fields': ['name'], 'right_fields': ['name']}
+input_data = [[{"id": 1, "name": "Ada"}], [{"id": "a", "name": "ADA"}]]
+attributes = {
+    "estimate_cost": False,
+    "join_predicate": "names refer to the same person",
+    "left_fields": ["name"],
+    "right_fields": ["name"],
+}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('semantic_join@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("semantic_join@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1042,10 +1087,10 @@ Tags: `domain-semantic`, `flow-transform`, `accepts-data`, `produces-data`, `cap
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1, 'name': 'Ada'}]]
-attributes = {'projection_instructions': 'keep and rename name'}
+input_data = [[{"id": 1, "name": "Ada"}]]
+attributes = {"projection_instructions": "keep and rename name"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('semantic_project@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("semantic_project@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1073,10 +1118,10 @@ Tags: `domain-semantic`, `flow-transform`, `accepts-data`, `produces-data`, `cap
 Fixture-backed call:
 
 ```python
-input_data = [[{'city': 'NY', 'score': 1}]]
-attributes = {'output_desc': {'label': {'description': 'Score label'}}, 'strategy': 'per_record'}
+input_data = [[{"city": "NY", "score": 1}]]
+attributes = {"output_desc": {"label": {"description": "Score label"}}, "strategy": "per_record"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('semantic_transform@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("semantic_transform@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1103,10 +1148,10 @@ Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `c
 Fixture-backed call:
 
 ```python
-input_data = [[{'value': 3}, {'value': '5'}, {'value': 5}]]
-attributes = {'sum_key': 'value'}
+input_data = [[{"value": 3}, {"value": "5"}, {"value": 5}]]
+attributes = {"sum_key": "value"}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('sum@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("sum@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1132,10 +1177,10 @@ Tags: `domain-set`, `flow-combine`, `accepts-data`, `produces-data`, `capability
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 1}, {'id': 2}], [{'id': 2}, {'id': 3}]]
+input_data = [[{"id": 1}, {"id": 2}], [{"id": 2}, {"id": 3}]]
 attributes = {}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('union@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("union@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1166,10 +1211,10 @@ Tags: `domain-vector`, `flow-transform`, `accepts-data`, `produces-data`, `capab
 Fixture-backed call:
 
 ```python
-input_data = [[{'id': 'a', 'title': 'alpha'}]]
-attributes = {'text_field': ['title']}
+input_data = [[{"id": "a", "title": "alpha"}]]
+attributes = {"text_field": ["title"]}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('vector_embed@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("vector_embed@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1204,10 +1249,10 @@ Tags: `domain-vector`, `flow-transform`, `accepts-data`, `produces-data`, `capab
 Fixture-backed call:
 
 ```python
-input_data = [[{'embed.model': 'model-2d', 'embedding': [1.0, 0.0], 'id': 'a'}]]
-attributes = {'query': {'embedding': [1.0, 0.0], 'model': 'model-2d'}}
+input_data = [[{"embed.model": "model-2d", "embedding": [1.0, 0.0], "id": "a"}]]
+attributes = {"query": {"embedding": [1.0, 0.0], "model": "model-2d"}}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('vector_search@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("vector_search@2.0.0").run(
     input_data, attributes, properties
 )
 ```
@@ -1241,10 +1286,10 @@ Tags: `domain-vector`, `flow-combine`, `accepts-data`, `produces-data`, `capabil
 Fixture-backed call:
 
 ```python
-input_data = [[{'embedding': [1.0, 0.0], 'id': 'left'}], [{'embedding': [1.0, 0.0], 'id': 'right'}]]
+input_data = [[{"embedding": [1.0, 0.0], "id": "left"}], [{"embedding": [1.0, 0.0], "id": "right"}]]
 attributes = {}
 properties = None  # inject the fixture profile's dependency here when required
-output_data, output_attributes, meta = registry.resolve('vector_similarity@2.0.0').run(
+output_data, output_attributes, meta = registry.resolve("vector_similarity@2.0.0").run(
     input_data, attributes, properties
 )
 ```

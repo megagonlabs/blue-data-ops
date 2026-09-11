@@ -37,6 +37,10 @@ from blue_data_ops.plan.pipeline import DataPipeline, Node
 from blue_data_ops.plan.types import PlanRecord
 
 _PLANNER_OPERATOR_VERSION = "2.0.0"
+_EXPLICIT_OPERATOR_VERSIONS = frozenset({_PLANNER_OPERATOR_VERSION, "3.0.0"})
+_COMPATIBILITY_ADMISSION = "compatibility-v2"
+_EXPLICIT_ADMISSION = "explicit-v2-v3"
+_PlannerAdmission = Literal["compatibility-v2", "explicit-v2-v3"]
 # The one built-in operator whose attributes name a data-source address.
 _ADDRESSED_OPERATOR_NAME = "nl2sql"
 
@@ -119,6 +123,44 @@ def _scope_anchor(request: PlanningRequest) -> DataScope | None:
     if type(scope) is not DataScope:
         raise _invalid_data_context("data context scope does not match the planning request")
     return DataScope(scope.source, scope.database, scope.collection, scope.entities)
+
+
+def _current_operator_id_parts(operator_id: str) -> tuple[str, str] | None:
+    name, separator, version = operator_id.partition("@")
+    if separator != "@" or not name or "@" in version or version not in _EXPLICIT_OPERATOR_VERSIONS:
+        return None
+    return name, version
+
+
+def _requests_v3_admission(operator_ids: tuple[str, ...]) -> bool:
+    for operator_id in operator_ids:
+        parts = _current_operator_id_parts(operator_id)
+        if parts is not None and parts[1] == "3.0.0":
+            return True
+    return False
+
+
+def _template_operator_id(request: PlanningRequest, operator_name: str) -> str | None:
+    """Return the one exact ID a rule slot may use, or None when it is not allowed."""
+
+    allowed = request.allowed_operator_ids
+    if not allowed:
+        return f"{operator_name}@{_PLANNER_OPERATOR_VERSION}"
+
+    parsed: list[tuple[str, str, str]] = []
+    for operator_id in allowed:
+        parts = _current_operator_id_parts(operator_id)
+        if parts is None:
+            raise invalid_request(
+                "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+            )
+        parsed.append((operator_id, *parts))
+
+    matches = tuple(operator_id for operator_id, name, _ in parsed if name == operator_name)
+    distinct = tuple(dict.fromkeys(matches))
+    if len(distinct) > 1:
+        raise invalid_request(f"rule template requires one allowed version of {operator_name!r}")
+    return distinct[0] if distinct else None
 
 
 def _empty_operator_attributes() -> Mapping[str, Mapping[str, Any]]:
@@ -855,10 +897,25 @@ class RulePlanTemplate:
         plan_steps: list[PlanStep] = []
         previous_step_id: str | None = None
         for template_step in self.steps:
+            expected_operator_id = _template_operator_id(typed_request, template_step.operator_name)
+            if expected_operator_id is None:
+                raise planning_error(
+                    PlanningStage.DISCOVERY,
+                    PlanningErrorCode.DISCOVERY_RESULT_INVALID,
+                    f"operator {template_step.operator_name!r} is not allowed by the "
+                    "planning request",
+                    category=ErrorCategory.RECOVERABLE,
+                    suggestion="Allow exactly one required operator version.",
+                )
             card = discovery.one(template_step.operator_name)
+            expected_parts = _current_operator_id_parts(expected_operator_id)
+            if expected_parts is None:  # established by _template_operator_id
+                raise invalid_request("planning request is malformed")
+            _, expected_version = expected_parts
             if (
-                card.operator_id != f"{template_step.operator_name}@{_PLANNER_OPERATOR_VERSION}"
-                or card.version != _PLANNER_OPERATOR_VERSION
+                card.operator_id != expected_operator_id
+                or card.name != template_step.operator_name
+                or card.version != expected_version
                 or card.tags != template_step.expected_tags
             ):
                 raise planning_error(
@@ -1096,6 +1153,34 @@ class PipelinePlanner:
         self._data_context_provider = data_context_provider
         self._embedding_index = embedding_index
 
+    def _validate_explicit_operator_ids(self, request: PlanningRequest) -> None:
+        for operator_id in request.allowed_operator_ids:
+            parts = _current_operator_id_parts(operator_id)
+            if parts is None:
+                raise invalid_request(
+                    "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+                )
+            name, version = parts
+            try:
+                card = self._registry.get_card(operator_id)
+                resolved = self._registry.resolve(operator_id)
+                built_in = is_builtin_card(self._registry, card)
+            except Exception:
+                raise invalid_request(
+                    "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+                ) from None
+            if (
+                card is None
+                or not built_in
+                or card.operator_id != operator_id
+                or card.name != name
+                or card.version != version
+                or getattr(resolved, "operator_id", None) != operator_id
+            ):
+                raise invalid_request(
+                    "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+                )
+
     def discover(self, request: PlanningRequest) -> DiscoverySnapshot:
         """Compatibility discovery: every discoverable 2.0.0 card, deprecated or not.
 
@@ -1104,12 +1189,26 @@ class PipelinePlanner:
         rather than here.
         """
 
-        return self._discovery(request, active_only=False)
+        return self._discovery(
+            request,
+            active_only=False,
+            admission=_COMPATIBILITY_ADMISSION,
+        )
 
-    def _discovery(self, request: PlanningRequest, *, active_only: bool) -> DiscoverySnapshot:
+    def _discovery(
+        self,
+        request: PlanningRequest,
+        *,
+        active_only: bool,
+        admission: _PlannerAdmission,
+    ) -> DiscoverySnapshot:
         typed_request = _validate_request_data(request)
         try:
-            return self._discover(typed_request, active_only=active_only)
+            return self._discover(
+                typed_request,
+                active_only=active_only,
+                admission=admission,
+            )
         except Exception:
             raise planning_error(
                 PlanningStage.DISCOVERY,
@@ -1120,7 +1219,11 @@ class PipelinePlanner:
             ) from None
 
     def _discover(
-        self, request: PlanningRequest, *, active_only: bool = False
+        self,
+        request: PlanningRequest,
+        *,
+        active_only: bool = False,
+        admission: _PlannerAdmission = _COMPATIBILITY_ADMISSION,
     ) -> DiscoverySnapshot:
         allowed = set(request.allowed_operator_ids)
         cards: list[OperatorCard] = []
@@ -1133,13 +1236,25 @@ class PipelinePlanner:
             )
             query_count = 0
             for card in matches:
-                if card.version != _PLANNER_OPERATOR_VERSION:
+                if admission == _EXPLICIT_ADMISSION:
+                    if (
+                        card.operator_id not in allowed
+                        or card.version not in _EXPLICIT_OPERATOR_VERSIONS
+                        or not is_builtin_card(self._registry, card)
+                    ):
+                        continue
+                    self._registry.resolve(card.operator_id)
+                elif card.version != _PLANNER_OPERATOR_VERSION:
                     continue
                 # In the loop, so a skipped card spends neither the query limit nor the
                 # card budget: the caller's discovery budget buys active cards.
                 if active_only and card.deprecated:
                     continue
-                if allowed and card.operator_id not in allowed:
+                if (
+                    admission == _COMPATIBILITY_ADMISSION
+                    and allowed
+                    and card.operator_id not in allowed
+                ):
                     continue
                 if card.operator_id in seen:
                     continue
@@ -1154,11 +1269,22 @@ class PipelinePlanner:
 
     def plan(self, request: PlanningRequest) -> PlanningResult:
         typed_request = _validate_request_data(request)
-        # Anchored before the first caller callback. Discovery already calls the
-        # caller-supplied registry, so an anchor taken after it would record a scope that
-        # callback had already been free to change.
+        # Capture the caller's scope before any registry callback introduced by
+        # explicit admission. Discovery already follows the same boundary below.
         scope_anchor = _scope_anchor(typed_request)
-        discovery = self._discovery(typed_request, active_only=True)
+        admission = (
+            _EXPLICIT_ADMISSION
+            if _requests_v3_admission(typed_request.allowed_operator_ids)
+            else _COMPATIBILITY_ADMISSION
+        )
+        if admission == _EXPLICIT_ADMISSION:
+            self._validate_explicit_operator_ids(typed_request)
+            self._require_anchor(typed_request, scope_anchor)
+        discovery = self._discovery(
+            typed_request,
+            active_only=True,
+            admission=admission,
+        )
         self._require_anchor(typed_request, scope_anchor)
         # Two detached copies of one canonical document. The generator gets the
         # first and may do what it likes with it; `retained` never leaves this frame
@@ -1173,7 +1299,16 @@ class PipelinePlanner:
             # boundary: an unexpected failure there is contained, not raised raw.
             self._reject_deprecated_steps(selected)
             self._require_anchor(typed_request, scope_anchor)
-            pipeline = self._compile(typed_request, selected, discovery, scope_anchor)
+            if admission == _EXPLICIT_ADMISSION:
+                pipeline = self._compile(
+                    typed_request,
+                    selected,
+                    discovery,
+                    scope_anchor,
+                    admission=admission,
+                )
+            else:
+                pipeline = self._compile(typed_request, selected, discovery, scope_anchor)
         except PlanningError:
             raise
         except Exception:
@@ -1385,11 +1520,10 @@ class PipelinePlanner:
         )
 
     def _reject_deprecated_steps(self, draft: PlanDraft) -> None:
-        """Name the lifecycle when a draft reaches compilation with a deprecated step.
+        """Name the lifecycle before a planned deprecated step reaches compilation.
 
-        `_compile` already rejects such a step, because an active-only snapshot does not
-        contain it. This runs first only so the message says why, not "was not
-        discovered"; it is attribution, and `_compile` remains the containment.
+        Active discovery normally keeps such a step out. Explicit compilation rechecks
+        lifecycle for direct callers; this earlier check gives plan() the specific reason.
         """
 
         for step in draft.steps:
@@ -1818,6 +1952,8 @@ class PipelinePlanner:
         draft: PlanDraft,
         discovery: DiscoverySnapshot,
         scope: DataScope | None = None,
+        *,
+        admission: _PlannerAdmission = _COMPATIBILITY_ADMISSION,
     ) -> DataPipeline:
         raw_steps = cast(tuple[object, ...], draft.steps)
         if not raw_steps:
@@ -1841,13 +1977,45 @@ class PipelinePlanner:
         edge_count = 0
         for step in steps:
             raw_operator_id = cast(object, step.operator_id)
-            if not isinstance(raw_operator_id, str) or not raw_operator_id.endswith(
-                f"@{_PLANNER_OPERATOR_VERSION}"
-            ):
+            if not isinstance(raw_operator_id, str):
                 raise _invalid_compiled_plan(
                     f"planner requires @{_PLANNER_OPERATOR_VERSION} operator ids"
                 )
             operator_id = raw_operator_id
+            if admission == _EXPLICIT_ADMISSION:
+                if operator_id not in request.allowed_operator_ids:
+                    raise _invalid_compiled_plan(
+                        f"operator {operator_id!r} was not allowed by the planning request"
+                    )
+                matching_cards = tuple(
+                    card
+                    for card in discovery.cards
+                    if type(card) is OperatorCard and card.operator_id == operator_id
+                )
+                parts = _current_operator_id_parts(operator_id)
+                if len(matching_cards) != 1 or parts is None:
+                    raise _invalid_compiled_plan(f"operator {operator_id!r} was not discovered")
+                card = matching_cards[0]
+                name, version = parts
+                try:
+                    resolved = self._registry.resolve(operator_id)
+                    built_in = is_builtin_card(self._registry, card)
+                except Exception:
+                    raise _invalid_compiled_plan(
+                        f"operator {operator_id!r} was not admitted"
+                    ) from None
+                if (
+                    not built_in
+                    or card.name != name
+                    or card.version != version
+                    or cast(Any, card).deprecated
+                    or getattr(resolved, "operator_id", None) != operator_id
+                ):
+                    raise _invalid_compiled_plan(f"operator {operator_id!r} was not admitted")
+            elif not operator_id.endswith(f"@{_PLANNER_OPERATOR_VERSION}"):
+                raise _invalid_compiled_plan(
+                    f"planner requires @{_PLANNER_OPERATOR_VERSION} operator ids"
+                )
             if operator_id not in discovered_ids:
                 raise _invalid_compiled_plan(f"operator {operator_id!r} was not discovered")
             if operator_id.split("@", 1)[0] == _ADDRESSED_OPERATOR_NAME:
@@ -1958,6 +2126,10 @@ def _select_then_average_rule(
     goal = request.goal.casefold()
     if "average" not in goal or not any(token in goal for token in ("above", "greater")):
         return None
+    # Report an ambiguous explicit version choice before discovery.one() turns it
+    # into a discovery-cardinality error. The template repeats the structural check.
+    _template_operator_id(request, "select")
+    _template_operator_id(request, "avg")
     discovery.one("select")
     discovery.one("avg")
     try:

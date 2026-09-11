@@ -44,7 +44,9 @@ with TemporaryDirectory(prefix="blue-data-ops-insert-") as directory:
     if exec_meta.errors:
         with sqlite3.connect(database_path) as connection:
             observed = connection.execute(f'SELECT "id", "value" FROM "{table}"').fetchall()
-        raise RuntimeError(f"Write failed; observed rows: {observed!r}. Inspect before retrying.", exec_meta.errors)
+        raise RuntimeError(
+            f"Write failed; observed rows: {observed!r}. Inspect before retrying.", exec_meta.errors
+        )
     with sqlite3.connect(database_path) as connection:
         stored = connection.execute(f'SELECT "id", "value" FROM "{table}" ORDER BY "id"').fetchall()
 

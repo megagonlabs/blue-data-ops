@@ -1186,7 +1186,7 @@
   "registry": "versioned_registry",
   "schema_version": "operator-discovery/1",
   "source_manifest": {
-    "aggregate_sha256": "5eff836bfcf613be7395ac0dd339a2fcc2c5f412a60484e382105eb4133af06e",
+    "aggregate_sha256": "0d35397397d59639627f7a4a955cf9bf5a03ebfb9cfbb341964a83a4f81d6581",
     "files": {
       "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
       "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
@@ -1216,7 +1216,7 @@
       "select": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c",
       "semantic_extract": "bcd21ac95965245564c7dd77d054e71de22bb245f47c264595e26a8efe0c9a9e",
       "semantic_filter": "6c84a8124dabc1d7bdc981fbca98a18149174d5a59aba9ab29323459d37e5e5f",
-      "semantic_join": "d0ac8f4392ee9b8c6cf876a5e65f96258a477aed2343ad8d41a1d8a751e3e157",
+      "semantic_join": "755f1776a1cb3f0658aca7680076844343e7045be9cf49cc7eef3e1f1b773053",
       "semantic_project": "cfb78fef257f905931a1b96cfa3245b5648201e436764c6de16d7e972056cc64",
       "semantic_transform": "328292737735a6e7cad47a3d1bd347facd4175cb01726896add23d65b5a63360",
       "sum": "57de9ac53c365356fa76ed8eb4e1968a9342daabb172eaeadcb934dafabbfeac",

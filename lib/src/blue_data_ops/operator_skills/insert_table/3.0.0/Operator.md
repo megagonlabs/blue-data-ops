@@ -35,3 +35,11 @@ A write may partly complete before an error or timeout. Earlier batches may alre
 The configured database receives the generated insert statement and row values. `collection` is validated as a string but has no effect on insertion. Optional `exec_meta.traces["elapsed_ms"]` measures nonnegative monotonic wall-clock time from entry into `run()` until its result is ready, including validation and waiting. On timeout it measures until the timeout result, not the worker's eventual completion. Missing traces or logs do not establish that no write occurred.
 
 See the [disposable SQLite example](examples.md) for source setup, count comparison with stored rows, and downstream use of the returned data.
+
+For a structurally valid bundle, `run()` may also record `input_shape` before validation and
+execution. The value has `groups` and `rows_per_group`; its counts do not change if the caller data
+is later mutated. Invalid bundle structure omits this key.
+
+After successful normalization, `output_shape` uses the same fields. Failures and timeouts omit it.
+An all-empty successful output is normalized to `[[]]`, while a mixed multi-group output retains a
+zero count for each empty group. Both shape keys are optional.

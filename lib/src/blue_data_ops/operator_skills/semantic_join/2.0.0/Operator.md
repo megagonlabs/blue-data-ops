@@ -24,7 +24,7 @@
 | `input_json` | `properties` | `no` | `"[{\"role\": \"user\"}]"` | `none` | `scalar` |
 | `input_template` | `properties` | `no` | `source-sha256:0a59949299cad5c6b6da04fc9f96046ad564fae39686d55b9fe952fdb0e92f59` | `none` | `scalar` |
 | `join_predicate` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
-| `join_suffix` | `attributes` | `no` | `[]` | `none` | `scalar` |
+| `join_suffix` | `attributes` | `no` | `[]` | `none` | `structured` |
 | `join_type` | `attributes` | `yes` | `"inner"` | `attribute-spec:str` | `scalar` |
 | `keep_keys` | `attributes` | `yes` | `"left"` | `attribute-spec:str` | `scalar` |
 | `left_fields` | `attributes` | `yes` | `[]` | `attribute-spec:list[str]` | `structured` |

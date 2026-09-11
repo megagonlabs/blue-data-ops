@@ -5,9 +5,11 @@ import hashlib
 import inspect
 import json
 import re
+import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from types import FunctionType, MethodType
 from typing import cast
 
 from blue_data_ops.operators import OperatorRegistry
@@ -24,7 +26,29 @@ SETTINGS_COLUMNS = (
 )
 SETTING_KINDS = frozenset({"scalar", "presence", "structured", "seam", "namespace"})
 COMPATIBILITY_PACKAGE = "multipart_query@2.0.0"
-ADDED_SKILL_PACKAGE_IDS = ("avg@3.0.0", "insert_table@3.0.0", "join@3.0.0")
+ADDED_SKILL_PACKAGE_IDS = (
+    "avg@3.0.0",
+    "classify@3.0.0",
+    "cluster@3.0.0",
+    "insert@3.0.0",
+    "insert_table@3.0.0",
+    "intersect@3.0.0",
+    "join@3.0.0",
+    "max@3.0.0",
+    "min@3.0.0",
+    "nl2bn@3.0.0",
+    "nl2llm@3.0.0",
+    "nl2sql@3.0.0",
+    "project@3.0.0",
+    "semantic_extract@3.0.0",
+    "semantic_filter@3.0.0",
+    "semantic_join@3.0.0",
+    "semantic_project@3.0.0",
+    "semantic_transform@3.0.0",
+    "vector_embed@3.0.0",
+    "vector_search@3.0.0",
+    "vector_similarity@3.0.0",
+)
 BASE_SETTING = "execution.timeout_seconds"
 _NAMESPACE_INPUT = re.compile(
     r"^properties:(?:<[A-Za-z_][A-Za-z0-9_]*>|[A-Za-z_][A-Za-z0-9_]*)\.\*$"
@@ -80,6 +104,20 @@ class EffectiveReadCensus:
     discarded_post_merge_writes: tuple[str, ...]
     excluded_runtime_metadata: tuple[str, ...]
     indirect_evidence: tuple[IndirectEvidence, ...]
+
+
+@dataclass(frozen=True)
+class SourceProvenance:
+    kind: str
+    module: str
+    symbol: str
+    source_sha256: str
+
+
+@dataclass(frozen=True)
+class OperatorSource:
+    text: str
+    provenance: tuple[SourceProvenance, ...]
 
 
 def _normalize_cell(cell: str, *, machine: bool) -> str:
@@ -199,7 +237,7 @@ def expected_v2_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]
 def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     legacy = expected_v2_skill_package_ids(registry)
     expected = (*legacy, *ADDED_SKILL_PACKAGE_IDS)
-    assert len(expected) == len(set(expected)) == 36
+    assert len(expected) == len(set(expected)) == 54
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
 
 
@@ -291,14 +329,26 @@ def _function_body_nodes(
     return tuple(found)
 
 
+def _mapping_get_receiver(node: ast.AST, aliases: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in aliases
+    return (
+        isinstance(node, ast.BoolOp)
+        and isinstance(node.op, ast.Or)
+        and len(node.values) == 2
+        and isinstance(node.values[0], ast.Name)
+        and node.values[0].id in aliases
+        and _empty_mapping(node.values[1])
+    )
+
+
 def _read_kinds_from_nodes(nodes: tuple[ast.AST, ...], aliases: set[str]) -> dict[str, set[str]]:
     reads: dict[str, set[str]] = defaultdict(set)
     for node in nodes:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             if (
                 node.func.attr == "get"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id in aliases
+                and _mapping_get_receiver(node.func.value, aliases)
                 and node.args
             ):
                 key = _literal_key(node.args[0])
@@ -338,8 +388,7 @@ def _read_defaults_from_nodes(nodes: tuple[ast.AST, ...], aliases: set[str]) -> 
             continue
         if (
             node.func.attr != "get"
-            or not isinstance(node.func.value, ast.Name)
-            or node.func.value.id not in aliases
+            or not _mapping_get_receiver(node.func.value, aliases)
             or not node.args
         ):
             continue
@@ -348,6 +397,33 @@ def _read_defaults_from_nodes(nodes: tuple[ast.AST, ...], aliases: set[str]) -> 
             continue
         defaults[key].add(_literal_default(node.args[1]) if len(node.args) > 1 else "none")
     return defaults
+
+
+def _literal_default_kind(node: ast.AST) -> str:
+    try:
+        return _default_kind(ast.literal_eval(node))
+    except (TypeError, ValueError):
+        return "unknown"
+
+
+def _read_default_kinds_from_nodes(
+    nodes: tuple[ast.AST, ...], aliases: set[str]
+) -> dict[str, set[str]]:
+    kinds: dict[str, set[str]] = defaultdict(set)
+    for node in nodes:
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if (
+            node.func.attr != "get"
+            or not _mapping_get_receiver(node.func.value, aliases)
+            or not node.args
+        ):
+            continue
+        key = _literal_key(node.args[0])
+        if key is None:
+            continue
+        kinds[key].add(_literal_default_kind(node.args[1]) if len(node.args) > 1 else "scalar")
+    return kinds
 
 
 def _combined_default(values: set[str]) -> str:
@@ -496,10 +572,177 @@ def _schema_kind(spec: AttributeSpec, read_kinds: set[str]) -> str:
     return "scalar"
 
 
-def _source_for(operator: object) -> str:
-    source_file = inspect.getsourcefile(type(operator))
+_SETTINGS_ENTRYPOINTS = ("apply", "_execute", "validate", "_validate_input")
+_MAX_ACQUIRED_CALLABLES = 64
+
+
+def _callable_definition(owner: type[object], name: str) -> FunctionType:
+    raw: object = owner.__dict__[name]
+    assert isinstance(raw, (FunctionType, classmethod, staticmethod)), (
+        f"unsupported operator callable {owner.__qualname__}.{name}: {type(raw).__name__}"
+    )
+    definition: object = raw if isinstance(raw, FunctionType) else getattr(owner, name)
+    if isinstance(definition, MethodType):
+        definition = definition.__func__
+    assert isinstance(definition, FunctionType)
+    unwrapped: object = inspect.unwrap(definition)
+    assert isinstance(unwrapped, FunctionType)
+    return unwrapped
+
+
+def _callable_source(function: FunctionType) -> tuple[Path, str]:
+    source_file = inspect.getsourcefile(function)
+    assert source_file is not None, f"operator callable has no source: {function!r}"
+    try:
+        source = textwrap.dedent(inspect.getsource(function))
+    except (OSError, TypeError) as exception:
+        raise AssertionError(
+            f"operator callable source is unavailable: {function!r}"
+        ) from exception
+    return Path(source_file).resolve(), source
+
+
+def _operator_classes(operator: object) -> tuple[type[object], ...]:
+    from blue_data_ops.operators.operator import Operator
+
+    operator_type = type(operator)
+    if not issubclass(operator_type, Operator):
+        return (operator_type,)
+    mro = cast(tuple[type[object], ...], operator_type.__mro__)
+    boundary = mro.index(Operator)
+    assert boundary > 0
+    return mro[:boundary]
+
+
+def _method_definition(
+    classes: tuple[type[object], ...], start: int, name: str
+) -> tuple[int, type[object], FunctionType] | None:
+    for index in range(start, len(classes)):
+        owner = classes[index]
+        if name in owner.__dict__:
+            return index, owner, _callable_definition(owner, name)
+    return None
+
+
+def _zero_arg_super_call(call: ast.Call) -> bool:
+    return (
+        isinstance(call.func, ast.Name)
+        and call.func.id == "super"
+        and not call.args
+        and not call.keywords
+    )
+
+
+def source_for_operator(operator: object) -> OperatorSource:
+    """Return the primary module plus settings-relevant effective inherited callables."""
+    operator_type = type(operator)
+    source_file = inspect.getsourcefile(operator_type)
     assert source_file is not None
-    return Path(source_file).read_text(encoding="utf-8")
+    primary_path = Path(source_file).resolve()
+    primary_text = primary_path.read_text(encoding="utf-8")
+    classes = _operator_classes(operator)
+
+    fragments: list[str] = [primary_text]
+    provenance: list[SourceProvenance] = [
+        SourceProvenance(
+            kind="primary-module",
+            module=operator_type.__module__,
+            symbol=operator_type.__qualname__,
+            source_sha256=hashlib.sha256(primary_text.encode("utf-8")).hexdigest(),
+        )
+    ]
+    acquired: set[tuple[str, str]] = set()
+    visiting: set[tuple[str, str]] = set()
+
+    def acquire(function: FunctionType, owner_index: int | None, kind: str) -> None:
+        module = cast(str, getattr(function, "__module__"))
+        symbol = cast(str, getattr(function, "__qualname__"))
+        key = (module, symbol)
+        if key in acquired or key in visiting:
+            return
+        assert len(acquired) + len(visiting) < _MAX_ACQUIRED_CALLABLES, (
+            "operator source acquisition exceeded its bound"
+        )
+        visiting.add(key)
+        function_path, function_source = _callable_source(function)
+        provenance.append(
+            SourceProvenance(
+                kind=kind,
+                module=module,
+                symbol=symbol,
+                source_sha256=hashlib.sha256(function_source.encode("utf-8")).hexdigest(),
+            )
+        )
+        if function_path != primary_path:
+            fragments.append(function_source)
+
+        tree = ast.parse(function_source)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and node.args
+                and (
+                    isinstance(node.args[0], ast.Name)
+                    and node.args[0].id == "self"
+                    or isinstance(node.args[0], ast.Call)
+                    and _zero_arg_super_call(node.args[0])
+                )
+            ):
+                raise AssertionError(f"unsupported dynamic operator dispatch in {module}.{symbol}")
+
+            if (
+                isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Call)
+                and _zero_arg_super_call(node.func.value)
+            ):
+                assert owner_index is not None, (
+                    f"super() outside an operator method: {module}.{symbol}"
+                )
+                delegated = _method_definition(classes, owner_index + 1, node.func.attr)
+                if delegated is not None:
+                    next_index, _, next_function = delegated
+                    acquire(next_function, next_index, "delegated-method")
+                continue
+
+            if (
+                isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "self"
+            ):
+                resolved = _method_definition(classes, 0, node.func.attr)
+                if resolved is not None:
+                    next_index, _, next_function = resolved
+                    acquire(next_function, next_index, "reachable-method")
+                continue
+
+            if isinstance(node.func, ast.Name):
+                target = cast(dict[str, object], getattr(function, "__globals__", {})).get(
+                    node.func.id
+                )
+                if target is None or not inspect.isfunction(target):
+                    continue
+                target = inspect.unwrap(target)
+                target_file = inspect.getsourcefile(target)
+                if target_file is not None and Path(target_file).resolve() == function_path:
+                    acquire(target, None, "reachable-helper")
+
+        visiting.remove(key)
+        acquired.add(key)
+
+    for method_name in _SETTINGS_ENTRYPOINTS:
+        resolved = _method_definition(classes, 0, method_name)
+        if resolved is None:
+            continue
+        owner_index, _, function = resolved
+        acquire(function, owner_index, "effective-method")
+
+    return OperatorSource(
+        text="\n\n".join(fragment.rstrip() for fragment in fragments) + "\n",
+        provenance=tuple(provenance),
+    )
 
 
 def runtime_metadata_reads(source: str | None = None) -> tuple[str, ...]:
@@ -640,7 +883,7 @@ def effective_read_census(
     source: str | None = None,
     helper_sources: dict[str, str] | None = None,
 ) -> EffectiveReadCensus:
-    text = source if source is not None else _source_for(operator)
+    text = source if source is not None else source_for_operator(operator).text
     tree = ast.parse(text)
     functions = tuple(
         node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -655,6 +898,7 @@ def effective_read_census(
     attribute_reads: dict[str, set[str]] = defaultdict(set)
     property_reads: dict[str, set[str]] = defaultdict(set)
     attribute_defaults: dict[str, set[str]] = defaultdict(set)
+    attribute_default_kinds: dict[str, set[str]] = defaultdict(set)
     property_defaults: dict[str, set[str]] = defaultdict(set)
     post_writes: dict[str, tuple[int, str]] = {}
     for function in functions:
@@ -667,6 +911,10 @@ def effective_read_census(
             _merge_reads(
                 attribute_defaults,
                 _read_defaults_from_nodes(nodes, attribute_aliases),
+            )
+            _merge_reads(
+                attribute_default_kinds,
+                _read_default_kinds_from_nodes(nodes, attribute_aliases),
             )
             _merge_reads(
                 property_defaults,
@@ -714,6 +962,13 @@ def effective_read_census(
         )
     for name, kinds in attribute_reads.items():
         if name not in schema:
+            kind = (
+                "presence"
+                if kinds == {"presence"}
+                else "structured"
+                if attribute_default_kinds.get(name, set()) == {"structured"}
+                else "scalar"
+            )
             expected.add(
                 SettingExpectation(
                     name,
@@ -721,7 +976,7 @@ def effective_read_census(
                     "no",
                     _combined_default(attribute_defaults.get(name, set())),
                     "none",
-                    "presence" if kinds == {"presence"} else "scalar",
+                    kind,
                 )
             )
 

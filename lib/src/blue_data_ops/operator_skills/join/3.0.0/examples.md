@@ -19,10 +19,12 @@ attributes = {
 joined, output_attributes, exec_meta = operator.run(data, attributes)
 if exec_meta.errors:
     raise RuntimeError(exec_meta.errors)
-assert joined == [[
-    {"id": 1, "value_left": 10, "value_right": 12},
-    {"id": 2, "value_left": 20, "value_right": 24},
-]]
+assert joined == [
+    [
+        {"id": 1, "value_left": 10, "value_right": 12},
+        {"id": 2, "value_left": 20, "value_right": 24},
+    ]
+]
 assert output_attributes == {} and not exec_meta.is_empty
 
 average = versioned_registry().resolve("avg@3.0.0")
@@ -35,9 +37,7 @@ count = summary_attributes.get("num_values_used")
 if count is not None:
     print(f"Values averaged: {count}")
 
-empty, _, empty_meta = operator.run(
-    [[{"id": 1}], [{"id": 2}]], {"join_on": [["id"], ["id"]]}
-)
+empty, _, empty_meta = operator.run([[{"id": 1}], [{"id": 2}]], {"join_on": [["id"], ["id"]]})
 assert not empty_meta.errors and empty_meta.is_empty and empty == [[]]
 
 invalid, invalid_attributes, invalid_meta = operator.run(

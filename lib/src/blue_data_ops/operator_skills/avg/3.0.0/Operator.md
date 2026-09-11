@@ -34,3 +34,11 @@ Check `exec_meta.errors` before using `is_empty` or the data. Missing or invalid
 Optional `exec_meta.traces["elapsed_ms"]` is nonnegative monotonic wall-clock time from entry into `run()` until that call's result is ready, including validation and waiting. On timeout it ends at the timeout result, not at the worker's eventual completion. Missing traces or logs are valid; do not use log text as a control signal.
 
 See [examples](examples.md) for a standalone call and caller-side use of the result.
+
+For a structurally valid bundle, `run()` may also record `input_shape` before validation and
+execution. The value has `groups` and `rows_per_group`; its counts do not change if the caller data
+is later mutated. Invalid bundle structure omits this key.
+
+After successful normalization, `output_shape` uses the same fields. Failures and timeouts omit it.
+An all-empty successful output is normalized to `[[]]`, while a mixed multi-group output retains a
+zero count for each empty group. Both shape keys are optional.

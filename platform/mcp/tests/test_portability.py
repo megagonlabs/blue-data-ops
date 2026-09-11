@@ -31,13 +31,13 @@ def test_distribution_metadata_and_public_surface() -> None:
     metadata = importlib.metadata.metadata("blue-data-ops-mcp")
     requirements = metadata.get_all("Requires-Dist") or []
     assert metadata["Name"] == "blue-data-ops-mcp"
-    assert metadata["Version"] == "0.11.0"
+    assert metadata["Version"] == "0.12.0"
     assert metadata["Requires-Python"] == ">=3.11"
     runtime = {requirement for requirement in requirements if "extra ==" not in requirement}
-    # 0.11.0 tracks core 2.9.0. The operator cards this adapter serves are still @2.0.0;
+    # 0.12.0 tracks core 2.10.0. The operator cards this adapter serves are still @2.0.0;
     # only the core distribution version moved.
     assert runtime == {
-        "blue-data-ops==2.9.0",
+        "blue-data-ops==2.10.0",
         "mcp==1.27.2",
         "pydantic<3,>=2.11",
     }
@@ -124,11 +124,11 @@ async def test_readme_names_exactly_the_annotated_tools() -> None:
 def test_readme_states_the_current_versions_and_the_exact_core_pin() -> None:
     readme = _readme()
 
-    assert 'version("blue-data-ops-mcp") == "0.11.0"' in readme
-    assert "blue-data-ops-mcp 0.11.0" in readme
-    assert "blue-data-ops-mcp==0.11.0" in readme
-    assert "blue-data-ops[ml,vector,llm]==2.9.0" in readme
-    assert "`blue-data-ops==2.9.0`" in readme
+    assert 'version("blue-data-ops-mcp") == "0.12.0"' in readme
+    assert "blue-data-ops-mcp 0.12.0" in readme
+    assert "blue-data-ops-mcp==0.12.0" in readme
+    assert "blue-data-ops[ml,vector,llm]==2.10.0" in readme
+    assert "`blue-data-ops==2.10.0`" in readme
     # the 0.9.0 migration section and its install pair are history and stay as written
     assert readme.count("blue-data-ops-mcp==0.9.0") == 1
     assert readme.count("blue-data-ops[ml,vector,llm]==2.7.0") == 1

@@ -3,6 +3,7 @@ from __future__ import annotations
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 import pytest
 
@@ -16,6 +17,19 @@ def _generator() -> ModuleType:
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_source_manifest_includes_the_generator_input() -> None:
+    generator = _generator()
+    outcomes_path = cast(Path, generator.OUTCOMES_PATH)
+    fixture_path = outcomes_path.relative_to(LIB_ROOT).as_posix()
+    directives = [
+        tuple(line.strip().split(maxsplit=1))
+        for line in (LIB_ROOT / "MANIFEST.in").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+    assert ("include", fixture_path) in directives
 
 
 def test_operator_reference_matches_live_registry_and_fixtures() -> None:

@@ -19,7 +19,7 @@ def main() -> None:
     average, _, average_meta = AvgOperator().run(selected, {"avg_key": "total"})
     normalized, _, normalized_meta = NormalizeTextOperator().run(
         orders,
-        {"text_field": ["region"], "whitespace": "strip"},
+        {"text_field": ["region"], "normalize_whitespace": True},
     )
     combined, _, combined_meta = UnionOperator().run(
         [selected[0], [{"id": 4, "region": "north", "total": 310.0}]],

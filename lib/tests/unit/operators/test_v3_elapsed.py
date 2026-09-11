@@ -66,7 +66,18 @@ def test_elapsed_on_every_return_path(
     elif outcome == "timeout_setting":
         properties = {"execution.timeout_seconds": 0}
     data, attributes, meta = operator.run(rows, settings, properties)
-    assert meta.traces == {"elapsed_ms": 125.0}
+    assert meta.traces["elapsed_ms"] == 125.0
+    assert meta.traces["input_shape"] == {
+        "groups": 1,
+        "rows_per_group": [0 if outcome == "empty" else 1],
+    }
+    if expected is None:
+        assert meta.traces["output_shape"] == {
+            "groups": 1,
+            "rows_per_group": [0 if outcome == "empty" else 1],
+        }
+    else:
+        assert "output_shape" not in meta.traces
     assert [(error.code.value, error.stage.value) for error in meta.errors] == (
         [] if expected is None else [expected]
     )
@@ -122,7 +133,11 @@ def test_timer_covers_defaults_validation_execution_and_normalization(
         ),
     )
     result = operator.run([[{"x": 9}]], {"avg_key": "x"})
-    assert result[2].traces == {"elapsed_ms": 500.0}
+    assert result[2].traces == {
+        "elapsed_ms": 500.0,
+        "input_shape": {"groups": 1, "rows_per_group": [1]},
+        "output_shape": {"groups": 1, "rows_per_group": [1]},
+    }
 
 
 @pytest.mark.parametrize(
@@ -151,7 +166,11 @@ def test_unavailable_clock_does_not_fail_the_result(
         versioned_registry().resolve("avg@3.0.0").run([[{"x": 9}]], {"avg_key": "x"})
     )
     assert data == [[{"avg": 9}]] and attributes == {"num_values_used": 1}
-    assert not meta.errors and meta.traces == {}
+    assert not meta.errors and "elapsed_ms" not in meta.traces
+    assert meta.traces == {
+        "input_shape": {"groups": 1, "rows_per_group": [1]},
+        "output_shape": {"groups": 1, "rows_per_group": [1]},
+    }
 
 
 def test_timeout_metadata_survives_late_worker_completion_and_another_call(
@@ -212,10 +231,17 @@ def test_timeout_metadata_survives_late_worker_completion_and_another_call(
         )
         assert timed_out[0:2] == ([[]], {})
         assert timed_out[2].errors[0].code.value == "OPERATOR_TIMEOUT"
-        assert timed_out[2].traces == {"elapsed_ms": 250.0}
+        assert timed_out[2].traces == {
+            "elapsed_ms": 250.0,
+            "input_shape": {"groups": 1, "rows_per_group": [1]},
+        }
         monkeypatch.setattr(operator, "_execute", original)
         completed = operator.run([[{"x": 20}]], {"avg_key": "x"})
-        assert completed[2].traces == {"elapsed_ms": 500.0}
+        assert completed[2].traces == {
+            "elapsed_ms": 500.0,
+            "input_shape": {"groups": 1, "rows_per_group": [1]},
+            "output_shape": {"groups": 1, "rows_per_group": [1]},
+        }
     finally:
         release.set()
         for future in futures:
@@ -225,7 +251,10 @@ def test_timeout_metadata_survives_late_worker_completion_and_another_call(
     assert completed is not None
     assert late[0] == [[{"avg": 9}]] and late[1] == {"num_values_used": 1}
     assert late[2].traces == {}
-    assert timed_out[1] == {} and timed_out[2].traces == {"elapsed_ms": 250.0}
+    assert timed_out[1] == {} and timed_out[2].traces == {
+        "elapsed_ms": 250.0,
+        "input_shape": {"groups": 1, "rows_per_group": [1]},
+    }
     assert completed[1] == {"num_values_used": 1}
 
 
@@ -245,4 +274,16 @@ def test_only_new_versions_get_timing(
     monkeypatch.setattr(_outcomes, "monotonic", lambda: next(clock))
     for version in ("1.0.0", "2.0.0"):
         assert registry.resolve(f"{name}@{version}").run(rows, settings)[2].traces == {}
-    assert registry.resolve(f"{name}@3.0.0").run(rows, settings)[2].traces == {"elapsed_ms": 0.0}
+    result = registry.resolve(f"{name}@3.0.0").run(rows, settings)
+    assert result[2].traces["elapsed_ms"] == 0.0
+    assert result[2].traces["input_shape"] == {
+        "groups": len(rows),
+        "rows_per_group": [len(group) for group in rows],
+    }
+    if result[2].errors:
+        assert "output_shape" not in result[2].traces
+    else:
+        assert result[2].traces["output_shape"] == {
+            "groups": len(result[0]),
+            "rows_per_group": [len(group) for group in result[0]],
+        }

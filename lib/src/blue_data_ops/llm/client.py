@@ -5,6 +5,9 @@ import json
 import threading
 import time
 from dataclasses import dataclass
+from decimal import Decimal
+from math import isfinite
+from numbers import Real
 from typing import Any, cast
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -38,6 +41,20 @@ class UsageRecord:
     cost: float = 0.0
     latency_seconds: float = 0.0
     cache_hit: bool = False
+
+
+@dataclass
+class _InvocationCostObservation:
+    local_cache_hit: bool = False
+    provider_attempts: int = 0
+    estimated_cost: float | None = None
+
+    def complete_cost(self) -> float | None:
+        if self.local_cache_hit and self.provider_attempts == 0:
+            return 0.0
+        if self.provider_attempts == 1:
+            return self.estimated_cost
+        return None
 
 
 class UsageLedger:
@@ -93,6 +110,24 @@ class LLMClient:
         properties: dict[str, Any] | None = None,
         additional_data: dict[str, Any] | None = None,
     ) -> Any:
+        return self._execute_api_call(input, properties, additional_data, observation=None)
+
+    def _execute_api_call_observed(
+        self,
+        input: Any,  # noqa: A002
+        properties: dict[str, Any] | None,
+        additional_data: dict[str, Any] | None,
+        observation: _InvocationCostObservation,
+    ) -> Any:
+        return self._execute_api_call(input, properties, additional_data, observation)
+
+    def _execute_api_call(
+        self,
+        input: Any,  # noqa: A002
+        properties: dict[str, Any] | None,
+        additional_data: dict[str, Any] | None,
+        observation: _InvocationCostObservation | None,
+    ) -> Any:
         started = time.monotonic()
         merged = {**self.properties, **(properties or {})}
         message = build_message(input, merged, additional_data, self.name.lower())
@@ -101,11 +136,16 @@ class LLMClient:
         cache, cache_key = self._cache_lookup(merged, kwargs)
         if cache is not None and cache_key in cache:
             payload = cache[cache_key]
+            if observation is not None:
+                observation.local_cache_hit = True
             self._record(kwargs, payload, started, cache_hit=True)
             return extract_output(payload, merged)
 
         self._apply_rate_limit(merged)
-        payload, cost = self._call_provider(kwargs)
+        if observation is None:
+            payload, cost = self._call_provider(kwargs)
+        else:
+            payload, cost = self._call_provider_observed(kwargs, observation)
         if cache is not None and cache_key is not None:
             cache[cache_key] = payload
         self._record(kwargs, payload, started, cache_hit=False, cost=cost)
@@ -257,6 +297,24 @@ class LLMClient:
         wait=wait_exponential(multiplier=0.1, max=2),
         reraise=True,
     )
+    def _call_provider_observed(
+        self, kwargs: dict[str, Any], observation: _InvocationCostObservation
+    ) -> tuple[dict[str, Any], float]:
+        import litellm
+
+        observation.provider_attempts += 1
+        try:
+            response: Any = litellm.completion(**kwargs)
+        except Exception as e:
+            raise LLMError(str(e), code="provider_error", provider_error=e) from e
+        return self._materialize_observed(response, observation)
+
+    @retry(
+        retry=retry_if_exception_type(LLMError),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=0.1, max=2),
+        reraise=True,
+    )
     async def _acall_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
         import litellm  # lazy — same boundary as the sync path
 
@@ -267,8 +325,20 @@ class LLMClient:
         return self._materialize(response)
 
     def _materialize(self, response: Any) -> tuple[dict[str, Any], float]:
-        # Everything between the provider return and a validated OpenAI-shaped dict is
-        # provider-response territory: failures here are wrapped, chained LLMErrors.
+        payload = self._materialize_payload(response)
+        return payload, self._completion_cost(response)
+
+    def _materialize_observed(
+        self, response: Any, observation: _InvocationCostObservation
+    ) -> tuple[dict[str, Any], float]:
+        payload = self._materialize_payload(response)
+        legacy_cost, estimated_cost = self._observed_completion_cost(response)
+        observation.estimated_cost = estimated_cost
+        return payload, legacy_cost
+
+    @staticmethod
+    def _materialize_payload(response: Any) -> dict[str, Any]:
+        # Provider-response failures stay inside the decorated attempt.
         try:
             raw: Any = response.model_dump() if hasattr(response, "model_dump") else response
         except Exception as e:
@@ -284,7 +354,7 @@ class LLMClient:
                 code="bad_response",
             )
         payload: dict[str, Any] = dict(raw)  # pyright: ignore[reportUnknownArgumentType]
-        return payload, self._completion_cost(response)
+        return payload
 
     @staticmethod
     def _completion_cost(response: Any) -> float:
@@ -294,3 +364,31 @@ class LLMClient:
             return float(litellm.completion_cost(completion_response=response))
         except Exception:
             return 0.0
+
+    @staticmethod
+    def _observed_completion_cost(response: Any) -> tuple[float, float | None]:
+        try:
+            import litellm
+
+            raw_cost: Any = litellm.completion_cost(completion_response=response)
+        except Exception:
+            return 0.0, None
+
+        reportable_type = not isinstance(raw_cost, bool) and isinstance(raw_cost, (Real, Decimal))
+        raw_nonnegative = False
+        if reportable_type:
+            try:
+                raw_nonnegative = bool(cast(Any, raw_cost) >= 0)
+            except Exception:
+                pass
+
+        try:
+            converted_cost = float(raw_cost)
+        except Exception:
+            return 0.0, None
+
+        if not reportable_type or not raw_nonnegative:
+            return converted_cost, None
+        if not isfinite(converted_cost):
+            return converted_cost, None
+        return converted_cost, converted_cost

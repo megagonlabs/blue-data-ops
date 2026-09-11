@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import os
 import shutil
 import subprocess
@@ -9,10 +10,26 @@ from pathlib import Path
 
 import pytest
 
+import blue_data_ops
+from blue_data_ops import operator_skills
+
 PACKAGE_ROOT = Path(__file__).parents[3]
-CORE_SOURCE = PACKAGE_ROOT / "src" / "blue_data_ops"
-MCP_SOURCE = PACKAGE_ROOT.parent / "platform" / "mcp" / "src"
-SKILL_SOURCE = CORE_SOURCE / "operator_skills"
+
+
+def _package_root(module: object) -> Path:
+    location = getattr(module, "__file__", None)
+    assert isinstance(location, str)
+    return Path(location).resolve().parent
+
+
+CORE_SOURCE = _package_root(blue_data_ops)
+SKILL_SOURCE = _package_root(operator_skills)
+SOURCE_MCP = PACKAGE_ROOT.parent / "platform" / "mcp" / "src" / "blue_data_ops_mcp"
+MCP_SOURCE = (
+    SOURCE_MCP
+    if SOURCE_MCP.is_dir()
+    else _package_root(importlib.import_module("blue_data_ops_mcp"))
+)
 DISCLOSURE_RUNNER = PACKAGE_ROOT / "tests" / "installed" / "operator_skill_disclosure.py"
 CORE_SOURCE_FILE_FLOOR = 73
 MCP_SOURCE_FILE_FLOOR = 4
@@ -87,7 +104,7 @@ def test_resource_text_is_not_embedded_in_other_runtime_source() -> None:
 
 
 def test_filesystem_audit_hook_has_positive_and_negative_controls() -> None:
-    environment = _disclosure_environment(PACKAGE_ROOT / "src")
+    environment = _disclosure_environment(CORE_SOURCE.parent)
     positive = subprocess.run(
         [sys.executable, str(DISCLOSURE_RUNNER), "positive"],
         cwd=PACKAGE_ROOT,

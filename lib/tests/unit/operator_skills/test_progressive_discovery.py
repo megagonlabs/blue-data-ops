@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import pytest
 
+from blue_data_ops import operator_skills
 from blue_data_ops.operator_skills import (
     INDEX_BYTE_LIMIT,
     OperatorSkillDescriptor,
@@ -25,7 +26,7 @@ from blue_data_ops.operators.registry import is_builtin_card
 
 from ._settings_conformance import ADDED_SKILL_PACKAGE_IDS, expected_skill_package_ids
 
-RESOURCE_ROOT = Path(__file__).parents[3] / "src" / "blue_data_ops" / "operator_skills"
+RESOURCE_ROOT = Path(operator_skills.__file__).resolve().parent
 OPERATOR_ID = "nl2sql@2.0.0"
 ELIGIBLE_AVERAGE_ID = "avg@2.0.0"
 INELIGIBLE_AVERAGE_ID = "avg@1.0.0"

@@ -16,6 +16,18 @@ from blue_data_ops.operators.types import (
 )
 
 
+def _bundle_shape(value: DataBundle) -> dict[str, int | list[int]] | None:
+    try:
+        if not _is_data_bundle(value):
+            return None
+        return {
+            "groups": len(value),
+            "rows_per_group": [len(group) for group in value],
+        }
+    except Exception:
+        return None
+
+
 class _OutcomeOperator(Operator):  # pyright: ignore[reportUnusedClass]
     def run(
         self,
@@ -27,6 +39,10 @@ class _OutcomeOperator(Operator):  # pyright: ignore[reportUnusedClass]
             started = monotonic()
         except Exception:
             started = None
+        try:
+            input_shape = _bundle_shape(input_data)
+        except Exception:
+            input_shape = None
         result = super().run(input_data, attributes, properties)
         try:
             if started is not None:
@@ -34,6 +50,18 @@ class _OutcomeOperator(Operator):  # pyright: ignore[reportUnusedClass]
                 if isfinite(elapsed_ms) and elapsed_ms >= 0:
                     # Attach after run() returns, outside any timed-out worker.
                     result[2].traces["elapsed_ms"] = elapsed_ms
+        except Exception:
+            pass
+        try:
+            if input_shape is not None:
+                result[2].traces["input_shape"] = input_shape
+        except Exception:
+            pass
+        try:
+            if not result[2].errors:
+                output_shape = _bundle_shape(result[0])
+                if output_shape is not None:
+                    result[2].traces["output_shape"] = output_shape
         except Exception:
             pass
         return result
