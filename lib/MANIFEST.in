@@ -1,6 +1,7 @@
 include COMPATIBILITY.md
 include OPERATORS.md
 include tests/fixtures/v3_active_operator_reference.json
+include tests/fixtures/sklearn_estimator_active_reference.json
 include tests/fixtures/v2_operator_outcomes.json
 recursive-include examples *.json *.md *.py
 recursive-include scripts *.py

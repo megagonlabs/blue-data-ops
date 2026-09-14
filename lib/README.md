@@ -33,7 +33,7 @@ python -m pip install --index-url "$PIP_INDEX_URL" \
 
 The artifact index must also provide `blue-data>=0.1.0`. The sibling-checkout commands are the direct path for a contributor.
 
-The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators, and `openai` for `OpenAIPlanGenerator`.
+The optional extras are `ml` for `classify`, `cluster`, and `sklearn_estimator`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators, and `openai` for `OpenAIPlanGenerator`.
 
 ```bash
 python -m pip install -e "./blue-data-ops/lib[openai]"
@@ -58,11 +58,11 @@ python examples/core_quickstart.py
 python examples/sqlite_quickstart.py
 ```
 
-`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. Source checkouts and source distributions include `examples/README.md` for the ML, vector, planner, and live-provider examples and the generated `OPERATORS.md` reference for the 32 active exact IDs. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.0.0` source distribution from the same artifact index.
+`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. Source checkouts and source distributions include `examples/README.md` for the ML, vector, planner, and live-provider examples and the generated `OPERATORS.md` reference for the 33 active exact IDs. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.0.0` source distribution from the same artifact index.
 
 ### Registry roles
 
-Use `default_registry()` for the raw compatibility view, `active_registry()` for ordinary 3.0 discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 32 exact cards: 11 at `@2.0.0` and 21 at `@3.0.0`. The history factory has 85 cards.
+Use `default_registry()` for the raw compatibility view, `active_registry()` for ordinary 3.0 discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 33 exact cards: 12 at `@2.0.0` and 21 at `@3.0.0`. The history factory has 87 cards.
 
 <!-- blue-data-ops-test: registry-roles -->
 ```python
@@ -77,12 +77,12 @@ assert raw.resolve("avg@1.0.0").operator_id == "avg@1.0.0"
 assert raw_override.resolve("avg@2.7.4").operator_id == "avg@2.7.4"
 assert ordinary.resolve("avg@3.0.0").operator_id == "avg@3.0.0"
 assert history.resolve("avg@2.0.0").operator_id == "avg@2.0.0"
-assert len(raw.list_cards()) == 32
-assert len(ordinary.list_cards()) == 32
-assert len(history.list_cards()) == 85
+assert len(raw.list_cards()) == 33
+assert len(ordinary.list_cards()) == 33
+assert len(history.list_cards()) == 87
 ```
 
-`default_registry(**versions)` preserves the legacy per-name override for the 32 retained names. An override becomes that card's version after semver validation. For the 21 outcome-enabled names, only an exact `"3.0.0"` override selects the outcome implementation; other versions use the raw implementation. Unknown names are ignored. These cards are raw: their `tags` and `when_to_invoke` fields are empty.
+`default_registry(**versions)` preserves the legacy per-name override for the 33 retained names. An override becomes that card's version after semver validation. For the 21 outcome-enabled names, only an exact `"3.0.0"` override selects the outcome implementation; other versions use the raw implementation. Unknown names are ignored. These cards are raw: their `tags` and `when_to_invoke` fields are empty.
 
 Registry construction does not grant planning authority. A raw override card is not automatically planning-authorized: core 3.0 rejects every card from `default_registry()` as planning authority, even when its ID text matches a supported v2/v3 ID. Use `active_registry()` for the ordinary reviewed selection, or use `versioned_registry()` with an exact allowlist when a rule-based plan deliberately needs a supported retained v2/v3 built-in. Caller-created v2 cards require a caller-owned registry and rule or generator. `OpenAIPlanGenerator` accepts only supported package built-ins from an enriched package registry.
 
@@ -160,12 +160,14 @@ You may inject a raw `DataRegistry`; `resolve_registry()` wraps it. Without an i
 | Join / set | `join`, `union`, `intersect` |
 | Aggregate | `argmax`, `argmin`, `max`, `min`, `avg`, `sum` |
 | Text | `normalize_text`, `segment_text` |
-| ML (`ml` extra) | `classify`, `cluster` |
+| ML (`ml` extra) | `classify`, `cluster`, `sklearn_estimator` |
 | Vector (`vector` extra) | `vector_embed`, `vector_search`, `vector_similarity` |
 | LLM (`llm` extra) | `nl2llm`, `nl2sql`, `nl2bn`, `semantic_extract`, `semantic_filter`, `semantic_join`, `semantic_project`, `semantic_transform` |
 | Registry-backed | `create_database`, `create_table`, `insert_table`, `data_discover` |
 
-`nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators send requests through LiteLLM. Configure the model through call properties; the default is `openai.model: gpt-4o`. `classify` uses NumPy and scikit-learn. Registry-backed operators use the `blue-data` seam.
+`sklearn_estimator` accepts any case-insensitive class name returned by `sklearn.utils.all_estimators()`. It trains one in-memory estimator from the first input group, then writes predictions, cluster labels, or transformed vectors to each record. Set `properties.algorithm` and `attributes.vector_key`; classifiers and regressors also require `attributes.label_key`. The fitted model is not persisted.
+
+`nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators send requests through LiteLLM. Configure the model through call properties; the default is `openai.model: gpt-4o`. `classify` and `sklearn_estimator` use NumPy and scikit-learn. Registry-backed operators use the `blue-data` seam.
 
 This short `nl2llm` call uses a live provider:
 
@@ -249,7 +251,7 @@ operator = catalog.resolve(cards[0].operator_id) if cards else None
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` ships 53 exact-version packages: 32 retained `@2.0.0` packages and 21 outcome packages at `@3.0.0`. Every active exact ID has a package. All 53 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in 3.0 includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
+`blue_data_ops.operator_skills` ships 54 exact-version packages: 33 retained `@2.0.0` packages and 21 outcome packages at `@3.0.0`. Every active exact ID has a package. All 54 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in 3.0 includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -436,7 +438,7 @@ python -m pytest
 lib/
 ├── COMPATIBILITY.md             # compatibility and migration boundaries
 ├── MANIFEST.in                  # source-distribution resources
-├── OPERATORS.md                 # generated 32-operator reference
+├── OPERATORS.md                 # generated 33-operator reference
 ├── examples/                    # runnable local and provider-backed examples
 ├── pyproject.toml
 ├── scripts/                     # reference generator and install checks

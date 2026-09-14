@@ -894,8 +894,8 @@ def test_join_suffixes_and_keep_keys_remain_raw_compatible() -> None:
 def test_default_registry_contains_the_retained_v1_catalog() -> None:
     cards = default_registry().list_cards()
 
-    assert len(cards) == 32
-    assert len({card.operator_id for card in cards}) == 32
+    assert len(cards) == 33
+    assert len({card.operator_id for card in cards}) == 33
     assert all(card.version == "1.0.0" for card in cards)
     assert {card.operator_id for card in cards}.issuperset(
         {"semantic_transform@1.0.0", "semantic_join@1.0.0"}

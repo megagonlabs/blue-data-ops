@@ -64,5 +64,5 @@ def test_package_registries_emit_no_d58_lifecycle_warning() -> None:
         warnings.simplefilter("always")
         history = versioned_registry()
 
-    assert len(history.list_cards()) == 85
+    assert len(history.list_cards()) == 87
     assert not any(item.category is BlueDataOpsDeprecationWarning for item in caught)

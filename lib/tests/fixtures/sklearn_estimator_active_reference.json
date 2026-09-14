@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "source_instrument": {
+    "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence",
+    "document_sha256": "c1c639262820f36985e3105e4faf40ddec7ba5f2ed0b12b6d75944c089f7048d",
+    "seal_sha256": "b893865636337e678e3c30e39aae6337dfff97cf28378e2965985d3d94e1b883"
+  },
+  "conversion": {
+    "row_order": "ASCII lexical order by logical operator name; exactly one row per active exact ID.",
+    "identity": "operator_id is the reviewed exact registry ID; a live subject must match its class, module, source path, and source SHA-256.",
+    "result_projection": {
+      "output_data": "Preserve group and record order, key sets, scalar types, and values.",
+      "output_attributes": "Preserve exact keys and ordinary value types.",
+      "is_empty": "Require an actual Boolean and distinguish successful-empty from failure.",
+      "errors": "Project each error to exact code and stage.",
+      "floating_point": "Regression results use pytest approximate equality; reference prose records the behavior, not exact floats.",
+      "non_json_inputs": "No non-JSON input transform is admitted."
+    },
+    "evidence_schemas": {
+      "cases": "Named product regression tests supply the input and expected assertion for each case ID.",
+      "observations": "No runtime-observation schema is used by this supplement."
+    }
+  },
+  "active_ids": [
+    "sklearn_estimator@2.0.0"
+  ],
+  "rows": [
+    {
+      "operator_id": "sklearn_estimator@2.0.0",
+      "name": "sklearn_estimator",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/sklearn_estimator.py",
+        "sha256": "3f988f29ffeb16cc87c3190c3c00241ae7b62b7baa1299aebb89fb051b475332",
+        "symbol": "SklearnEstimator",
+        "module": "blue_data_ops.operators.sklearn_estimator"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "sklearn_estimator@2.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "lib/tests/unit/operators/test_sklearn.py"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "test_regression_and_case_insensitive_lookup",
+          "summary": "A lower-case LinearRegression name trains on the first group and predicts the later group."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "test_empty_guards_preserve_outer_identity[empty-bundle]",
+          "summary": "An empty bundle returns the original empty input from the raw compatibility call."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "test_unknown_algorithm_is_structured_invalid_input",
+          "summary": "An unknown estimator is INVALID_INPUT at VALIDATE through structured run."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "test_fit_predict_only_estimator_does_not_refit_later_groups",
+          "summary": "A fit_predict-only estimator with later inference data fails at EXECUTE instead of refitting."
+        }
+      },
+      "dependency_profile": {
+        "kind": "ml",
+        "setup": "Install the ml extra; package import remains independent of NumPy and scikit-learn."
+      },
+      "discriminators": [
+        "Case-insensitive lookup and a dynamic constructor parameter are exercised together.",
+        "One fitted model is distinguished from independent per-group fit_predict calls."
+      ]
+    }
+  ],
+  "projection_seal_sha256": "74e436adfee66d2310529e58f67543c687145fbc947257403b8eb4f0a314179a"
+}

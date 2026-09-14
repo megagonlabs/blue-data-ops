@@ -44,9 +44,13 @@ ADDED_OPERATOR_IDS = (
     "vector_search@3.0.0",
     "vector_similarity@3.0.0",
 )
+SUPPLEMENTAL_OPERATOR_IDS = (
+    "sklearn_estimator@2.0.0",
+    "sklearn_estimator@1.0.0",
+)
 FULL_OPERATOR_IDS = tuple(
     sorted(
-        (*LEGACY_OPERATOR_IDS, *ADDED_OPERATOR_IDS),
+        (*LEGACY_OPERATOR_IDS, *ADDED_OPERATOR_IDS, *SUPPLEMENTAL_OPERATOR_IDS),
         key=lambda oid: (
             oid.split("@")[0],
             tuple(-int(part) for part in oid.split("@")[1].split(".")),
@@ -72,7 +76,7 @@ def assert_legacy_cards(cards: Sequence[OperatorCard]) -> list[OperatorCard]:
 
 def assert_full_inventory(cards: Sequence[OperatorCard]) -> None:
     ids = tuple(card.operator_id for card in cards)
-    assert len(ids) == len(set(ids)) == 85, "expected 85 distinct operator IDs"
+    assert len(ids) == len(set(ids)) == 87, "expected 87 distinct operator IDs"
     assert ids == FULL_OPERATOR_IDS, "full inventory/order changed"
 
 

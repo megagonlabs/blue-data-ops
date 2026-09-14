@@ -580,12 +580,12 @@ def _synthetic_census() -> EffectiveReadCensus:
 
 def test_expected_membership_matches_the_exact_version_inventory() -> None:
     assert_skill_package_inventory(CATALOG.package_ids, versioned_registry())
-    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 53
+    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 54
 
 
 def test_historical_package_membership_matches_all_retained_v2_cards() -> None:
     expected = expected_v2_skill_package_ids(versioned_registry())
-    assert len(expected) == 32
+    assert len(expected) == 33
     assert "multipart_query@2.0.0" not in expected
     assert all(operator_id.endswith("@2.0.0") for operator_id in expected)
     assert tuple(operator_id for operator_id in CATALOG.package_ids if operator_id in expected) == (
@@ -602,7 +602,7 @@ def test_every_active_card_has_one_exact_skill_package() -> None:
     active_ids = tuple(card.operator_id for card in registry.list_cards())
     loader = OperatorSkillLoader(registry)
 
-    assert len(active_ids) == 32
+    assert len(active_ids) == 33
     assert loader.available_operator_ids() == active_ids
     assert all(
         loader.load(operator_id, level=3).card is registry.get_card(operator_id)
@@ -637,7 +637,7 @@ def test_synthetic_inventory_rejects_extra_or_replacement_packages(
         )
     )
     if replace_id is not None:
-        assert len(actual) == len(expected) == 53
+        assert len(actual) == len(expected) == 54
     with pytest.raises(AssertionError, match="skill package inventory differs"):
         assert_skill_package_inventory(actual, registry)
 

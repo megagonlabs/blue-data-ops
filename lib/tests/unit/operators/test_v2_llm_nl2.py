@@ -863,10 +863,10 @@ def test_nl2sql_registry_exception_propagates_raw_and_is_contained() -> None:
     assert "opaque-query-detail" not in str(meta.errors[0])
 
 
-def test_registry_default_contains_exactly_32_v1_cards() -> None:
+def test_registry_default_contains_exactly_33_v1_cards() -> None:
     cards = default_registry().list_cards()
-    assert len(cards) == 32
-    assert len({card.operator_id for card in cards}) == 32
+    assert len(cards) == 33
+    assert len({card.operator_id for card in cards}) == 33
     assert all(card.version == "1.0.0" for card in cards)
     assert {card.operator_id for card in cards}.issuperset(
         {"nl2llm@1.0.0", "nl2bn@1.0.0", "nl2sql@1.0.0"}

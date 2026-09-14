@@ -1,0 +1,8 @@
+{
+  "format": "blue-data-ops/operator-skill@1",
+  "operator_id": "sklearn_estimator@2.0.0",
+  "resources": {
+    "guide": {"path": "Operator.md", "sha256": "cf2da5cccd4d1f1ef078010cf35059d1abc0bbb1ad02689a8bd712a9169bff25"},
+    "examples": {"path": "examples.md", "sha256": "73a0e17bbb645087467f775c4dacf7a72f946add009c28fc66191828b6c97cf8"}
+  }
+}

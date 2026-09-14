@@ -212,8 +212,8 @@ def test_selected_versions_keep_exact_vector_error_identity(
         assert meta.errors[0].code is ErrorCode.INVALID_INPUT
 
 
-def test_v1_default_registry_is_the_32_card_compatibility_catalog() -> None:
+def test_v1_default_registry_is_the_33_card_compatibility_catalog() -> None:
     cards = default_registry().list_cards()
 
-    assert len(cards) == 32
+    assert len(cards) == 33
     assert all(card.version == "1.0.0" for card in cards)

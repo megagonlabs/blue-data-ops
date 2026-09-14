@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
-from blue_data_ops.operators import Attributes, SklearnEstimator, DataBundle, Properties
+from blue_data_ops.operators import (
+    Attributes,
+    DataBundle,
+    ErrorCode,
+    ErrorStage,
+    SklearnEstimator,
+)
 
-
-# Common clustering test dataset (aligned with test_cluster.py)
 CLUSTER_INPUT: DataBundle = [
     [
         {"id": "a", "vector": [0.0, 0.1]},
@@ -15,7 +21,6 @@ CLUSTER_INPUT: DataBundle = [
     ]
 ]
 
-# Common classification test dataset (aligned with test_classify.py)
 CLASSIFY_TRAIN = [
     {"id": "t1", "vector": [0.0, 0.0], "label": "low"},
     {"id": "t2", "vector": [0.2, 0.1], "label": "low"},
@@ -35,10 +40,6 @@ def op() -> SklearnEstimator:
     return SklearnEstimator()
 
 
-# ============================================================================
-# Clustering Tests (Aligning with test_cluster.py)
-# ============================================================================
-
 @pytest.mark.parametrize(
     "algorithm,attributes",
     [
@@ -53,19 +54,13 @@ def test_clustering_algorithms(
     output = op.apply(CLUSTER_INPUT, attributes, {"algorithm": algorithm})
     labels = [record["prediction"] for record in output[0]]
 
-    # 2 distinct clusters formed
     assert labels[0] == labels[1]
     assert labels[2] == labels[3]
     assert labels[0] != labels[2]
 
-    # Immutability check: Input must not be mutated
     assert output[0][0] is not CLUSTER_INPUT[0][0]
     assert "prediction" not in CLUSTER_INPUT[0][0]
 
-
-# ============================================================================
-# Classification Tests (Aligning with test_classify.py)
-# ============================================================================
 
 @pytest.mark.parametrize(
     "algorithm,extra_attrs",
@@ -93,9 +88,39 @@ def test_classification_algorithms(
     ]
 
 
-# ============================================================================
-# Edge Cases & Guard Conditions
-# ============================================================================
+def test_regression_and_case_insensitive_lookup(op: SklearnEstimator) -> None:
+    data: DataBundle = [
+        [
+            {"vector": [0.0], "target": 1.0},
+            {"vector": [1.0], "target": 3.0},
+            {"vector": [2.0], "target": 5.0},
+        ],
+        [{"vector": [3.0]}],
+    ]
+    output = op.apply(
+        data,
+        {"vector_key": "vector", "label_key": "target", "output_key": "score"},
+        {"algorithm": "linearregression"},
+    )
+
+    assert [record["score"] for record in output[0]] == pytest.approx([1.0, 3.0, 5.0])
+    assert output[1][0]["score"] == pytest.approx(7.0)
+
+
+def test_transformer_returns_native_vectors(op: SklearnEstimator) -> None:
+    original = deepcopy(CLUSTER_INPUT)
+    output = op.apply(
+        CLUSTER_INPUT,
+        {"vector_key": "vector", "output_key": "component", "n_components": 1},
+        {"algorithm": "PCA"},
+    )
+
+    assert all(
+        isinstance(record["component"], list) and len(record["component"]) == 1
+        for record in output[0]
+    )
+    assert CLUSTER_INPUT == original
+
 
 @pytest.mark.parametrize(
     "empty_input",
@@ -139,27 +164,20 @@ def test_no_training_vectors_returns_original(op: SklearnEstimator) -> None:
     assert op.apply(input_data, attributes, {"algorithm": "DecisionTreeClassifier"}) is input_data
 
 
-# ============================================================================
-# Validation Contract
-# ============================================================================
-
 def test_validation(op: SklearnEstimator) -> None:
-    # Unsupervised: valid with vector_key
     assert op.validate(CLUSTER_INPUT, {"vector_key": "vector"}, {"algorithm": "KMeans"}) is True
 
-    # Missing vector_key fails
     assert op.validate(CLUSTER_INPUT, {}, {"algorithm": "KMeans"}) is False
 
-    # Missing algorithm fails
     assert op.validate(CLUSTER_INPUT, {"vector_key": "vector"}, None) is False
 
-    # Supervised missing label_key fails
     assert (
-        op.validate(CLASSIFY_INPUT, {"vector_key": "vector"}, {"algorithm": "DecisionTreeClassifier"})
+        op.validate(
+            CLASSIFY_INPUT, {"vector_key": "vector"}, {"algorithm": "DecisionTreeClassifier"}
+        )
         is False
     )
 
-    # Supervised with both vector_key and label_key passes
     assert (
         op.validate(
             CLASSIFY_INPUT,
@@ -170,9 +188,62 @@ def test_validation(op: SklearnEstimator) -> None:
     )
 
 
-# ============================================================================
-# Invocation & Interface Contract
-# ============================================================================
+def test_unknown_algorithm_is_structured_invalid_input(op: SklearnEstimator) -> None:
+    output, output_attributes, meta = op.run(
+        CLUSTER_INPUT,
+        {"vector_key": "vector"},
+        {"algorithm": "UnknownEstimator"},
+    )
+
+    assert output == [[]]
+    assert output_attributes == {}
+    assert [(error.code, error.stage) for error in meta.errors] == [
+        (ErrorCode.INVALID_INPUT, ErrorStage.VALIDATE)
+    ]
+
+
+def test_fit_predict_only_estimator_does_not_refit_later_groups(
+    op: SklearnEstimator,
+) -> None:
+    data: DataBundle = [
+        CLUSTER_INPUT[0],
+        [{"id": "later", "vector": [0.1, 0.1]}],
+    ]
+    original = deepcopy(data)
+    attributes = {"vector_key": "vector", "eps": 0.5, "min_samples": 2}
+    properties = {"algorithm": "DBSCAN"}
+
+    assert op.apply(data, attributes, properties) is data
+    output, output_attributes, meta = op.run(data, attributes, properties)
+
+    assert data == original
+    assert output == [[]]
+    assert output_attributes == {}
+    assert [(error.code, error.stage) for error in meta.errors] == [
+        (ErrorCode.EXECUTION_FAILED, ErrorStage.EXECUTE)
+    ]
+
+
+def test_non_clusterer_fit_predict_only_estimator_handles_training_group(
+    op: SklearnEstimator,
+) -> None:
+    attributes = {"vector_key": "vector", "n_neighbors": 2}
+    properties = {"algorithm": "LocalOutlierFactor"}
+
+    output = op.apply(CLUSTER_INPUT, attributes, properties)
+
+    assert all(record["prediction"] is not None for record in output[0])
+
+    grouped_input: DataBundle = [
+        CLUSTER_INPUT[0],
+        [{"id": "later", "vector": [0.1, 0.1]}],
+    ]
+    assert op.apply(grouped_input, attributes, properties) is grouped_input
+    _, _, meta = op.run(grouped_input, attributes, properties)
+    assert [(error.code, error.stage) for error in meta.errors] == [
+        (ErrorCode.EXECUTION_FAILED, ErrorStage.EXECUTE)
+    ]
+
 
 def test_invocation_contract(op: SklearnEstimator) -> None:
     attributes = {"vector_key": "vector", "n_clusters": 2, "random_state": 42}
@@ -180,7 +251,6 @@ def test_invocation_contract(op: SklearnEstimator) -> None:
     assert op.invoke(CLUSTER_INPUT, attributes, properties) == op.apply(
         CLUSTER_INPUT, attributes, properties
     )
-    # Invalid attributes return None via invoke()
     assert op.invoke(CLUSTER_INPUT, {}, properties) is None
 
 

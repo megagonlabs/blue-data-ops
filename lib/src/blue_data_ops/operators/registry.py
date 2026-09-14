@@ -265,7 +265,7 @@ def _semver_key(version: str) -> tuple[int, int, int]:
 
 
 def _builtin_operator_classes() -> tuple[type[Operator], ...]:
-    """The 32 retained built-in operator classes as one explicit, name-ordered tuple.
+    """The 33 retained built-in operator classes as one explicit, name-ordered tuple.
 
     Imported lazily so this module stays out of the operator/registry import
     cycle. All public factories build their inventory from this single tuple;
@@ -298,6 +298,7 @@ def _builtin_operator_classes() -> tuple[type[Operator], ...]:
     from blue_data_ops.operators.semantic_join_operator import SemanticJoinOperator
     from blue_data_ops.operators.semantic_project_operator import SemanticProjectOperator
     from blue_data_ops.operators.semantic_transform_operator import SemanticTransformOperator
+    from blue_data_ops.operators.sklearn_estimator import SklearnEstimator
     from blue_data_ops.operators.sum_operator import SumOperator
     from blue_data_ops.operators.union_operator import UnionOperator
     from blue_data_ops.operators.vector_embed_operator import VectorEmbedOperator
@@ -332,6 +333,7 @@ def _builtin_operator_classes() -> tuple[type[Operator], ...]:
         SemanticJoinOperator,
         SemanticProjectOperator,
         SemanticTransformOperator,
+        SklearnEstimator,
         SumOperator,
         UnionOperator,
         VectorEmbedOperator,
@@ -439,7 +441,7 @@ def default_registry(**versions: Any) -> OperatorRegistry:
 
 
 def versioned_registry() -> OperatorRegistry:
-    """Return 85 retained pinned cards, including 21 outcome operators at 3.0.0.
+    """Return 87 retained pinned cards, including 21 outcome operators at 3.0.0.
 
     Separate instances back each exact version. Every card carries validated
     discovery metadata.
@@ -499,6 +501,7 @@ _ACTIVE_OPERATOR_VERSIONS: tuple[tuple[str, str], ...] = (
     ("semantic_join", "3.0.0"),
     ("semantic_project", "3.0.0"),
     ("semantic_transform", "3.0.0"),
+    ("sklearn_estimator", "2.0.0"),
     ("sum", "2.0.0"),
     ("union", "2.0.0"),
     ("vector_embed", "3.0.0"),

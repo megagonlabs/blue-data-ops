@@ -84,7 +84,7 @@ def _single_server(operator: Operator) -> FastMCP[Any]:
 
 async def test_meta_matches_exact_mixed_active_selection() -> None:
     tools = await create_server().list_tools()
-    assert len(tools) == 32
+    assert len(tools) == 33
     assert [(tool.meta or {})["operator_id"] for tool in tools] == list(ACTIVE_OPERATOR_IDS)
     assert {(tool.meta or {})["version"] for tool in tools} == {"2.0.0", "3.0.0"}
     for tool in tools:
@@ -104,7 +104,7 @@ async def test_description_composes_invocation_and_card_text() -> None:
 
 async def test_every_input_schema_requires_only_input_data() -> None:
     tools = await create_server().list_tools()
-    assert len(tools) == 32
+    assert len(tools) == 33
     for tool in tools:
         schema = tool.inputSchema
         assert schema["required"] == ["input_data"]
@@ -152,7 +152,7 @@ def test_ordinary_optional_default_is_copied_without_aliasing() -> None:
 async def test_all_output_schemas_match_run_result_vocabulary() -> None:
     tools = await create_server().list_tools()
     expected = RunResult.model_json_schema()
-    assert len(tools) == 32
+    assert len(tools) == 33
     for tool in tools:
         assert tool.outputSchema == expected
     assert expected["required"] == ["output_data", "output_attributes", "exec_meta"]

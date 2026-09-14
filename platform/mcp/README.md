@@ -1,6 +1,6 @@
 # Blue Data Operators MCP
 
-This package exposes Blue Data Operators as MCP tools over the structured execution contract. Version 0.13.0 serves 32 primary tools and no refinement companions by default. The exact operator selection is the same 32-ID projection returned by core `active_registry()`.
+This package exposes Blue Data Operators as MCP tools over the structured execution contract. It serves 33 primary tools and no refinement companions by default. The exact operator selection is the same 33-ID projection returned by core `active_registry()`.
 
 The adapter pins `blue-data-ops==3.0.0`. Tool names remain logical operator names such as `select` and `avg`. Each tool's `_meta` carries its exact mixed-version operator ID.
 
@@ -92,7 +92,7 @@ from blue_data_ops_mcp import serve
 serve(operator_ids=("select@2.0.0", "avg@3.0.0"))
 ```
 
-A caller may pass `registry=` and select caller-created `@2.0.0` cards that resolve exactly from that registry. A custom card may reuse a removed logical name such as `multipart_query`, but it cannot shadow any of the 32 supported built-in logical names. Custom v1 and v3 cards are rejected. For example, after registering `echo@2.0.0` in `caller_registry`:
+A caller may pass `registry=` and select caller-created `@2.0.0` cards that resolve exactly from that registry. A custom card may reuse a removed logical name such as `multipart_query`, but it cannot shadow any of the 33 supported built-in logical names. Custom v1 and v3 cards are rejected. For example, after registering `echo@2.0.0` in `caller_registry`:
 
 ```python
 from blue_data_ops_mcp import create_server
@@ -102,13 +102,13 @@ server = create_server(registry=caller_registry, operator_ids=("echo@2.0.0",))
 
 An explicit `registry=` may also serve an exact supported raw package card: a retained `@2.0.0` card such as `default_registry(select="2.0.0")`, or an active `@3.0.0` card such as `default_registry(avg="3.0.0")`. This is observed adapter behavior, not an ordinary-selection promise. Raw cards have empty `tags` and `when_to_invoke`, so `_meta.tags` is empty and the tool description contains only the operator description. MCP accepts the card for explicit execution; acceptance does not grant ordinary or OpenAI planning authority and does not authorize a write. The caller and deployment host remain responsible for invocation authorization.
 
-`V2_OPERATOR_IDS` remains available for callers that imported the old constant. `V2_OPERATOR_IDS` changed from 36 IDs to 32 and contains the retained v2 exact IDs; it is a compatibility tuple, not the default mixed-version selection.
+`V2_OPERATOR_IDS` remains available for callers that imported the old constant. It contains the 33 retained v2 exact IDs; it is a compatibility tuple, not the default mixed-version selection.
 
 ```python
 from blue_data_ops_mcp import ACTIVE_OPERATOR_IDS, V2_OPERATOR_IDS
 
-assert len(ACTIVE_OPERATOR_IDS) == 32
-assert len(V2_OPERATOR_IDS) == 32
+assert len(ACTIVE_OPERATOR_IDS) == 33
+assert len(V2_OPERATOR_IDS) == 33
 ```
 
 Both server functions accept `host`, `port`, and `path`, with defaults `127.0.0.1`, `8000`, and `/mcp`. Review network exposure before changing the loopback host.
@@ -139,7 +139,7 @@ async def main() -> None:
         async with ClientSession(read_stream, write_stream) as client:
             await client.initialize()
             listing = await client.list_tools()
-            assert len(listing.tools) == 32
+            assert len(listing.tools) == 33
 
             result = await client.call_tool(
                 "select",
@@ -224,7 +224,7 @@ The MCP initialization response's `serverInfo.version` is the MCP SDK version, n
 
 ## Migrating from 0.12.0
 
-Version 0.13.0 moves the exact core pin from `blue-data-ops==2.10.0` to `==3.0.0`. The default catalog changes from 36 v2 primaries plus four refinement companions to the 32 mixed-version primaries in `ACTIVE_OPERATOR_IDS`.
+Version 0.13.0 moves the exact core pin from `blue-data-ops==2.10.0` to `==3.0.0`. The default selection changes from 36 v2 primaries plus four refinement companions to the 33 mixed-version primaries in `ACTIVE_OPERATOR_IDS`.
 
 The removed package tools are `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown`. The four `__refine` companions are also removed. They no longer resolve from a package registry, and there is no companion result envelope in 0.13.0. A caller-created v2 card that reuses one of these names runs the caller's implementation; it does not restore the removed package binding.
 

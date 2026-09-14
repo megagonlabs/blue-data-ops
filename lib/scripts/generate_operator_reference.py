@@ -16,13 +16,24 @@ from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry
 
 LIB_ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_PATH = LIB_ROOT / "tests" / "fixtures" / "v3_active_operator_reference.json"
+SUPPLEMENTAL_EVIDENCE_PATH = (
+    LIB_ROOT / "tests" / "fixtures" / "sklearn_estimator_active_reference.json"
+)
 ACCEPTED_PROJECTION_SHA256 = "0739dcc5e269294d77e729388bfb1d94d2c0ce8afc6854191792438dfc99a7a6"
+SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256 = (
+    "1e1d54841c50d78aa0e6bb4570565ed9a1f38e185abb3b7aa8abff63150453c0"
+)
 SOURCE_INSTRUMENT = {
     "instrument_id": "blue-data-ops-core-3.0-active-reference",
     "document_sha256": "bfa4bb0bdb4cd2e061b9da03cc238b76b30a692dbeea1decca1baa707d71687b",
     "seal_sha256": "b83b239c69ec7c470be71533f5665cb323a51e5f359fe944628feb09212fde62",
 }
-EXPECTED_ACTIVE_IDS = (
+SUPPLEMENTAL_SOURCE_INSTRUMENT = {
+    "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence",
+    "document_sha256": "c1c639262820f36985e3105e4faf40ddec7ba5f2ed0b12b6d75944c089f7048d",
+    "seal_sha256": "b893865636337e678e3c30e39aae6337dfff97cf28378e2965985d3d94e1b883",
+}
+CORE_ACTIVE_IDS = (
     "argmax@2.0.0",
     "argmin@2.0.0",
     "avg@3.0.0",
@@ -56,6 +67,8 @@ EXPECTED_ACTIVE_IDS = (
     "vector_search@3.0.0",
     "vector_similarity@3.0.0",
 )
+SUPPLEMENTAL_ACTIVE_IDS = ("sklearn_estimator@2.0.0",)
+EXPECTED_ACTIVE_IDS = tuple(sorted((*CORE_ACTIVE_IDS, *SUPPLEMENTAL_ACTIVE_IDS)))
 TOP_LEVEL_KEYS = {
     "schema_version",
     "source_instrument",
@@ -116,12 +129,17 @@ def _document_seal(document: dict[str, Any]) -> str:
     return _sha256(_canonical_bytes(projection))
 
 
-def _validate_evidence(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+def _validate_evidence(
+    document: dict[str, Any],
+    *,
+    expected_active_ids: tuple[str, ...] = CORE_ACTIVE_IDS,
+    source_instrument: dict[str, str] = SOURCE_INSTRUMENT,
+) -> tuple[dict[str, Any], ...]:
     if set(document) != TOP_LEVEL_KEYS:
         raise ValueError("active-reference top-level keys differ")
     if document.get("schema_version") != 1:
         raise ValueError("active-reference schema_version must be 1")
-    if document.get("source_instrument") != SOURCE_INSTRUMENT:
+    if document.get("source_instrument") != source_instrument:
         raise ValueError("active-reference source instrument provenance mismatch")
     raw_conversion = document.get("conversion")
     if type(raw_conversion) is not dict:
@@ -138,7 +156,7 @@ def _validate_evidence(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
         raise ValueError("active-reference conversion provenance is empty")
     if _document_seal(document) != document.get("projection_seal_sha256"):
         raise ValueError("active-reference seal mismatch")
-    if tuple(document.get("active_ids", ())) != EXPECTED_ACTIVE_IDS:
+    if tuple(document.get("active_ids", ())) != expected_active_ids:
         raise ValueError("active-reference exact ID set or order mismatch")
 
     raw_rows = document.get("rows")
@@ -151,7 +169,7 @@ def _validate_evidence(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     row_ids = tuple(row.get("operator_id") for row in typed_rows)
     if len(set(row_ids)) != len(row_ids):
         raise ValueError("active-reference contains duplicate operator rows")
-    if row_ids != EXPECTED_ACTIVE_IDS:
+    if row_ids != expected_active_ids:
         raise ValueError("active-reference row set or order mismatch")
 
     for row in typed_rows:
@@ -249,6 +267,29 @@ def _validate_evidence(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(typed_rows)
 
 
+def _load_combined_rows(
+    evidence_path: Path = EVIDENCE_PATH,
+    supplemental_evidence_path: Path = SUPPLEMENTAL_EVIDENCE_PATH,
+) -> tuple[dict[str, Any], ...]:
+    core = _load_evidence(evidence_path)
+    supplemental = _load_evidence(
+        supplemental_evidence_path,
+        expected_sha256=SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256,
+    )
+    core_rows = _validate_evidence(core)
+    supplemental_rows = _validate_evidence(
+        supplemental,
+        expected_active_ids=SUPPLEMENTAL_ACTIVE_IDS,
+        source_instrument=SUPPLEMENTAL_SOURCE_INSTRUMENT,
+    )
+    rows_by_id = {row["operator_id"]: row for row in (*core_rows, *supplemental_rows)}
+    if len(rows_by_id) != len(core_rows) + len(supplemental_rows):
+        raise ValueError("active-reference evidence sets overlap")
+    if tuple(sorted(rows_by_id)) != EXPECTED_ACTIVE_IDS:
+        raise ValueError("combined active-reference exact ID set or order mismatch")
+    return tuple(rows_by_id[operator_id] for operator_id in EXPECTED_ACTIVE_IDS)
+
+
 def _active_registry() -> OperatorRegistry:
     from blue_data_ops.operators import active_registry
 
@@ -258,6 +299,8 @@ def _active_registry() -> OperatorRegistry:
 def _validate_registry(
     registry: OperatorRegistry, rows: tuple[dict[str, Any], ...]
 ) -> tuple[tuple[OperatorCard, Operator, dict[str, Any]], ...]:
+    if tuple(row["operator_id"] for row in rows) != EXPECTED_ACTIVE_IDS:
+        raise ValueError("combined active-reference row set or order mismatch")
     cards = tuple(registry.list_cards())
     card_ids = tuple(card.operator_id for card in cards)
     if card_ids != EXPECTED_ACTIVE_IDS:
@@ -328,8 +371,10 @@ def _claim_text(claim: dict[str, Any]) -> str:
     return f"_{claim['status']}_: {claim['reason']}"
 
 
-def _render_unformatted_reference(registry: OperatorRegistry, document: dict[str, Any]) -> str:
-    rows = _validate_evidence(document)
+def _render_unformatted_reference(
+    registry: OperatorRegistry,
+    rows: tuple[dict[str, Any], ...],
+) -> str:
     bound = _validate_registry(registry, rows)
     tag_axes: dict[str, set[str]] = defaultdict(set)
     for card, _, _ in bound:
@@ -339,20 +384,20 @@ def _render_unformatted_reference(registry: OperatorRegistry, document: dict[str
     lines = [
         "# Operator reference",
         "",
-        "This reference covers the 32 exact cards selected by `active_registry()`. Each outcome",
-        "statement is bound to the accepted core 3.0 active-reference evidence; unsupported",
-        "outcomes keep their recorded limits.",
+        "This reference covers the 33 exact cards selected by `active_registry()`. Outcome",
+        "statements are bound to the accepted core 3.0 evidence and the separately sealed",
+        "sklearn estimator supplement; unsupported outcomes keep their recorded limits.",
         "",
         "```python",
         "from blue_data_ops.operators import active_registry",
         "",
         "registry = active_registry()",
-        "assert len(registry.list_cards()) == 32",
+        "assert len(registry.list_cards()) == 33",
         "```",
         "",
         "## Tag taxonomy",
         "",
-        "This table is derived from the 32 active cards. Built-in tags use five required axes and",
+        "This table is derived from the 33 active cards. Built-in tags use five required axes and",
         "one optional axis. A tag states something true in at least one productive public mode.",
         "Values are flat exact labels, not a hierarchy.",
         "",
@@ -486,10 +531,11 @@ def render_reference(
     registry: OperatorRegistry | None = None,
     *,
     evidence_path: Path = EVIDENCE_PATH,
+    supplemental_evidence_path: Path = SUPPLEMENTAL_EVIDENCE_PATH,
 ) -> str:
-    document = _load_evidence(evidence_path)
+    rows = _load_combined_rows(evidence_path, supplemental_evidence_path)
     live_registry = _active_registry() if registry is None else registry
-    return _format_reference(_render_unformatted_reference(live_registry, document))
+    return _format_reference(_render_unformatted_reference(live_registry, rows))
 
 
 def main() -> None:

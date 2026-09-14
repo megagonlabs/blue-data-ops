@@ -1,19 +1,19 @@
 # Operator reference
 
-This reference covers the 32 exact cards selected by `active_registry()`. Each outcome
-statement is bound to the accepted core 3.0 active-reference evidence; unsupported
-outcomes keep their recorded limits.
+This reference covers the 33 exact cards selected by `active_registry()`. Outcome
+statements are bound to the accepted core 3.0 evidence and the separately sealed
+sklearn estimator supplement; unsupported outcomes keep their recorded limits.
 
 ```python
 from blue_data_ops.operators import active_registry
 
 registry = active_registry()
-assert len(registry.list_cards()) == 32
+assert len(registry.list_cards()) == 33
 ```
 
 ## Tag taxonomy
 
-This table is derived from the 32 active cards. Built-in tags use five required axes and
+This table is derived from the 33 active cards. Built-in tags use five required axes and
 one optional axis. A tag states something true in at least one productive public mode.
 Values are flat exact labels, not a hierarchy.
 
@@ -1166,6 +1166,44 @@ Discriminators:
 
 - Empty object for an optional target is record data, not tensor empty.
 - Malformed plan fails rather than producing an empty-dict fallback.
+
+## `sklearn_estimator@2.0.0`
+
+Build and run a scikit-learn estimator for classification, regression, clustering, or transformation on DataBundle records.
+
+When to invoke: Use when an arbitrary scikit-learn estimator is required.
+
+Tags: `domain-ml`, `flow-transform`, `accepts-data`, `produces-data`, `capability-classification`, `capability-clustering`, `capability-transformation`, `requires-ml`
+
+Guide: [`sklearn_estimator@2.0.0`](src/blue_data_ops/operator_skills/sklearn_estimator/2.0.0/Operator.md)
+
+| Attribute | Type | Required | Default | Description |
+|---|---|---:|---|---|
+| `vector_key` | `str` | yes | `—` | The key to numeric vector values (features) |
+| `label_key` | `str` | no | `—` | The target key for supervised models (labels or continuous targets) |
+| `output_key` | `str` | no | `"prediction"` | The key name for the predictions or transformed outputs |
+
+Exact resolution:
+
+```python
+operator = registry.resolve("sklearn_estimator@2.0.0")
+assert type(operator).__module__ == "blue_data_ops.operators.sklearn_estimator"
+assert type(operator).__name__ == "SklearnEstimator"
+```
+
+Evidence source: accepted expected case for exact ID `sklearn_estimator@2.0.0`. Dependency profile `ml`: Install the ml extra; package import remains independent of NumPy and scikit-learn.
+
+| Outcome | Evidence |
+|---|---|
+| Success | A lower-case LinearRegression name trains on the first group and predicts the later group. |
+| Empty | An empty bundle returns the original empty input from the raw compatibility call. |
+| Invalid | An unknown estimator is INVALID_INPUT at VALIDATE through structured run. |
+| Failure | A fit_predict-only estimator with later inference data fails at EXECUTE instead of refitting. |
+
+Discriminators:
+
+- Case-insensitive lookup and a dynamic constructor parameter are exercised together.
+- One fitted model is distinguished from independent per-group fit_predict calls.
 
 ## `sum@2.0.0`
 

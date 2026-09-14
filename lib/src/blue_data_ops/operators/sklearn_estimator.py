@@ -4,14 +4,6 @@ import inspect
 from importlib import import_module
 from typing import Any, ClassVar, cast
 
-import sklearn.utils
-from sklearn.base import (
-    ClassifierMixin,
-    ClusterMixin,
-    RegressorMixin,
-    TransformerMixin,
-)
-
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -30,16 +22,14 @@ class _SklearnEstimatorFailure(Exception):
 
 
 class SklearnEstimator(Operator):
-    """Universal runtime wrapper for any scikit-learn estimator."""
+    """Runtime wrapper for scikit-learn estimators."""
 
     name: ClassVar[str] = "sklearn_estimator"
     description: ClassVar[str] = (
-        "Dynamically wrap and execute any scikit-learn estimator (classification, "
-        "regression, clustering, or transformation) conforming to the DataBundle schema."
+        "Build and run a scikit-learn estimator for classification, regression, "
+        "clustering, or transformation on DataBundle records."
     )
 
-    # Core required and common attributes.
-    # Hyperparameters for specific estimators are passed dynamically via attributes.
     attributes: ClassVar[dict[str, AttributeSpec]] = {
         "vector_key": AttributeSpec(
             type="str",
@@ -57,18 +47,28 @@ class SklearnEstimator(Operator):
         ),
     }
 
-    # In-memory registry cache to avoid repeated inspection of all estimators
     _ESTIMATOR_REGISTRY: ClassVar[dict[str, type[Any]]] = {}
 
     @classmethod
     def _get_registry(cls) -> dict[str, type[Any]]:
         if not cls._ESTIMATOR_REGISTRY:
-            # Map both exact names and lowercase names (e.g. 'KMeans' and 'kmeans')
-            estimators = sklearn.utils.all_estimators()
+            sklearn_utils = cast(Any, import_module("sklearn.utils"))
+            estimators = sklearn_utils.all_estimators()
             for name, estimator_cls in estimators:
                 cls._ESTIMATOR_REGISTRY[name] = estimator_cls
                 cls._ESTIMATOR_REGISTRY[name.lower()] = estimator_cls
         return cls._ESTIMATOR_REGISTRY
+
+    @staticmethod
+    def _estimator_kinds(estimator_cls: type[Any]) -> tuple[bool, bool, bool]:
+        sklearn_base = cast(Any, import_module("sklearn.base"))
+        is_supervised = issubclass(
+            estimator_cls,
+            (sklearn_base.ClassifierMixin, sklearn_base.RegressorMixin),
+        )
+        is_clusterer = issubclass(estimator_cls, sklearn_base.ClusterMixin)
+        is_transformer = issubclass(estimator_cls, sklearn_base.TransformerMixin)
+        return is_supervised, is_clusterer, is_transformer
 
     @staticmethod
     def _normalize_prediction(val: Any) -> Any:
@@ -76,11 +76,10 @@ class SklearnEstimator(Operator):
         if isinstance(val, (str, int, float, bool)) or val is None:
             return val
 
-        val_any = cast(Any, val)
-        if hasattr(val_any, "tolist"):
-            return val_any.tolist()
-        if hasattr(val_any, "item"):
-            return val_any.item()
+        if hasattr(val, "tolist"):
+            return val.tolist()
+        if hasattr(val, "item"):
+            return val.item()
         return val
 
     def apply(
@@ -100,7 +99,6 @@ class SklearnEstimator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
-        # Guard against empty input bundles
         if not input_data or not input_data[0]:
             return FunctionResult(input_data, {})
 
@@ -109,7 +107,9 @@ class SklearnEstimator(Operator):
             return FunctionResult(input_data, {})
 
         registry = self._get_registry()
-        estimator_cls = registry.get(str(algorithm_name)) or registry.get(str(algorithm_name).lower())
+        estimator_cls = registry.get(str(algorithm_name)) or registry.get(
+            str(algorithm_name).lower()
+        )
         if estimator_cls is None:
             return FunctionResult(input_data, {})
 
@@ -117,12 +117,8 @@ class SklearnEstimator(Operator):
         label_key = attributes.get("label_key")
         output_key = cast(str, attributes.get("output_key", "prediction"))
 
-        # Determine task type based on scikit-learn Mixin classes
-        is_supervised = issubclass(estimator_cls, (ClassifierMixin, RegressorMixin))
-        is_clusterer = issubclass(estimator_cls, ClusterMixin)
-        is_transformer = issubclass(estimator_cls, TransformerMixin)
+        is_supervised, is_clusterer, is_transformer = self._estimator_kinds(estimator_cls)
 
-        # 1. Extract training vectors (and optional labels) from the first group (input_data[0])
         vectors: list[list[Any]] = []
         labels: list[Any] = []
 
@@ -132,15 +128,14 @@ class SklearnEstimator(Operator):
                 if is_supervised:
                     lbl = record.get(cast(str, label_key))
                     if lbl is not None:
-                        vectors.append(vec)
+                        vectors.append(cast(list[Any], vec))
                         labels.append(lbl)
                 else:
-                    vectors.append(vec)
+                    vectors.append(cast(list[Any], vec))
 
         if not vectors:
             return FunctionResult(input_data, {})
 
-        # 2. Extract only valid parameters declared in the estimator's __init__
         model_kwargs = self._extract_model_hyperparameters(estimator_cls, attributes)
 
         np = cast(Any, import_module("numpy"))
@@ -148,15 +143,18 @@ class SklearnEstimator(Operator):
 
         try:
             model = estimator_cls(**model_kwargs)
-            if is_supervised:
+            use_fit_predict = not hasattr(model, "predict") and hasattr(model, "fit_predict")
+            training_outputs: Any | None = None
+            if use_fit_predict:
+                training_outputs = model.fit_predict(X_train)
+            elif is_supervised:
                 y_train = np.array(labels)
                 model.fit(X_train, y_train)
             else:
                 model.fit(X_train)
 
-            # 3. Apply inference over all DataBundle subsets
             result_data: DataBundle = []
-            for data_subset in input_data:
+            for group_index, data_subset in enumerate(input_data):
                 subset_result: Data = []
                 pred_vectors: list[list[Any]] = []
                 valid_indices: list[int] = []
@@ -164,7 +162,7 @@ class SklearnEstimator(Operator):
                 for index, record in enumerate(data_subset):
                     vec = record.get(cast(str, vector_key))
                     if vec is not None and isinstance(vec, list):
-                        pred_vectors.append(vec)
+                        pred_vectors.append(cast(list[Any], vec))
                         valid_indices.append(index)
 
                 if not pred_vectors:
@@ -174,13 +172,26 @@ class SklearnEstimator(Operator):
                         subset_result.append(new_record)
                 else:
                     X_infer = np.array(pred_vectors)
-                    outputs = self._infer(model, X_infer, is_clusterer, is_transformer)
+                    if use_fit_predict:
+                        if group_index != 0:
+                            raise _SklearnEstimatorFailure(
+                                f"{type(model).__name__} cannot infer later groups"
+                            )
+                        if training_outputs is None:
+                            raise _SklearnEstimatorFailure(
+                                f"{type(model).__name__} returned no training labels"
+                            )
+                        outputs = training_outputs
+                    else:
+                        outputs = self._infer(model, X_infer, is_clusterer, is_transformer)
 
                     label_index = 0
                     for index, record in enumerate(data_subset):
                         new_record = record.copy()
                         if index in valid_indices:
-                            new_record[output_key] = self._normalize_prediction(outputs[label_index])
+                            new_record[output_key] = self._normalize_prediction(
+                                outputs[label_index]
+                            )
                             label_index += 1
                         else:
                             new_record[output_key] = None
@@ -189,11 +200,15 @@ class SklearnEstimator(Operator):
                 result_data.append(subset_result)
 
             return FunctionResult(result_data, {})
+        except _SklearnEstimatorFailure:
+            raise
         except Exception as error:
             raise _SklearnEstimatorFailure from error
 
     def _extract_model_hyperparameters(
-        self, estimator_cls: type[Any], attributes: Attributes
+        self,
+        estimator_cls: type[Any],
+        attributes: Attributes,
     ) -> dict[str, Any]:
         """Extract only parameters accepted by estimator.__init__."""
         sig = inspect.signature(estimator_cls.__init__)
@@ -204,31 +219,22 @@ class SklearnEstimator(Operator):
         return model_kwargs
 
     def _infer(
-            self, model: Any, X: Any, is_clusterer: bool, is_transformer: bool
-        ) -> Any:
-            """Route to appropriate inference method based on estimator capabilities."""
-            # 1. Clusterers must return cluster indices (via predict or fit_predict), not distance transforms
-            if is_clusterer:
-                if hasattr(model, "predict"):
-                    return model.predict(X)
-                if hasattr(model, "fit_predict"):
-                    return model.fit_predict(X)
-
-            # 2. Supervised estimators (classifiers, regressors)
-            if hasattr(model, "predict"):
-                return model.predict(X)
-
-            # 3. Pure transformers (e.g. PCA, StandardScaler)
-            if is_transformer and hasattr(model, "transform"):
-                return model.transform(X)
-
-            if hasattr(model, "fit_predict"):
-                return model.fit_predict(X)
-
-            if hasattr(model, "transform"):
-                return model.transform(X)
-
-            raise AttributeError(f"Estimator {model} does not support predict or transform.")
+        self,
+        model: Any,
+        X: Any,
+        is_clusterer: bool,
+        is_transformer: bool,
+    ) -> Any:
+        """Choose the estimator's non-fitting inference method."""
+        if is_clusterer and hasattr(model, "predict"):
+            return model.predict(X)
+        if hasattr(model, "predict"):
+            return model.predict(X)
+        if is_transformer and hasattr(model, "transform"):
+            return model.transform(X)
+        if hasattr(model, "transform"):
+            return model.transform(X)
+        raise AttributeError(f"Estimator {model} does not support predict or transform")
 
     def validate(
         self,
@@ -252,7 +258,11 @@ class SklearnEstimator(Operator):
         if not algorithm:
             return ValidationResult(False, "Missing 'algorithm' in properties")
 
-        registry = self._get_registry()
+        try:
+            registry = self._get_registry()
+        except ImportError:
+            # Let structured execution report the missing optional dependency at EXECUTE.
+            return ValidationResult(True, None)
         estimator_cls = registry.get(str(algorithm)) or registry.get(str(algorithm).lower())
         if estimator_cls is None:
             return ValidationResult(False, f"Unsupported or unknown algorithm: {algorithm}")
@@ -260,8 +270,7 @@ class SklearnEstimator(Operator):
         if not attributes.get("vector_key"):
             return ValidationResult(False, "vector_key is required")
 
-        # Supervised estimators require label_key
-        is_supervised = issubclass(estimator_cls, (ClassifierMixin, RegressorMixin))
+        is_supervised, _, _ = self._estimator_kinds(estimator_cls)
         if is_supervised and not attributes.get("label_key"):
             return ValidationResult(False, "label_key is required for supervised models")
 
@@ -270,5 +279,14 @@ class SklearnEstimator(Operator):
 
 DISCOVERY = DiscoverySpec(
     when_to_invoke="Use when an arbitrary scikit-learn estimator is required.",
-    tags=("domain-ml", "flow-transform", "accepts-data", "produces-data", "requires-ml"),
+    tags=(
+        "domain-ml",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-classification",
+        "capability-clustering",
+        "capability-transformation",
+        "requires-ml",
+    ),
 )

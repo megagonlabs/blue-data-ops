@@ -48,7 +48,7 @@ def test_distribution_metadata_and_public_surface() -> None:
     ]
     assert blue_data_ops_mcp.ACTIVE_OPERATOR_IDS == ACTIVE_OPERATOR_IDS
     assert blue_data_ops_mcp.V2_OPERATOR_IDS == V2_OPERATOR_IDS
-    assert len(ACTIVE_OPERATOR_IDS) == len(V2_OPERATOR_IDS) == 32
+    assert len(ACTIVE_OPERATOR_IDS) == len(V2_OPERATOR_IDS) == 33
 
 
 def test_active_ids_match_core_active_registry() -> None:
@@ -70,8 +70,8 @@ def test_readme_states_current_pair_and_primary_only_surface() -> None:
     assert "blue-data-ops[ml,vector,llm]==3.0.0" in current
     assert "ACTIVE_OPERATOR_IDS" in current
     assert "V2_OPERATOR_IDS" in current
-    assert re.search(r"36.{0,120}32", current, flags=re.DOTALL)
-    assert re.search(r"32.{0,80}primary", lowered, flags=re.DOTALL)
+    assert "It contains the 33 retained v2 exact IDs" in current
+    assert re.search(r"33.{0,80}primary", lowered, flags=re.DOTALL)
     assert re.search(r"(?:no|zero).{0,60}companions", lowered, flags=re.DOTALL)
     assert "exact supported raw package card" in current
     assert "retained `@2.0.0` card" in current
@@ -177,7 +177,7 @@ def test_every_default_binding_uses_exact_resolved_instance() -> None:
 
 async def test_every_tool_meta_reports_exact_selected_version() -> None:
     tools = await create_server().list_tools()
-    assert len(tools) == 32
+    assert len(tools) == 33
     assert [(tool.meta or {})["operator_id"] for tool in tools] == list(ACTIVE_OPERATOR_IDS)
     assert [(tool.meta or {})["version"] for tool in tools] == [
         operator_id.partition("@")[2] for operator_id in ACTIVE_OPERATOR_IDS
@@ -195,8 +195,8 @@ def test_source_import_smoke_in_subprocess() -> None:
             "-c",
             (
                 "import blue_data_ops_mcp as m; "
-                "assert len(m.ACTIVE_OPERATOR_IDS) == 32; "
-                "assert len(m.V2_OPERATOR_IDS) == 32"
+                "assert len(m.ACTIVE_OPERATOR_IDS) == 33; "
+                "assert len(m.V2_OPERATOR_IDS) == 33"
             ),
         ],
         cwd=ROOT,

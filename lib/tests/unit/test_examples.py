@@ -235,7 +235,7 @@ def test_example_map_covers_public_tag_families() -> None:
 def test_every_capability_has_generated_reference_coverage() -> None:
     text = (LIB_ROOT / "OPERATORS.md").read_text(encoding="utf-8")
     cards = active_registry().list_cards()
-    assert len(cards) == 32
+    assert len(cards) == 33
     live_axes = {tag.split("-", 1)[0] for card in cards for tag in card.tags}
     for axis in live_axes:
         assert f"| `{axis}-*` |" in text

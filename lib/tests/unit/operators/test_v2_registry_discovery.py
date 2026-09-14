@@ -1,7 +1,7 @@
 """Versioned registry discovery and metadata validation.
 
-The checked-in catalog covers card metadata, validation, resolution, ranking,
-tag filtering, custom registrations, and the retained 32-card v2 selection.
+The checked-in catalog covers the original card metadata, validation, resolution, ranking,
+tag filtering, custom registrations, and the retained v2 selection.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from tests.unit.operators._registry_catalog_expectations import (
     ADDED_OPERATOR_IDS,
     FULL_OPERATOR_IDS,
     LEGACY_CARDS,
+    SUPPLEMENTAL_OPERATOR_IDS,
     assert_added_cards_active,
     assert_full_inventory,
     assert_legacy_cards,
@@ -105,6 +106,9 @@ def _synthetic_catalog() -> list[OperatorCard]:
     for operator_id in ADDED_OPERATOR_IDS:
         name = operator_id.split("@")[0]
         cards[operator_id] = OperatorCard(operator_id, name, "3.0.0", "")
+    for operator_id in SUPPLEMENTAL_OPERATOR_IDS:
+        name, version = operator_id.split("@")
+        cards[operator_id] = OperatorCard(operator_id, name, version, "")
     return [cards[operator_id] for operator_id in FULL_OPERATOR_IDS]
 
 
@@ -127,7 +131,7 @@ def test_catalog_comparator_rejects_missing_or_duplicate_cards(mutation: str) ->
         cards.append(cards[0])
     else:
         cards = [card for card in cards if card.operator_id != "avg@3.0.0"]
-    with pytest.raises(AssertionError, match="85 distinct"):
+    with pytest.raises(AssertionError, match="87 distinct"):
         _assert_catalog(cards)
     if mutation != "missing-added":
         with pytest.raises(AssertionError, match="legacy inventory/order"):
@@ -145,7 +149,7 @@ def test_catalog_comparator_rejects_unexpected_ids(operator_id: str, replace_add
         cards[index] = unexpected
     else:
         cards.append(unexpected)
-    with pytest.raises(AssertionError, match="inventory|85 distinct"):
+    with pytest.raises(AssertionError, match="inventory|87 distinct"):
         _assert_catalog(cards)
     with pytest.raises(AssertionError, match="unexpected operator IDs"):
         assert_legacy_cards(cards)
@@ -246,9 +250,9 @@ def test_builtin_validation_rejects_malformed_specs(bad: DiscoverySpec) -> None:
         validate_builtin_discovery("probe", bad)
 
 
-def test_all_32_builtin_specs_validate() -> None:
+def test_all_33_builtin_specs_validate() -> None:
     specs = _builtin_discovery_specs()
-    assert len(specs) == 32
+    assert len(specs) == 33
 
 
 # --------------------------------------------------------------------------------------------------
@@ -413,19 +417,19 @@ def test_multi_valued_axes_are_published() -> None:
     assert "capability-embedding-filter" in join
 
 
-def test_retained_v2_selection_is_32_ids_inside_the_85_card_catalog() -> None:
+def test_retained_v2_selection_is_33_ids_inside_the_87_card_catalog() -> None:
     cards = versioned_registry().list_cards()
     v2_ids = sorted(c.operator_id for c in cards if c.version == "2.0.0")
-    assert v2_ids == sorted(f"{name}@2.0.0" for name in _NAMES)
-    assert len(v2_ids) == 32
+    assert v2_ids == sorted((*[f"{name}@2.0.0" for name in _NAMES], "sklearn_estimator@2.0.0"))
+    assert len(v2_ids) == 33
     resolved = versioned_registry()
     for operator_id in v2_ids:
         assert resolved.resolve(operator_id).operator_id == operator_id
 
 
-def test_default_registry_is_32_raw_v1_cards() -> None:
+def test_default_registry_is_33_raw_v1_cards() -> None:
     cards = default_registry().list_cards()
-    assert len(cards) == 32
+    assert len(cards) == 33
     assert all(c.version == "1.0.0" for c in cards)
     assert all(c.tags == () and c.when_to_invoke == "" for c in cards)
     # versioned_registry() carries the metadata on both versions

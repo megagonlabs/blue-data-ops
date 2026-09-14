@@ -53,6 +53,7 @@ BUILTIN_NAMES: tuple[str, ...] = (
     "semantic_join",
     "semantic_project",
     "semantic_transform",
+    "sklearn_estimator",
     "sum",
     "union",
     "vector_embed",
@@ -91,7 +92,7 @@ def test_default_registry_v1_inventory_and_resolution_identity() -> None:
     registry = default_registry()
     cards = registry.list_cards()
 
-    assert len(cards) == 32
+    assert len(cards) == 33
     assert tuple(card.operator_id for card in cards) == V1_IDS
     for name, operator_id in zip(BUILTIN_NAMES, V1_IDS, strict=True):
         resolved = registry.resolve(operator_id)
@@ -101,7 +102,12 @@ def test_default_registry_v1_inventory_and_resolution_identity() -> None:
 def test_versioned_registry_retained_inventory_and_order() -> None:
     cards = versioned_registry().list_cards()
     legacy = assert_legacy_cards(cards)
-    expected = [f"{name}@{version}" for name in BUILTIN_NAMES for version in ("2.0.0", "1.0.0")]
+    expected = [
+        f"{name}@{version}"
+        for name in BUILTIN_NAMES
+        if name != "sklearn_estimator"
+        for version in ("2.0.0", "1.0.0")
+    ]
 
     assert [card.operator_id for card in legacy] == expected
     assert len(legacy) == 64
@@ -129,7 +135,7 @@ def test_bogus_export_cannot_change_either_inventory(monkeypatch: pytest.MonkeyP
         [*operators_package.__all__, "_BogusOperator"],
     )
 
-    assert len(default_registry().list_cards()) == 32
+    assert len(default_registry().list_cards()) == 33
     assert_full_inventory(versioned_registry().list_cards())
 
 
@@ -162,7 +168,7 @@ def test_v1_card_keeps_compatibility_path(name: str) -> None:
     )
 
 
-def test_default_selection_yields_exactly_the_32_v2_ids() -> None:
+def test_default_selection_yields_exactly_the_33_v2_ids() -> None:
     snapshot = _select_deployment(versioned_registry())
     assert tuple(card.operator_id for card in snapshot) == V2_IDS
 
@@ -202,6 +208,6 @@ def test_bare_malformed_and_leading_zero_ids_fail(bad_id: str) -> None:
 
 def test_mcp_registry_surface_remains_raw_v1() -> None:
     cards = default_registry().list_cards()
-    assert len(cards) == 32
+    assert len(cards) == 33
     assert all(card.operator_id.endswith("@1.0.0") for card in cards)
     assert not hasattr(blue_data_ops, "versioned_registry")

@@ -209,11 +209,10 @@ def _spy_body(operator: Operator, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
 # --------------------------------------------------------------------------------------------------
 # Structural and mutation controls
 # --------------------------------------------------------------------------------------------------
-def test_exactly_the_32_retained_versioned_names() -> None:
-    registry_names = sorted(
-        {c.operator_id.split("@")[0] for c in versioned_registry().list_cards()}
-    )
-    assert registry_names == _NAMES
+def test_prior_32_names_remain_with_sklearn_estimator_added() -> None:
+    registry_names = {c.operator_id.split("@")[0] for c in versioned_registry().list_cards()}
+    assert registry_names - set(_NAMES) == {"sklearn_estimator"}
+    assert set(_NAMES) <= registry_names
     assert len(_NAMES) == 32
     assert _FIXTURE["operator_count"] == 36
 

@@ -46,6 +46,7 @@
     "semantic_project@3.0.0": "semantic_project/3.0.0/manifest.json",
     "semantic_transform@2.0.0": "semantic_transform/2.0.0/manifest.json",
     "semantic_transform@3.0.0": "semantic_transform/3.0.0/manifest.json",
+    "sklearn_estimator@2.0.0": "sklearn_estimator/2.0.0/manifest.json",
     "sum@2.0.0": "sum/2.0.0/manifest.json",
     "union@2.0.0": "union/2.0.0/manifest.json",
     "vector_embed@2.0.0": "vector_embed/2.0.0/manifest.json",

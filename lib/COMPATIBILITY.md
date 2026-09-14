@@ -8,7 +8,7 @@ Core 3.0 removes the four plan-producing operator names, all eight of their v1/v
 
 `BlueDataOpsDeprecationWarning` remains importable as a compatibility category. Package 3.0 no longer emits it because the package-owned deprecated surfaces that used it have been removed.
 
-The registry now contains 85 historical cards: 32 at `@1.0.0`, 32 at `@2.0.0`, and 21 at `@3.0.0`. `active_registry()` selects the 32 ordinary exact IDs for current discovery and execution. The generated reference and MCP default use that same selection. Operator-skill resources contain 53 packages: 32 retained v2 packages and 21 v3 packages.
+The registry now contains 87 historical cards: 33 at `@1.0.0`, 33 at `@2.0.0`, and 21 at `@3.0.0`. `active_registry()` selects the 33 ordinary exact IDs for current discovery and execution. The generated reference and MCP default use that same selection. Operator-skill resources contain 54 packages: 33 retained v2 packages and 21 v3 packages.
 
 Exact resolution of `multipart_query`, `nl2query_router`, `plan_discover`, or `query_breakdown` at versions 1 or 2 through a package registry raises `ResolveError`. A stored `DataPipeline` containing one of those IDs still parses through `from_dict()`, then fails executor preflight at exact resolution.
 

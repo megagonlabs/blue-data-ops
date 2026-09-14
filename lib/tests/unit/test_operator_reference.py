@@ -55,18 +55,21 @@ def _assert_no_source_case_ids(rendered: str, case_ids: tuple[str, ...]) -> None
     assert not leaked, f"source case IDs leaked: {leaked!r}"
 
 
-def test_source_manifest_includes_the_sdist_only_generator_input() -> None:
+def test_source_manifest_includes_the_sdist_only_generator_inputs() -> None:
     generator = _generator()
-    evidence_path = cast(Path, generator.EVIDENCE_PATH)
-    fixture_path = evidence_path.relative_to(LIB_ROOT).as_posix()
     directives = [
         tuple(line.strip().split(maxsplit=1))
         for line in (LIB_ROOT / "MANIFEST.in").read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
 
-    assert ("include", fixture_path) in directives
-    assert not evidence_path.is_relative_to(LIB_ROOT / "src")
+    for evidence_path in (
+        cast(Path, generator.EVIDENCE_PATH),
+        cast(Path, generator.SUPPLEMENTAL_EVIDENCE_PATH),
+    ):
+        fixture_path = evidence_path.relative_to(LIB_ROOT).as_posix()
+        assert ("include", fixture_path) in directives
+        assert not evidence_path.is_relative_to(LIB_ROOT / "src")
 
 
 def test_generator_input_is_the_sealed_release_projection() -> None:
@@ -76,10 +79,27 @@ def test_generator_input_is_the_sealed_release_projection() -> None:
     assert hashlib.sha256(raw).hexdigest() == generator.ACCEPTED_PROJECTION_SHA256
     document = json.loads(raw)
     assert document["source_instrument"] == generator.SOURCE_INSTRUMENT
-    assert document["active_ids"] == list(generator.EXPECTED_ACTIVE_IDS)
+    assert document["active_ids"] == list(generator.CORE_ACTIVE_IDS)
     assert "processor" not in document
     assert "artifacts" not in document
     assert "historical_inputs" not in document
+
+
+def test_sklearn_supplement_is_sealed_separately() -> None:
+    generator = _generator()
+    path = cast(Path, generator.SUPPLEMENTAL_EVIDENCE_PATH)
+    raw = path.read_bytes()
+    source_path = LIB_ROOT / "tests" / "unit" / "operators" / "test_sklearn.py"
+
+    assert hashlib.sha256(raw).hexdigest() == generator.SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256
+    document = json.loads(raw)
+    assert document["source_instrument"] == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT
+    assert (
+        hashlib.sha256(source_path.read_bytes()).hexdigest()
+        == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT["document_sha256"]
+    )
+    assert document["active_ids"] == list(generator.SUPPLEMENTAL_ACTIVE_IDS)
+    assert generator._document_seal(document) == document["projection_seal_sha256"]
 
 
 def test_operator_reference_matches_the_active_registry_and_evidence() -> None:
@@ -100,8 +120,7 @@ def test_operator_reference_matches_the_active_registry_and_evidence() -> None:
 
 def test_every_reference_section_binds_live_implementation_and_evidence() -> None:
     generator = _generator()
-    document = generator._load_evidence()
-    rows = generator._validate_evidence(document)
+    rows = generator._load_combined_rows()
     bound = generator._validate_registry(active_registry(), rows)
 
     assert tuple(card.operator_id for card, _, _ in bound) == generator.EXPECTED_ACTIVE_IDS
@@ -119,8 +138,14 @@ def test_every_reference_section_binds_live_implementation_and_evidence() -> Non
 
 def test_reference_omits_internal_source_case_ids_with_firing_control() -> None:
     generator = _generator()
-    document = _document(generator)
-    case_ids = _supported_case_ids(document)
+    documents = (
+        _document(generator),
+        generator._load_evidence(
+            generator.SUPPLEMENTAL_EVIDENCE_PATH,
+            expected_sha256=generator.SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256,
+        ),
+    )
+    case_ids = tuple(case_id for document in documents for case_id in _supported_case_ids(document))
     rendered = generator.render_reference()
 
     assert case_ids
@@ -182,6 +207,8 @@ def test_missing_generator_input_fails() -> None:
     missing = LIB_ROOT / "tests" / "fixtures" / "missing-active-reference.json"
     with pytest.raises(FileNotFoundError):
         generator.render_reference(evidence_path=missing)
+    with pytest.raises(FileNotFoundError):
+        generator.render_reference(supplemental_evidence_path=missing)
 
 
 @pytest.mark.parametrize(
@@ -254,12 +281,12 @@ def test_duplicate_json_key_fails_before_mapping(tmp_path: Path) -> None:
 
 def test_wrong_live_implementation_fails_with_the_same_exact_id() -> None:
     generator = _generator()
-    document = _document(generator)
-    document["rows"][2]["implementation"]["module"] = "blue_data_ops.operators.avg_operator"
-    rows = generator._validate_evidence(_reseal(generator, document))
+    rows = list(generator._load_combined_rows())
+    rows[2] = copy.deepcopy(rows[2])
+    rows[2]["implementation"]["module"] = "blue_data_ops.operators.avg_operator"
 
     with pytest.raises(ValueError, match="avg@3.0.0: live implementation identity mismatch"):
-        generator._validate_registry(active_registry(), rows)
+        generator._validate_registry(active_registry(), tuple(rows))
 
 
 def test_operator_reference_check_cli_does_not_rewrite_subject(

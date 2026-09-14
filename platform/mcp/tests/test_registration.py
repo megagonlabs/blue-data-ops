@@ -56,6 +56,7 @@ EXPECTED_ACTIVE_OPERATOR_IDS = (
     "semantic_join@3.0.0",
     "semantic_project@3.0.0",
     "semantic_transform@3.0.0",
+    "sklearn_estimator@2.0.0",
     "sum@2.0.0",
     "union@2.0.0",
     "vector_embed@3.0.0",
@@ -114,17 +115,17 @@ def _ids(snapshot: DeploymentSnapshot) -> tuple[str, ...]:
 def test_selection_constants_are_exact_name_unique_contracts() -> None:
     assert ACTIVE_OPERATOR_IDS == EXPECTED_ACTIVE_OPERATOR_IDS
     assert V2_OPERATOR_IDS == EXPECTED_V2_OPERATOR_IDS
-    assert len(ACTIVE_OPERATOR_IDS) == len(V2_OPERATOR_IDS) == 32
-    assert len({value.partition("@")[0] for value in ACTIVE_OPERATOR_IDS}) == 32
-    assert len(set(ACTIVE_OPERATOR_IDS)) == len(set(V2_OPERATOR_IDS)) == 32
+    assert len(ACTIVE_OPERATOR_IDS) == len(V2_OPERATOR_IDS) == 33
+    assert len({value.partition("@")[0] for value in ACTIVE_OPERATOR_IDS}) == 33
+    assert len(set(ACTIVE_OPERATOR_IDS)) == len(set(V2_OPERATOR_IDS)) == 33
     assert [value.partition("@")[0] for value in ACTIVE_OPERATOR_IDS] == sorted(
         value.partition("@")[0] for value in ACTIVE_OPERATOR_IDS
     )
     assert sum(value.endswith("@3.0.0") for value in ACTIVE_OPERATOR_IDS) == 21
-    assert sum(value.endswith("@2.0.0") for value in ACTIVE_OPERATOR_IDS) == 11
+    assert sum(value.endswith("@2.0.0") for value in ACTIVE_OPERATOR_IDS) == 12
 
 
-async def test_default_inventory_is_32_active_primaries_in_order() -> None:
+async def test_default_inventory_is_33_active_primaries_in_order() -> None:
     first = await create_server().list_tools()
     second = await create_server().list_tools()
     expected_names = [operator_id.partition("@")[0] for operator_id in ACTIVE_OPERATOR_IDS]
@@ -338,4 +339,4 @@ def test_refinement_api_is_absent() -> None:
 async def test_no_partial_registration_after_failure() -> None:
     with pytest.raises(ValueError):
         create_server(operator_ids=("select@1.0.0",))
-    assert len(await create_server().list_tools()) == 32
+    assert len(await create_server().list_tools()) == 33

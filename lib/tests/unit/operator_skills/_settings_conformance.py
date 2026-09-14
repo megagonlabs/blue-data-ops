@@ -215,7 +215,7 @@ def parse_settings(guide: str) -> tuple[SettingRow, ...]:
 
 def expected_v2_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     cards = tuple(card for card in registry.list_cards() if card.version == "2.0.0")
-    assert len(cards) == 32
+    assert len(cards) == 33
     expected = {card.operator_id for card in cards}
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
 
@@ -223,7 +223,7 @@ def expected_v2_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]
 def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     legacy = expected_v2_skill_package_ids(registry)
     expected = (*legacy, *ADDED_SKILL_PACKAGE_IDS)
-    assert len(expected) == len(set(expected)) == 53
+    assert len(expected) == len(set(expected)) == 54
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
 
 

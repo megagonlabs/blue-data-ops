@@ -236,11 +236,11 @@ def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
     )
     operator_ids = tuple(index["packages"])
 
-    assert len(operator_ids) == 53
+    assert len(operator_ids) == 54
     assert operator_ids == expected_skill_package_ids(versioned_registry())
     assert {card.operator_id for card in active_registry().list_cards()} <= set(operator_ids)
-    assert "53 exact-version packages" in readme
-    assert "All 53 packages declare levels 2 and 3" in readme
+    assert "54 exact-version packages" in readme
+    assert "All 54 packages declare levels 2 and 3" in readme
     assert "`load()` defaults to level 2" in readme
     assert "`describe().declared_levels` reports the levels available" in readme
     assert "No package in 3.0 includes level-4 `history.md`" in readme
@@ -255,7 +255,7 @@ def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
 
 def test_readme_documents_available_skill_levels() -> None:
     readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "All 53 packages declare levels 2 and 3" in readme
+    assert "All 54 packages declare levels 2 and 3" in readme
     assert "`load()` defaults to level 2" in readme
     assert "`describe().declared_levels` reports the levels available" in readme
     assert "No package in 3.0 includes level-4 `history.md`" in readme
@@ -363,7 +363,67 @@ print(len(versioned_registry().list_cards()))
         check=True,
         env=env,
     )
-    assert result.stdout.strip() == "85"
+    assert result.stdout.strip() == "87"
+
+
+def test_sklearn_operator_contains_missing_optional_dependency() -> None:
+    blocked = ["sklearn"]
+    program = f"""
+import sys
+
+BLOCKED = {blocked!r}
+
+class Blocker:
+    def find_spec(self, name, path=None, target=None):
+        root = name.split(".", 1)[0]
+        if root in BLOCKED:
+            raise ModuleNotFoundError(f"blocked optional dependency {{root!r}}", name=root)
+        return None
+
+sys.meta_path.insert(0, Blocker())
+
+import pytest
+
+from blue_data_ops.operators import ClusterOperator, SklearnEstimator
+
+operator = SklearnEstimator()
+data = [[{{"vector": [1.0]}}]]
+with pytest.raises(ModuleNotFoundError):
+    operator.apply(data, {{"vector_key": "vector"}}, {{"algorithm": "KMeans"}})
+output, output_attributes, meta = operator.run(
+    data,
+    {{"vector_key": "vector"}},
+    {{"algorithm": "KMeans"}},
+)
+assert output == [[]]
+assert output_attributes == {{}}
+assert [(error.code.value, error.stage.value) for error in meta.errors] == [
+    ("EXECUTION_FAILED", "EXECUTE")
+]
+
+cluster = ClusterOperator()
+cluster_data = [[{{"vector": [0.0]}}, {{"vector": [1.0]}}]]
+cluster_attributes = {{"vector_key": "vector", "n_cluster": 2}}
+with pytest.raises(ModuleNotFoundError):
+    cluster.apply(cluster_data, cluster_attributes, {{"algorithm": "kmeans"}})
+_, _, cluster_meta = cluster.run(
+    cluster_data,
+    cluster_attributes,
+    {{"algorithm": "kmeans"}},
+)
+assert [(error.code.value, error.stage.value) for error in cluster_meta.errors] == [
+    ("EXECUTION_FAILED", "EXECUTE")
+]
+"""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(LIB_ROOT / "src")
+    subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+    )
 
 
 def _readme_planning_request() -> PlanningRequest:
@@ -463,7 +523,7 @@ def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
     assert registry_integrity_boundary in lib_readme
     assert 'version("blue-data-ops-mcp") == "0.13.0"' in mcp_readme
     assert "blue-data-ops==3.0.0" in mcp_readme
-    assert "32 primary tools and no refinement companions" in mcp_readme
+    assert "33 primary tools and no refinement companions" in mcp_readme
     assert "select caller-created `@2.0.0` cards" in mcp_readme
     assert "exact supported raw package card" in mcp_readme
     assert "retained `@2.0.0` card" in mcp_readme
@@ -474,9 +534,9 @@ def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
     assert "tool description contains only the operator description" in mcp_readme
     assert "does not grant ordinary or OpenAI planning authority" in mcp_readme
     assert "does not authorize a write" in mcp_readme
-    assert "cannot shadow any of the 32 supported built-in logical names" in mcp_readme
+    assert "cannot shadow any of the 33 supported built-in logical names" in mcp_readme
     assert "Custom v1 and v3 cards are rejected" in mcp_readme
-    assert "`V2_OPERATOR_IDS` changed from 36 IDs to 32" in mcp_readme
+    assert "It contains the 33 retained v2 exact IDs" in mcp_readme
     assert mcp_readme.count("blue-data-ops-mcp==0.9.0") == 1
     assert mcp_readme.count("blue-data-ops[ml,vector,llm]==2.7.0") == 1
     assert "## Migrating from 0.9.0" in mcp_readme

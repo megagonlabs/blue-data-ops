@@ -60,6 +60,7 @@ CONFIRMED_WITHOUT_OUTCOME = (
     "normalize_text",
     "segment_text",
     "select",
+    "sklearn_estimator",
     "sum",
     "union",
 )
@@ -70,7 +71,7 @@ def test_combined_registry_has_the_exact_outcome_inventory() -> None:
     cards = registry.list_cards()
     observed = tuple(card.operator_id for card in cards if card.version == "3.0.0")
 
-    assert len(cards) == 85
+    assert len(cards) == 87
     assert observed == OUTCOME_IDS
     assert all(
         type(registry.resolve(operator_id)).__module__
@@ -83,7 +84,7 @@ def test_combined_registry_has_the_exact_outcome_inventory() -> None:
 def test_raw_defaults_remain_v1_while_planning_selects_v2() -> None:
     cards = default_registry().list_cards()
 
-    assert len(cards) == 32
+    assert len(cards) == 33
     assert all(card.version == "1.0.0" for card in cards)
     assert planner_module._PLANNER_OPERATOR_VERSION == "2.0.0"  # pyright: ignore[reportPrivateUsage]
 
@@ -94,7 +95,7 @@ def test_new_outcome_default_override_selects_only_the_requested_body(operator_i
     registry = default_registry(**{name: "3.0.0"})
     cards = registry.list_cards()
 
-    assert len(cards) == 32
+    assert len(cards) == 33
     assert (
         type(registry.resolve(operator_id)).__module__ == f"blue_data_ops.operators._{name}_outcome"
     )
