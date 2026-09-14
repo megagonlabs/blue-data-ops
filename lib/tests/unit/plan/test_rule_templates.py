@@ -307,7 +307,7 @@ def test_template_rejects_a_card_with_different_tags() -> None:
     assert str(caught.value) == "discovered 'project' metadata does not match the rule template"
 
 
-def test_template_rejects_a_non_v2_card() -> None:
+def test_template_rejects_a_card_outside_supported_admission() -> None:
     request = _project_sum_request()
     project, total = _snapshot("project", "sum").cards
     changed = OperatorCard(
@@ -319,7 +319,7 @@ def test_template_rejects_a_non_v2_card() -> None:
         when_to_invoke=project.when_to_invoke,
     )
 
-    with pytest.raises(PlanningError, match="metadata does not match"):
+    with pytest.raises(PlanningError, match="planning request is malformed"):
         project_then_aggregate_template("sum").generate(
             request,
             DiscoverySnapshot((changed, total)),

@@ -501,3 +501,5 @@ def test_checkpoint_leak_scanner_is_mutation_sensitive() -> None:
     assert not ordinary_json_hits, (
         f"scanner incorrectly flagged ordinary K5/REC2 JSON data: {ordinary_json_hits}"
     )
+
+    assert _filename_component_hits(Path("test_v3_d37_migration.py"))

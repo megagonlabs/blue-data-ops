@@ -16,4 +16,4 @@ Field order follows `kept_keys`. Missing fields are omitted. A record with none 
 
 Raw `apply()` returns `[]` for empty input or an empty `kept_keys` list. `invoke()` returns `None` for an invalid mapping. `run()` normalizes empty output to `[[]]`, contains failures and timeouts, and returns `{}` for `output_attributes`.
 
-`explain()` uses shared statistics. There is no external disclosure, side effect, or optional extra. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`explain()` uses shared statistics. There is no external disclosure, side effect, or optional extra.

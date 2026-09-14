@@ -14,7 +14,6 @@ from typing import cast
 
 from blue_data_ops.operators import OperatorRegistry
 from blue_data_ops.operators.types import AttributeSpec
-from blue_data_ops.plan import RefinableOperator
 
 SETTINGS_COLUMNS = (
     "Name",
@@ -25,7 +24,6 @@ SETTINGS_COLUMNS = (
     "Kind",
 )
 SETTING_KINDS = frozenset({"scalar", "presence", "structured", "seam", "namespace"})
-COMPATIBILITY_PACKAGE = "multipart_query@2.0.0"
 ADDED_SKILL_PACKAGE_IDS = (
     "avg@3.0.0",
     "classify@3.0.0",
@@ -217,27 +215,15 @@ def parse_settings(guide: str) -> tuple[SettingRow, ...]:
 
 def expected_v2_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     cards = tuple(card for card in registry.list_cards() if card.version == "2.0.0")
-    assert len(cards) == 36
-    refinable = {
-        card.operator_id
-        for card in cards
-        if isinstance(registry.resolve(card.operator_id), RefinableOperator)
-    }
-    assert len(refinable) == 4
-    assert COMPATIBILITY_PACKAGE in refinable
-    expected = {
-        card.operator_id
-        for card in cards
-        if card.operator_id not in refinable or card.operator_id == COMPATIBILITY_PACKAGE
-    }
-    assert len(expected) == 33
+    assert len(cards) == 32
+    expected = {card.operator_id for card in cards}
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
 
 
 def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     legacy = expected_v2_skill_package_ids(registry)
     expected = (*legacy, *ADDED_SKILL_PACKAGE_IDS)
-    assert len(expected) == len(set(expected)) == 54
+    assert len(expected) == len(set(expected)) == 53
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
 
 

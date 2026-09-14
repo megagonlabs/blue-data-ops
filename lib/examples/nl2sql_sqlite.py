@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from _sqlite_demo import build_demo_registry
 
-from blue_data_ops import NL2SQLOperator
+from blue_data_ops.operators import active_registry
 
 
 def main() -> None:
@@ -20,9 +20,10 @@ def main() -> None:
     if "OPENAI_API_KEY" not in os.environ:
         raise SystemExit("Set OPENAI_API_KEY before running this live-provider example.")
 
+    operator = active_registry().resolve("nl2sql@3.0.0")
     with TemporaryDirectory(prefix="blue-data-ops-") as directory:
         seam = build_demo_registry(directory)
-        output, _, meta = NL2SQLOperator().run(
+        output, _, meta = operator.run(
             [[]],
             {
                 "question": "Which region has the highest total order value?",
@@ -40,6 +41,7 @@ def main() -> None:
         )
         if meta.errors:
             raise RuntimeError(meta.errors[0].message)
+        assert operator.operator_id == "nl2sql@3.0.0"
         print(output)
 
 

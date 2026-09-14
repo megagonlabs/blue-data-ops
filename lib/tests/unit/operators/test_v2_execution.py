@@ -30,7 +30,6 @@ from blue_data_ops.operators import (
     Operator,
     OperatorRegistry,
     Properties,
-    QueryBreakdownOperator,
 )
 from blue_data_ops.operators.operator import apply_defaults
 
@@ -172,18 +171,12 @@ def test_only_incompatible_defaults_defer_materialization() -> None:
             for name, spec in DataDiscoverOperator.attributes.items()
             if not spec.materialize_default
         },
-        QueryBreakdownOperator.name: {
-            name
-            for name, spec in QueryBreakdownOperator.attributes.items()
-            if not spec.materialize_default
-        },
     }
 
     assert deferred == {
         "create_database": {"properties"},
         "create_table": {"properties"},
         "data_discover": {"scope", "source", "database", "collection"},
-        "query_breakdown": {"schema"},
     }
 
 
@@ -220,7 +213,6 @@ def test_only_incompatible_defaults_defer_materialization() -> None:
             DataDiscoverOperator(),
             {"search_query": "orders", "approximate": False, "collection": None},
         ),
-        (QueryBreakdownOperator(), {"query": "orders", "schema": []}),
     ],
 )
 def test_explicit_incompatible_defaults_remain_subject_to_validation(

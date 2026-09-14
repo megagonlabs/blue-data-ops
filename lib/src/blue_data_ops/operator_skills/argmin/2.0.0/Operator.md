@@ -16,4 +16,4 @@ Missing keys and values that fail numeric conversion are skipped. Equal numeric 
 
 `apply()` returns `[[]]` when no usable value exists. On empty outer input it also returns `[[]]`, or `[[{"indices": []}]]` when indices were requested. `invoke()` returns `None` for invalid settings. `run()` contains validation, execution, and timeout failures in `ExecMeta`, normalizes empty output to `[[]]`, and returns `{}` for `output_attributes`.
 
-`explain()` uses the shared statistics. The operator has no side effect, provider call, registry call, or optional extra. Its default raw `refiner()` returns `[]`; it has no structured `refine()` surface.
+`explain()` uses the shared statistics. The operator has no side effect, provider call, registry call, or optional extra.

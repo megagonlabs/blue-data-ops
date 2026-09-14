@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from blue_data_ops._deprecation import DEPRECATED_OPERATOR_NAMES
 from blue_data_ops.operators._discovery import (
     DiscoverySpec,
     normalize_filter_tag,
@@ -68,6 +67,8 @@ class OperatorRegistry:
         # the card: nothing serializes it, no caller can pass it, and no planning record
         # exports it.
         self._builtin_ids: set[str] = set()
+        self._reviewed_builtin_operators: dict[str, Operator] = {}
+        self._reviewed_builtin_cards: dict[str, OperatorCard] = {}
 
     def register(
         self,
@@ -97,16 +98,7 @@ class OperatorRegistry:
             operator._bind_operator_id(operator_id)  # pyright: ignore[reportPrivateUsage]
             bound_operator = operator
         except ValueError:
-            from blue_data_ops.plan.refiner import (
-                RefinableOperator,
-                _VersionBoundRefinableOperator,  # pyright: ignore[reportPrivateUsage]
-            )
-
-            bound_operator = (
-                _VersionBoundRefinableOperator(operator, operator_id)
-                if isinstance(operator, RefinableOperator)
-                else _VersionBoundOperator(operator, operator_id)
-            )
+            bound_operator = _VersionBoundOperator(operator, operator_id)
         card = OperatorCard(
             operator_id=operator_id,
             name=name,
@@ -127,21 +119,31 @@ class OperatorRegistry:
         tags: Sequence[str] = (),
         *,
         when_to_invoke: str = "",
+        reviewed: bool = False,
     ) -> OperatorCard:
-        """Register through the package factory and record built-in provenance.
+        """Register a package built-in and, when requested, its planning authority.
 
-        The only writer of `_builtin_ids`, and the only place the lifecycle flag is derived.
-        Public `register()` stays permissive and leaves a card unmarked and active, including
-        when it is called on a factory-built registry.
+        Public ``register()`` remains permissive. Raw compatibility factories use this
+        path without granting planner or model-facing authority.
         """
         card = self.register(
             operator,
             version,
             tags,
             when_to_invoke=when_to_invoke,
-            deprecated=operator.name in DEPRECATED_OPERATOR_NAMES,
         )
         self._builtin_ids.add(card.operator_id)
+        if reviewed:
+            self._reviewed_builtin_operators[card.operator_id] = self._operators[card.operator_id]
+            self._reviewed_builtin_cards[card.operator_id] = OperatorCard(
+                operator_id=card.operator_id,
+                name=card.name,
+                version=card.version,
+                description=card.description,
+                tags=card.tags,
+                when_to_invoke=card.when_to_invoke,
+                deprecated=card.deprecated,
+            )
         return card
 
     def resolve(self, operator_id: str) -> Operator:
@@ -242,18 +244,32 @@ def is_builtin_card(registry: object, card: object) -> bool:
     )
 
 
+def is_reviewed_builtin_card(registry: object, card: object) -> bool:
+    """Return whether a card still matches its reviewed planning registration."""
+
+    if not is_builtin_card(registry, card):
+        return False
+    typed_registry = cast(OperatorRegistry, registry)
+    typed_card = cast(OperatorCard, card)
+    operator_id = typed_card.operator_id
+    return (
+        typed_registry._reviewed_builtin_operators.get(operator_id)  # pyright: ignore[reportPrivateUsage]
+        is typed_registry._operators.get(operator_id)  # pyright: ignore[reportPrivateUsage]
+        and typed_registry._reviewed_builtin_cards.get(operator_id) == typed_card  # pyright: ignore[reportPrivateUsage]
+    )
+
+
 def _semver_key(version: str) -> tuple[int, int, int]:
     major, minor, patch = version.split(".")
     return int(major), int(minor), int(patch)
 
 
 def _builtin_operator_classes() -> tuple[type[Operator], ...]:
-    """The 36 built-in operator classes as one explicit, name-ordered tuple.
+    """The 32 retained built-in operator classes as one explicit, name-ordered tuple.
 
     Imported lazily so this module stays out of the operator/registry import
-    cycle (e.g. ``plan_discover_operator`` imports ``default_registry``). Both
-    public factories build their inventory from this single tuple; package
-    export scanning never decides the catalog.
+    cycle. All public factories build their inventory from this single tuple;
+    package export scanning never decides the catalog.
     """
     from blue_data_ops.operators.argmax_operator import ArgmaxOperator
     from blue_data_ops.operators.argmin_operator import ArgminOperator
@@ -270,15 +286,11 @@ def _builtin_operator_classes() -> tuple[type[Operator], ...]:
     from blue_data_ops.operators.join_operator import JoinOperator
     from blue_data_ops.operators.max_operator import MaxOperator
     from blue_data_ops.operators.min_operator import MinOperator
-    from blue_data_ops.operators.multipart_query_operator import MultipartQueryOperator
     from blue_data_ops.operators.nl2bn_operator import NL2BNOperator
     from blue_data_ops.operators.nl2llm_operator import NL2LLMOperator
-    from blue_data_ops.operators.nl2query_router_operator import NL2QueryRouterOperator
     from blue_data_ops.operators.nl2sql_operator import NL2SQLOperator
     from blue_data_ops.operators.normalize_text_operator import NormalizeTextOperator
-    from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
     from blue_data_ops.operators.project_operator import ProjectOperator
-    from blue_data_ops.operators.query_breakdown_operator import QueryBreakdownOperator
     from blue_data_ops.operators.segment_text_operator import SegmentTextOperator
     from blue_data_ops.operators.select_operator import SelectOperator
     from blue_data_ops.operators.semantic_extract_operator import SemanticExtractOperator
@@ -308,15 +320,11 @@ def _builtin_operator_classes() -> tuple[type[Operator], ...]:
         JoinOperator,
         MaxOperator,
         MinOperator,
-        MultipartQueryOperator,
         NL2BNOperator,
         NL2LLMOperator,
-        NL2QueryRouterOperator,
         NL2SQLOperator,
         NormalizeTextOperator,
-        PlanDiscoverOperator,
         ProjectOperator,
-        QueryBreakdownOperator,
         SegmentTextOperator,
         SelectOperator,
         SemanticExtractOperator,
@@ -411,10 +419,9 @@ def default_registry(**versions: Any) -> OperatorRegistry:
     e.g. ``default_registry(nl2sql="1.1.0")``. Unknown override keys are
     silently ignored.
 
-    This is the frozen v1 compatibility surface: it validates the built-in discovery metadata
-    fail-fast (so an invalid spec is caught), but registers **raw** cards without tags or
-    ``when_to_invoke``. That keeps the v1 MCP deployment's raw 36-tool inventory and byte-identical
-    v1 discovery. The enriched six-namespace metadata lives on ``versioned_registry()``.
+    This is the retained raw-v1 compatibility surface: it validates built-in discovery metadata
+    fail-fast, but registers cards without tags or ``when_to_invoke``. The enriched metadata lives
+    on ``active_registry()`` and ``versioned_registry()``.
     """
     _builtin_discovery_specs()  # fail-fast validation of the built-in metadata; raw v1 cards below
     outcome_classes = _outcome_operator_classes()
@@ -432,29 +439,22 @@ def default_registry(**versions: Any) -> OperatorRegistry:
 
 
 def versioned_registry() -> OperatorRegistry:
-    """Return 93 pinned cards, including 21 outcome operators at 3.0.0.
+    """Return 85 retained pinned cards, including 21 outcome operators at 3.0.0.
 
-    Separate instances back each exact version; the contract is
-    the selected behavior and pinned ID, not object identity. The 2.0.0
-    PlanDiscover instance discovers from this catalog itself, so its selected
-    v2 refinement can see v2 cards; the 1.0.0 instance keeps the constructor's
-    default-registry fallback, so raw v1 discovery never sees a v2 card. Every
-    card carries validated discovery metadata.
+    Separate instances back each exact version. Every card carries validated
+    discovery metadata.
     """
-    from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
-
     specs = _builtin_discovery_specs()
     outcome_classes = _outcome_operator_classes()
     registry = OperatorRegistry()
     for operator_class in _builtin_operator_classes():
         spec = specs[operator_class]
-        v2_operator = (
-            PlanDiscoverOperator(registry)
-            if operator_class is PlanDiscoverOperator
-            else operator_class()
-        )
         registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
-            v2_operator, "2.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
+            operator_class(),
+            "2.0.0",
+            tags=spec.tags,
+            when_to_invoke=spec.when_to_invoke,
+            reviewed=True,
         )
         registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
             operator_class(), "1.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
@@ -462,8 +462,73 @@ def versioned_registry() -> OperatorRegistry:
         outcome_class = outcome_classes.get(operator_class.name)
         if outcome_class is not None:
             registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
-                outcome_class(), "3.0.0", tags=spec.tags, when_to_invoke=spec.when_to_invoke
+                outcome_class(),
+                "3.0.0",
+                tags=spec.tags,
+                when_to_invoke=spec.when_to_invoke,
+                reviewed=True,
             )
+    return registry
+
+
+_ACTIVE_OPERATOR_VERSIONS: tuple[tuple[str, str], ...] = (
+    ("argmax", "2.0.0"),
+    ("argmin", "2.0.0"),
+    ("avg", "3.0.0"),
+    ("classify", "3.0.0"),
+    ("cluster", "3.0.0"),
+    ("create_database", "2.0.0"),
+    ("create_table", "2.0.0"),
+    ("data_discover", "2.0.0"),
+    ("delete", "2.0.0"),
+    ("insert", "3.0.0"),
+    ("insert_table", "3.0.0"),
+    ("intersect", "3.0.0"),
+    ("join", "3.0.0"),
+    ("max", "3.0.0"),
+    ("min", "3.0.0"),
+    ("nl2bn", "3.0.0"),
+    ("nl2llm", "3.0.0"),
+    ("nl2sql", "3.0.0"),
+    ("normalize_text", "2.0.0"),
+    ("project", "3.0.0"),
+    ("segment_text", "2.0.0"),
+    ("select", "2.0.0"),
+    ("semantic_extract", "3.0.0"),
+    ("semantic_filter", "3.0.0"),
+    ("semantic_join", "3.0.0"),
+    ("semantic_project", "3.0.0"),
+    ("semantic_transform", "3.0.0"),
+    ("sum", "2.0.0"),
+    ("union", "2.0.0"),
+    ("vector_embed", "3.0.0"),
+    ("vector_search", "3.0.0"),
+    ("vector_similarity", "3.0.0"),
+)
+_ACTIVE_OPERATOR_IDS: tuple[str, ...] = tuple(
+    f"{name}@{version}" for name, version in _ACTIVE_OPERATOR_VERSIONS
+)
+
+
+def active_registry() -> OperatorRegistry:
+    """Return a fresh registry containing the exact reviewed active built-ins."""
+
+    specs = _builtin_discovery_specs()
+    classes = {
+        operator_class.name: operator_class for operator_class in _builtin_operator_classes()
+    }
+    outcomes = _outcome_operator_classes()
+    registry = OperatorRegistry()
+    for name, version in _ACTIVE_OPERATOR_VERSIONS:
+        operator_class = outcomes[name] if version == "3.0.0" else classes[name]
+        spec = specs[classes[name]]
+        registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
+            operator_class(),
+            version,
+            tags=spec.tags,
+            when_to_invoke=spec.when_to_invoke,
+            reviewed=True,
+        )
     return registry
 
 

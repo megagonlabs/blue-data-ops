@@ -184,7 +184,7 @@ def test_list_cards_ordering(registry: OperatorRegistry) -> None:
 def test_default_registry_covers_package_operators() -> None:
     registry = default_registry()
     cards = registry.list_cards()
-    assert len(cards) == 36
+    assert len(cards) == 32
     names = {c.name for c in cards}
     # spot checks across families; every card is at 1.0.0 unless overridden
     for expected in ("select", "join", "nl2sql", "nl2bn", "data_discover", "semantic_join"):
@@ -290,7 +290,7 @@ def test_known_default_override_selects_the_new_outcome(operator_id: str) -> Non
     name = operator_id.split("@")[0]
     registry = default_registry(**{name: "3.0.0"})
     cards = registry.list_cards()
-    assert len(cards) == 36
+    assert len(cards) == 32
     assert all(card.tags == () and card.when_to_invoke == "" for card in cards)
     assert registry.get_card(f"{name}@1.0.0") is None
     assert all(card.version == "1.0.0" for card in cards if card.name != name)
@@ -316,7 +316,7 @@ def test_all_known_default_overrides_keep_unselected_raw_cards() -> None:
     registry = default_registry(avg="3.0.0", insert_table="3.0.0", join="3.0.0")
     baseline = default_registry()
     selected_names = {operator_id.split("@")[0] for operator_id in LANDED_OUTCOME_IDS}
-    assert len(registry.list_cards()) == 36
+    assert len(registry.list_cards()) == 32
     assert (
         tuple(card.operator_id for card in registry.list_cards() if card.name in selected_names)
         == LANDED_OUTCOME_IDS
@@ -335,7 +335,7 @@ def test_unrelated_arbitrary_default_override_keeps_legacy_outcome() -> None:
     assert operator.operator_id == "select@9.8.7"
     assert registry.get_card("select@1.0.0") is None
     assert registry.get_card("unknown_operator@3.0.0") is None
-    assert len(registry.list_cards()) == 36
+    assert len(registry.list_cards()) == 32
     data = [[{"score": 1}, {"score": 3}]]
     attributes = {"operand_key": "score", "operand": ">", "operand_val": 1}
     observed = operator.run(data, attributes)
@@ -385,12 +385,7 @@ def test_public_registration_never_derives_the_flag(registry: OperatorRegistry) 
     assert registry.register(_op("plan_discover"), "2.0.0").deprecated is False
 
 
-def test_the_builtin_factory_deprecates_the_plan_producing_operators() -> None:
+def test_the_builtin_factory_contains_no_retired_operators() -> None:
     cards = default_registry().list_cards()
-    assert sorted(c.operator_id for c in cards if c.deprecated) == [
-        "multipart_query@1.0.0",
-        "nl2query_router@1.0.0",
-        "plan_discover@1.0.0",
-        "query_breakdown@1.0.0",
-    ]
+    assert [c.operator_id for c in cards if c.deprecated] == []
     assert len([c for c in cards if not c.deprecated]) == 32

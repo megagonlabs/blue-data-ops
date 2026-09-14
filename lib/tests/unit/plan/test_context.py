@@ -926,7 +926,7 @@ def test_an_nl2sql_step_cannot_name_another_address(field: str, value: str) -> N
         PlanningStage.COMPILATION,
         "step 'query' must address the request data scope",
         False,
-        "Use discovered 2.0.0 operators in a valid bounded plan.",
+        "Use discovered supported pinned operators in a valid bounded plan.",
     )
 
 

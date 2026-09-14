@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 
 from blue_data_ops.operator_skills import OperatorSkillLoader
-from blue_data_ops.operators import OperatorCard, versioned_registry
+from blue_data_ops.operators import OperatorCard, active_registry, versioned_registry
 
 LIB_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = LIB_ROOT / "examples"
-ACTIVE_OFFLINE_EXAMPLES = (
+OFFLINE_EXAMPLES = (
     "core_quickstart.py",
     "sqlite_quickstart.py",
     "ml_quickstart.py",
@@ -25,8 +25,6 @@ ACTIVE_OFFLINE_EXAMPLES = (
     "operator_skill_integrations.py",
     "operator_outcomes.py",
 )
-LEGACY_OFFLINE_EXAMPLES = ("refinement.py",)
-OFFLINE_EXAMPLES = ACTIVE_OFFLINE_EXAMPLES + LEGACY_OFFLINE_EXAMPLES
 OPTIONAL_EXAMPLES = (
     "nl2llm.py",
     "nl2sql_sqlite.py",
@@ -34,9 +32,6 @@ OPTIONAL_EXAMPLES = (
 )
 SKILL_DISCOVERY_EXAMPLE = "operator_skill_discovery.py"
 SKILL_INELIGIBLE_OPERATOR_ID = "avg@1.0.0"
-LEGACY_REFINEMENT_IDS = frozenset(
-    {"multipart_query@2.0.0", "nl2query_router@2.0.0", "plan_discover@2.0.0"}
-)
 
 
 def _run_example(name: str) -> subprocess.CompletedProcess[str]:
@@ -45,8 +40,6 @@ def _run_example(name: str) -> subprocess.CompletedProcess[str]:
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in (source_path, env.get("PYTHONPATH", "")) if part
     )
-    # Warning visibility is asserted below, so an ambient PYTHONWARNINGS must not decide it.
-    env.pop("PYTHONWARNINGS", None)
     return subprocess.run(
         [sys.executable, str(EXAMPLES / name)],
         cwd=LIB_ROOT,
@@ -93,6 +86,18 @@ def _source_operator_ids(
             and node.args[0].value in cards
         ):
             source_ids.add(node.args[0].value)
+        for keyword in node.keywords:
+            if keyword.arg != "allowed_operator_ids" or not isinstance(
+                keyword.value, (ast.List, ast.Tuple)
+            ):
+                continue
+            for item in keyword.value.elts:
+                if (
+                    isinstance(item, ast.Constant)
+                    and isinstance(item.value, str)
+                    and item.value in cards
+                ):
+                    source_ids.add(item.value)
     return source_ids
 
 
@@ -120,13 +125,11 @@ def test_optional_example_is_valid_python(name: str) -> None:
     compile(source, str(EXAMPLES / name), "exec")
 
 
-def test_the_offline_partition_is_disjoint_and_covers_every_offline_example() -> None:
-    assert not set(ACTIVE_OFFLINE_EXAMPLES) & set(LEGACY_OFFLINE_EXAMPLES)
+def test_the_offline_partition_covers_every_offline_example() -> None:
     assert len(OFFLINE_EXAMPLES) == len(set(OFFLINE_EXAMPLES))
     runnable = {path.name for path in EXAMPLES.glob("*.py") if not path.name.startswith("_")}
     assert set(OFFLINE_EXAMPLES) == runnable - set(OPTIONAL_EXAMPLES)
-    # The eight names the flat offline tuple carried; a new example joins one side or the other.
-    assert set(OFFLINE_EXAMPLES) >= {
+    assert set(OFFLINE_EXAMPLES) == {
         "core_quickstart.py",
         "sqlite_quickstart.py",
         "ml_quickstart.py",
@@ -134,28 +137,20 @@ def test_the_offline_partition_is_disjoint_and_covers_every_offline_example() ->
         "embedding_planner.py",
         "operator_skill_discovery.py",
         "operator_skill_integrations.py",
-        "refinement.py",
+        "operator_outcomes.py",
     }
 
 
-def test_the_legacy_examples_name_exactly_the_retained_refinement_ids() -> None:
+def test_ordinary_examples_use_the_active_registry_and_exact_active_ids() -> None:
     cards, class_ids = _registry_view()
-    claimed: set[str] = set()
-    for name in LEGACY_OFFLINE_EXAMPLES:
-        claimed |= _source_operator_ids(EXAMPLES / name, cards, class_ids)
-
-    assert claimed == set(LEGACY_REFINEMENT_IDS)
-    assert all(cards[operator_id].deprecated for operator_id in claimed)
-
-
-def test_ordinary_examples_name_no_deprecated_operator() -> None:
-    cards, class_ids = _registry_view()
-    deprecated_ids = {operator_id for operator_id, card in cards.items() if card.deprecated}
-    assert deprecated_ids
-
-    for name in ACTIVE_OFFLINE_EXAMPLES + OPTIONAL_EXAMPLES:
+    active_ids = {card.operator_id for card in active_registry().list_cards()}
+    for name in OFFLINE_EXAMPLES + OPTIONAL_EXAMPLES:
+        if name == SKILL_DISCOVERY_EXAMPLE:
+            continue
+        source = (EXAMPLES / name).read_text(encoding="utf-8")
         named = _source_operator_ids(EXAMPLES / name, cards, class_ids)
-        assert not named & deprecated_ids, name
+        assert "active_registry" in source, name
+        assert named <= active_ids, name
 
 
 def test_the_skill_ineligibility_sentinel_is_a_used_source_constant() -> None:
@@ -181,22 +176,10 @@ def test_the_skill_ineligibility_sentinel_is_a_used_source_constant() -> None:
     ]
     assert len(asserted_on) >= 2
 
-    deprecated_names = {card.name for card in registry.list_cards() if card.deprecated}
-    assert deprecated_names
-    assert sentinel.split("@")[0] not in deprecated_names
-    for name in deprecated_names:
+    retired_names = {"multipart_query", "nl2query_router", "plan_discover", "query_breakdown"}
+    assert not {card.name for card in registry.list_cards()} & retired_names
+    for name in retired_names:
         assert name not in source
-
-
-def test_the_legacy_example_surfaces_the_package_deprecation_warning() -> None:
-    result = _run_example("refinement.py")
-
-    assert result.returncode == 0, result.stderr
-    assert result.stderr.count("BlueDataOpsDeprecationWarning") == len(LEGACY_REFINEMENT_IDS)
-    for operator_id in LEGACY_REFINEMENT_IDS:
-        assert f"operator {operator_id.split('@')[0]!r}" in result.stderr
-    outcomes = [line.split(":", 1)[0] for line in result.stdout.strip().splitlines()]
-    assert outcomes == ["multipart", "router", "discovery"]
 
 
 def test_the_skill_discovery_example_expands_only_the_eligible_card() -> None:
@@ -227,31 +210,32 @@ def test_example_map_covers_public_tag_families() -> None:
         path.name for path in EXAMPLES.glob("*.py") if not path.name.startswith("_")
     }
     assert mapped_examples == runnable_examples
-    cards, class_ids = _registry_view()
+    history_cards, class_ids = _registry_view()
+    active_cards = {card.operator_id: card for card in active_registry().list_cards()}
     claimed_ids: set[str] = set()
     for example, operator_ids in coverage["examples"].items():
-        source_ids = _source_operator_ids(EXAMPLES / example, cards, class_ids)
+        source_ids = _source_operator_ids(EXAMPLES / example, history_cards, class_ids)
         assert source_ids == set(operator_ids), example
         claimed_ids.update(source_ids)
-    assert claimed_ids <= cards.keys()
+    assert claimed_ids <= active_cards.keys()
 
     reference_only = set(coverage["reference_only_axes"])
-    live_axes = {tag.split("-", 1)[0] for card in cards.values() for tag in card.tags}
+    live_axes = {tag.split("-", 1)[0] for card in active_cards.values() for tag in card.tags}
     assert reference_only <= live_axes
     expected = {
         tag
-        for card in cards.values()
+        for card in active_cards.values()
         for tag in card.tags
         if tag.split("-", 1)[0] not in reference_only
     }
-    represented = {tag for operator_id in claimed_ids for tag in cards[operator_id].tags}
+    represented = {tag for operator_id in claimed_ids for tag in active_cards[operator_id].tags}
     assert expected <= represented
 
 
 def test_every_capability_has_generated_reference_coverage() -> None:
     text = (LIB_ROOT / "OPERATORS.md").read_text(encoding="utf-8")
-    cards = [card for card in versioned_registry().list_cards() if card.version == "2.0.0"]
-    assert len(cards) == 36
+    cards = active_registry().list_cards()
+    assert len(cards) == 32
     live_axes = {tag.split("-", 1)[0] for card in cards for tag in card.tags}
     for axis in live_axes:
         assert f"| `{axis}-*` |" in text

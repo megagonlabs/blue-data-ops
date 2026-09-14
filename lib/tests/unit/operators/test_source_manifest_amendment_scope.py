@@ -382,14 +382,9 @@ def test_discovery_fixture_lifecycle_oracle() -> None:
 
 
 def test_live_cards_carry_the_frozen_lifecycle_flags() -> None:
-    # Fails until OperatorCard gains `deprecated`. getattr keeps this module type-checkable
-    # against 2.7.0, where the attribute does not exist.
     cards = assert_legacy_cards(versioned_registry().list_cards())
-    assert len(cards) == 72
+    assert len(cards) == 64
     lifecycle = {card.operator_id: getattr(card, "deprecated", _ABSENT) for card in cards}
     missing = sorted(oid for oid, flag in lifecycle.items() if flag is _ABSENT)
     assert missing == [], f"OperatorCard.deprecated absent for {len(missing)} cards"
-    wrong = {
-        oid: flag for oid, flag in lifecycle.items() if flag is not (oid in DEPRECATED_OPERATOR_IDS)
-    }
-    assert wrong == {}, f"live flags disagree with the frozen oracle: {wrong}"
+    assert all(flag is False for flag in lifecycle.values())

@@ -15,4 +15,4 @@
 
 Raw `apply()` returns `[]` for empty outer input and `[[]]` when input groups contain no records. `run()` normalizes either to `[[]]` and marks it empty. Invalid input produces structured validation output from `run()` and `None` from `invoke()`; direct `apply()` can raise `ValueError` once it builds a signature. Successful `output_attributes` is `{}`.
 
-`explain()` uses shared statistics. The operator has no provider, registry, optional dependency, or side effect. Its default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`explain()` uses shared statistics. The operator has no provider, registry, optional dependency, or side effect.

@@ -17,7 +17,6 @@ from blue_data_ops.operators.types import (
     Properties,
 )
 from blue_data_ops.plan.pipeline import DataPipeline, Entity, Node
-from blue_data_ops.plan.refiner import RefinableOperator
 from blue_data_ops.plan.types import EntityType, NodeType, Status
 
 
@@ -238,10 +237,6 @@ class PipelineExecutor:
             raise PipelineError(
                 f"operator node {node_id!r} cannot resolve {operator_id!r}"
             ) from None
-        if isinstance(operator, RefinableOperator):
-            raise PipelineError(
-                f"operator node {node_id!r} requires a materialized non-refinable operator"
-            )
         try:
             call_attributes = deepcopy(cast(Attributes, attributes))
         except Exception:

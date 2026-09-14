@@ -24,4 +24,4 @@ KMeans and Gaussian mixture need at least `n_cluster` usable vectors. DBSCAN nee
 
 Empty input returns `[[]]`. Missing counts and ragged vectors can raise before the guarded model call. Model failures are caught by raw `apply()` and return the original first group, while `run()` reports `EXECUTION_FAILED`. Missing NumPy or scikit-learn propagates on raw calls and becomes the same generic structured failure; it does not receive the LLM-extra installation suggestion.
 
-`output_attributes` is `{}`. `explain()` uses shared statistics. There is no provider disclosure or persistent side effect. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`output_attributes` is `{}`. `explain()` uses shared statistics. There is no provider disclosure or persistent side effect.

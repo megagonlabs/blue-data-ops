@@ -1,54 +1,22 @@
 # Compatibility
 
-`blue-data-ops` tracks the Blue operator contract while installing on its own. The first section records what 2.8.0 deprecates and when it goes away. If you are porting code off Blue, the sections near the end on utilities, errors, the service client, and similarity tell you where behavior differs and what to use instead. The sections between them record deliberate differences from Blue's reference behavior; maintainers should preserve them across upgrades and change them only through a versioned compatibility decision.
+`blue-data-ops` tracks the Blue operator contract while installing on its own. This file records the 3.0 migration boundary and deliberate differences from Blue's reference behavior. The utility, error, service-client, and similarity sections near the end cover porting details.
 
-## Deprecated in 2.8.0
+## Core 3.0 removals
 
-Two groups of public surfaces are deprecated in 2.8.0 and removed in 3.0.0. Both keep working for the rest of 2.x. This release adds a lifecycle flag and a warning; it does not stop importing, resolving, or calling anything.
+Core 3.0 removes the four plan-producing operator names, all eight of their v1/v2 exact IDs, and the refinement API deprecated in 2.8.0. The removed API includes `refiner()`, `refine()`, `PipelinePlanner.plan_refinement()`, `RefinableOperator`, `DeclarativeOperator`, the module-level refiner helpers, and the four MCP `__refine` companions.
 
-The first group is the four plan-producing operators. Their `@1.0.0` and `@2.0.0` cards carry `OperatorCard.deprecated`, so eight of `versioned_registry()`'s 93 cards are flagged and the other 85 are not. The registry contains 36 cards at `@1.0.0`, 36 at `@2.0.0`, and 21 current additions at `@3.0.0`. Registry lookup, `find()`, embedding search, and exact `resolve()` all still return the flagged cards.
+`BlueDataOpsDeprecationWarning` remains importable as a compatibility category. Package 3.0 no longer emits it because the package-owned deprecated surfaces that used it have been removed.
 
-The second group is the refinement seam, and it covers every operator rather than only those four: raw `refiner()`, normalized `refine()`, `PipelinePlanner.plan_refinement()`, the `RefinableOperator` and `DeclarativeOperator` classes, the `*_operator_refiner` and sibling module helpers those operators export, and the four `__refine` companions on the MCP adapter.
+The registry now contains 85 historical cards: 32 at `@1.0.0`, 32 at `@2.0.0`, and 21 at `@3.0.0`. `active_registry()` selects the 32 ordinary exact IDs for current discovery and execution. The generated reference and MCP default use that same selection. Operator-skill resources contain 53 packages: 32 retained v2 packages and 21 v3 packages.
 
-`OperatorCard.deprecated`, the keyword-only `register(..., deprecated=...)` argument, and the `BlueDataOpsDeprecationWarning` category are themselves public for the rest of 2.x. Reading the flag is the supported way to ask whether a card is on its way out; a name list in caller code goes stale.
+Exact resolution of `multipart_query`, `nl2query_router`, `plan_discover`, or `query_breakdown` at versions 1 or 2 through a package registry raises `ResolveError`. A stored `DataPipeline` containing one of those IDs still parses through `from_dict()`, then fails executor preflight at exact resolution.
 
-### The warning
+The supported manual migration covers two cases. Replace a `DeclarativeOperator` used as an executable leaf with an ordinary `Operator` subclass. For one fixed graph, construct and execute a materialized `DataPipeline` directly, or implement `PlanGenerator.generate()` to return `Sequence[PlanDraft]` for `PipelinePlanner`.
 
-A deprecated public call emits one `BlueDataOpsDeprecationWarning` per top-level entry, attributed to the calling line rather than to package internals. Package calls nested inside that entry add no further warnings, so a loop over records reports once per call you made, not once per operator the package touched.
+Core 3.0 does not preserve automatic refinement or automatic expansion of old declarative plan definitions. The tested graph successor covers one fixed linear expansion. It does not preserve dynamic alternatives, malformed-plan normalization, raw v1 refiner behavior, or a general `DeclarativeOperator` subclass hierarchy. This supported manual subset is non-drop-in. Callers that need the removed semantics should remain on a compatible core 2.x/MCP 0.x pair, such as core 2.10.0 with MCP 0.12.0.
 
-The category is exported from `blue_data_ops` and subclasses `DeprecationWarning`, so CPython's default filters hide it outside `__main__`. Where compatibility use is intentional, silence that one category:
-
-```python
-import warnings
-
-from blue_data_ops import BlueDataOpsDeprecationWarning
-
-warnings.filterwarnings("ignore", category=BlueDataOpsDeprecationWarning)
-```
-
-Running the interpreter under `-W error` promotes every deprecation in the process, including ones from unrelated libraries. Use it to find call sites during a migration; it is not a setting to ship with.
-
-### Planning admission
-
-`PipelinePlanner.discover()` still returns deprecated `@2.0.0` cards, so compatibility discovery and `plan_refinement()` keep their v2 results. Ordinary `plan()` now drops deprecated cards before admission, and it drops them without spending the request's `max_discovery_cards` budget. A discovery limit that used to fill with deprecated cards therefore admits active ones instead, which is a visible change in what `plan()` can select even though no operator was removed.
-
-`DataPipeline`, `PipelineExecutor`, rule-based generation, and the injected-client LLM planning path are unaffected and remain the supported local integration paths.
-
-### Saved plans that name a deprecated operator
-
-A stored `DataPipeline` record whose nodes name a deprecated operator still parses through `from_dict()`, and each `operator_id` still resolves. Take inventory by walking the restored plan's operator entities and reading `deprecated` off each resolved card; the README shows the loop.
-
-Executing such a plan was already rejected before 2.8.0 and still is. `PipelineExecutor.preflight()` and `execute()` raise `PipelineError` because a plan-producing operator is not a materialized execution node, which is the established boundary rather than a new lifecycle check.
-
-### What 3.0.0 removes
-
-3.0.0 removes the deprecated calls and their resolution. Planned effects, none of which apply to 2.8.0:
-
-- the 36-card v1 view and 36-card v2 view each lose four cards, while all 21 current `@3.0.0` cards remain; the exact catalog therefore goes from 93 cards to 85, dropping all eight flagged cards;
-- the MCP catalog goes from 40 tools to 32, dropping four primaries and all four `__refine` companions;
-- operator-skill packages go from 54 to 53 as the retained `multipart_query@2.0.0` package goes with its operator;
-- twenty public names disappear: sixteen module-level functions and the four operator classes;
-- nine tags carried only by those cards leave the taxonomy, among them `capability-query-routing`, `flow-plan`, and `produces-plan`. `domain-plan` stays, carried by `data_discover`.
+Nine tags used only by the retired cards leave the taxonomy, including `capability-query-routing`, `flow-plan`, and `produces-plan`. `domain-plan` remains on `data_discover`.
 
 ## Maximum of non-numeric input
 
@@ -76,13 +44,15 @@ The LLM output `sub` transformation passes its configured replacement string to 
 
 ## Ordinary attribute validation
 
-The ordinary three-argument `Operator.validate(input_data, attributes, properties)` path returns `False` for values the reference implementation would fail on after lax coercion, such as incomparable types. `multipart_query` and `nl2query_router` preserve Blue's two-argument `validate(attributes, properties)` call shape and are not compatible with the inherited three-argument `invoke()` path; use `refine()` for their normalized plan output.
+The ordinary three-argument `Operator.validate(input_data, attributes, properties)` path returns `False` for values the reference implementation would fail on after lax coercion, such as incomparable types.
 
 ## Raw and canonical execution
 
-`apply()`, `validate()`, and `invoke()` preserve raw Blue-compatible call shapes through v2.x. For ordinary data operators, `apply()` calls the transform directly and `invoke()` runs boolean validation, returning `None` when validation is false. The two plan-producing exceptions named above expose only their two-argument Blue validation shape, so their inherited `invoke()` path raises `TypeError`. Exceptions from transforms are not converted into execution metadata on raw paths.
+`apply()`, `validate()`, and `invoke()` preserve raw Blue-compatible call shapes. `apply()` calls the transform directly and `invoke()` runs boolean validation, returning `None` when validation is false. Exceptions from transforms are not converted into execution metadata on raw paths.
 
-`run()` is the canonical v2 boundary. It materializes canonical defaults, validates, normalizes empty output to `[[]]`, and returns `(output_data, output_attributes, exec_meta)`. Recoverable, failed, and timed-out outcomes appear in `exec_meta.errors`. The same split applies to plan operators: raw `refiner()` returns serialized records, while normalized `refine()` returns `DataPipeline` objects and `ExecMeta`.
+`run()` is the canonical structured boundary. It materializes canonical defaults, validates, normalizes empty output to `[[]]`, and returns `(output_data, output_attributes, exec_meta)`. Recoverable, failed, and timed-out outcomes appear in `exec_meta.errors`.
+
+`PipelineExecutor.execute()` returns a `PipelineRun`. Its final data is in `output_data`, and its ordered `node_runs` tuple holds one `NodeRun` per completed operator node. Read `node_run.exec_meta` for that node's structured outcome. Operator failures after preflight remain in this metadata; `failed_node_id` identifies the first failed node and `succeeded` reports whether execution completed.
 
 ## Tool and operator metadata
 
@@ -98,19 +68,17 @@ Portable data pipelines replace the reference runtime synchronizer with an optio
 
 Operator entities store only pinned `operator_id` values in `name@<MAJOR.MINOR.PATCH>` form. Bare names, deployment routes, and host addresses are rejected so serialized plans remain deterministic and deployment-neutral.
 
-Plan-producing operators emit the canonical live record through `to_dict()`. The reference implementation used the generic `get_data()` accessor for this emission path; both expose the same live record, but `to_dict()` is the portable serialization boundary.
+`to_dict()` is the portable serialization boundary for a materialized plan.
 
-`PipelineExecutor` is the package-local replacement for the smallest in-process part of Blue's `DataPlanner`: it validates a materialized graph, aggregates predecessor output, resolves exact operator IDs, calls `run()`, and updates node status and value. It intentionally does not reproduce Blue's Redis/pubsub synchronization, service clients, remote routing, recursive subplan merge, retry, or replanning. Refinement remains a separate step because the portable node record does not carry an alternative-selection policy.
+`PipelineExecutor` is the package-local replacement for the smallest in-process part of Blue's `DataPlanner`: it validates a materialized graph, aggregates predecessor output, resolves exact operator IDs, calls `run()`, and updates node status and value. It does not reproduce Blue's Redis/pubsub synchronization, service clients, remote routing, recursive subplan merge, retry, or replanning.
 
 ## Planning boundaries
 
-`PipelinePlanner` builds a compiled `DataPipeline` from a goal or from one normalized refinement call. It is not a local port of Blue's `DataPlanner` and does not grow into one: it plans once and stops. There is no refinement loop, no replanning after a failed node, no remote dispatch, and no automatic choice among multiple alternatives under the default selector. A caller that wants a different plan builds a new `PlanningRequest`.
-
-`plan_refinement()` accepts one explicit package-built `@2.0.0` refinement source. The request's nonempty exact-ID allowlist must admit the source and every child. The planner calls `refine()` once, rejects a bad batch as a whole, projects the complete portable graphs into drafts, and freshly compiles and preflights the selected draft. It does not collect a data-context snapshot or disclose packaged operator skill text. A scoped request remains anchored through compilation, including the source, database, and collection on an `nl2sql` child.
+`PipelinePlanner` builds a compiled `DataPipeline` from a goal. It is not a local port of Blue's `DataPlanner`: it plans once and stops. There is no retry, replanning after a failed node, remote dispatch, or automatic choice among multiple alternatives under the default selector. A caller that wants a different plan builds a new `PlanningRequest`.
 
 Two boundaries are deliberate and should survive upgrades.
 
-The planner compiles only pinned `@2.0.0` operator ids that its own discovery returned, so a generator cannot introduce an operator the caller's discovery filters excluded. The compiler additionally requires an `nl2sql` step to address the same source, database, and collection the request scoped. That is an address-consistency check on the step's attributes, not a table authorization boundary: nothing constrains the tables the generated SQL reads, and `DataScope.entities` stays advisory planning context.
+The planner compiles only admitted, supported exact operator IDs that its own discovery returned, so a generator cannot introduce an operator excluded by the caller's filters. Admission may include the active built-in set, explicitly allowed retained v2/v3 built-ins, or caller-created v2 cards used with a caller-owned rule or generator. The compiler additionally requires an `nl2sql` step to address the source, database, and collection named by the request. This is an address-consistency check, not table authorization: generated SQL may still read tables outside `DataScope.entities`.
 
 Planning raises `PlanningError` where operator execution returns errors inside `ExecMeta`. This is the one place the package reports a recoverable outcome by raising, and it is deliberate: planning either produces a compiled pipeline or produces nothing, so there is no partial result to carry a record. `PlanningError` subclasses `ValueError` and exposes `record`. It carries the same fields as the operator `ErrorRecord` apart from `operator_id`, which planning has no value for, and its `stage` is a `PlanningStage` rather than an `ErrorStage`.
 
@@ -143,7 +111,7 @@ Helpers outside the operator surface are not carried over: most of `json_utils`,
 
 This package does not provide `BlueError` or the `ErrorLoom` catching mixin. Both are tied to Blue's agent and service runtime, and the package reports failures through its own result model instead:
 
-- `run()` (and `refine()` for plan-producing operators) returns execution metadata whose `errors` list holds structured records with a stable category, code, operator id, stage, message, retryability flag, and optional suggestion. A recoverable problem such as invalid input is reported this way, not raised.
+- `run()` returns execution metadata whose `errors` list holds structured records with a stable category, code, operator id, stage, message, retryability flag, and optional suggestion. A recoverable problem such as invalid input is reported this way, not raised.
 - Resolving an unknown or malformed operator id raises `ResolveError` (from `blue_data_ops.operators`).
 - The LLM client raises `LLMError` (from `blue_data_ops.llm`) for transport and provider failures.
 - Pipeline preflight and invalid execution input raise `PipelineError` (from `blue_data_ops.plan`). An operator failure after preflight is returned in `PipelineRun` instead.
@@ -152,10 +120,10 @@ This package does not provide `BlueError` or the `ErrorLoom` catching mixin. Bot
 `run()` returns a `(output_data, output_attributes, meta)` tuple, so `except BlueError` becomes reading `meta.errors`:
 
 ```python
-from blue_data_ops.operators import ResolveError, versioned_registry
+from blue_data_ops.operators import ResolveError, active_registry
 from blue_data_ops.llm import LLMError
 
-op = versioned_registry().resolve("select@2.0.0")
+op = active_registry().resolve("select@2.0.0")
 output_data, output_attributes, meta = op.run(data, attributes)
 for error in meta.errors:  # structured records instead of a raised BlueError
     print(error.category, error.code, error.message)

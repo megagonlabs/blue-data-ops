@@ -1,8 +1,8 @@
 # blue-data-ops
 
-A standalone Python library of Blue data operators: record-oriented transforms and registry-backed database operations.
+A standalone Python library of Blue data operators: record transforms, registry-backed database operations, and local pipeline planning. Version 3.0 exposes 32 active exact operator IDs and keeps older non-retired IDs in an explicit history registry.
 
-The package lives in [`lib/`](lib/). See [`lib/README.md`](lib/README.md) for requirements, installation, usage, the operator catalog, and compatibility notes.
+The package lives in [`lib/`](lib/). See [`lib/README.md`](lib/README.md) for requirements, installation, usage, the operator catalog, and compatibility notes. Its [Discovery section](lib/README.md#discovery) explains the six tag axes and shows how to enumerate and filter them. The generated [operator reference](lib/OPERATORS.md#tag-taxonomy) lists the active values and each card's tags.
 
 ## Quick start
 

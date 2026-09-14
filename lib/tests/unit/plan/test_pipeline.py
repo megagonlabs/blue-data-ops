@@ -233,6 +233,24 @@ def test_merge_imports_live_layers_and_nested_endpoints_without_connecting_graph
     assert host.get_prev_nodes(host_output) == []
 
 
+def test_diagram_projects_retained_refinement_statuses() -> None:
+    pipeline = DataPipeline(id="status-history")
+    refining = pipeline.define_input("refining")
+    refined = pipeline.define_output("refined")
+    explicit = pipeline.define_output("explicit", properties={"progress": 0.9})
+    pipeline.set_node_status(refining, Status.REFINING)
+    pipeline.set_node_status(refined, Status.REFINED)
+    pipeline.set_node_status(explicit, Status.REFINING)
+    diagram = {
+        item["data"]["name"]: item["data"] for item in pipeline.to_jsonform_diagram_json()["nodes"]
+    }
+    assert diagram["refining"]["status"] == Status.REFINING
+    assert diagram["refined"]["status"] == Status.REFINED
+    assert diagram["refining"]["progress"] == 0.5
+    assert diagram["refined"]["progress"] == 0.25
+    assert diagram["explicit"]["progress"] == 0.9
+
+
 def test_diagram_adapter_deduplicates_edges_and_infers_progress() -> None:
     pipeline = DataPipeline()
     first = pipeline.define_input("first")

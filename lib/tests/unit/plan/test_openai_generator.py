@@ -16,7 +16,12 @@ from typing import Any, cast
 
 import pytest
 
-from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, versioned_registry
+from blue_data_ops.operators.registry import (
+    OperatorCard,
+    OperatorRegistry,
+    default_registry,
+    versioned_registry,
+)
 from blue_data_ops.operators.select_operator import SelectOperator
 from blue_data_ops.operators.types import ErrorCategory
 from blue_data_ops.plan import (
@@ -276,12 +281,38 @@ def test_the_package_factory_catalog_is_accepted() -> None:
     assert len(client.create_calls) == 1
 
 
+def test_raw_default_override_cannot_erase_write_policy_before_a_call() -> None:
+    registry = default_registry(create_database="2.0.0")
+    operator_id = "create_database@2.0.0"
+    card = registry.get_card(operator_id)
+    assert card is not None
+    assert card.tags == ()
+    client = RecordingClient(completed(candidates(step("write", operator_id, {}))))
+    generator = OpenAIPlanGenerator(
+        MODEL,
+        registry=registry,
+        allowed_operator_ids=(operator_id,),
+        client=client,
+    )
+    request = PlanningRequest(
+        goal="Create a database",
+        discovery_queries=(DiscoveryQuery("create_database"),),
+        allowed_operator_ids=(operator_id,),
+    )
+
+    with pytest.raises(PlanningError, match="requires supported built-in") as caught:
+        generator.generate(request, DiscoverySnapshot((card,)), None)
+
+    assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
+    assert client.calls == []
+
+
 def test_a_permissive_custom_registry_is_rejected_before_any_call() -> None:
     custom = OperatorRegistry()
     custom.register(SelectOperator(), "2.0.0")
     generator, _, client = build(registry=custom)
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards") as caught:
+    with pytest.raises(PlanningError, match="requires supported built-in") as caught:
         generator.generate(orders_request(), discovery_of(custom, ("select@2.0.0",)), None)
 
     assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
@@ -298,7 +329,7 @@ def test_a_custom_card_added_to_a_factory_registry_is_rejected() -> None:
         registry=registry, allowed_operator_ids=("custom_select@2.0.0",) + ALLOWED
     )
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards"):
+    with pytest.raises(PlanningError, match="requires supported built-in"):
         generator.generate(orders_request(), DiscoverySnapshot((custom_card,)), None)
 
     assert client.calls == []
@@ -310,7 +341,7 @@ def test_a_card_from_a_second_factory_instance_is_rejected() -> None:
     generator, _, client = build()
     other = versioned_registry()
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards"):
+    with pytest.raises(PlanningError, match="requires supported built-in"):
         generator.generate(orders_request(), discovery_of(other), None)
 
     assert client.calls == []
@@ -377,52 +408,20 @@ def test_an_allowlist_of_only_write_cards_never_reaches_a_provider() -> None:
 
 # --- 3b. Deprecated cards are never offered and never accepted ---------------------- #
 DEPRECATED_ID = "plan_discover@2.0.0"
-DEPRECATED_IDS = (
-    DEPRECATED_ID,
-    "multipart_query@2.0.0",
-    "nl2query_router@2.0.0",
-    "query_breakdown@2.0.0",
-)
-AVG_ONLY_PAYLOAD = candidates(step("average", "avg@2.0.0", AVG_ATTRIBUTES))
 
 
-def test_a_deprecated_card_is_never_offered_to_the_model() -> None:
+def test_a_retired_id_is_rejected_before_provider_work() -> None:
     registry = versioned_registry()
-    allowed = (DEPRECATED_ID, "avg@2.0.0")
-    generator, _, client = build(
-        registry=registry,
-        client=RecordingClient(completed(AVG_ONLY_PAYLOAD)),
-        allowed_operator_ids=allowed,
-    )
-
-    generator.generate(orders_request(), discovery_of(registry, allowed), None)
-
-    document = json.loads(client.create_calls[0]["input"][0]["content"])
-    assert [entry["operator_id"] for entry in document["operators"]] == ["avg@2.0.0"]
-
-
-def test_a_model_selected_deprecated_card_is_rejected_at_decode() -> None:
-    registry = versioned_registry()
-    allowed = (DEPRECATED_ID, "avg@2.0.0")
-    payload = candidates(step("plan", DEPRECATED_ID, {"goal": "plan it"}))
+    client = RecordingClient(completed(candidates(step("average", "avg@2.0.0", AVG_ATTRIBUTES))))
     generator, _, _ = build(
         registry=registry,
-        client=RecordingClient(completed(payload)),
-        allowed_operator_ids=allowed,
+        client=client,
+        allowed_operator_ids=(DEPRECATED_ID,),
     )
 
-    with pytest.raises(PlanningError, match="unauthorized operator") as caught:
-        generator.generate(orders_request(), discovery_of(registry, allowed), None)
-
-    assert caught.value.record.code is PlanningErrorCode.GENERATION_RESULT_INVALID
-
-
-def test_a_snapshot_of_only_deprecated_cards_never_reaches_a_provider() -> None:
-    registry = versioned_registry()
-    generator, _, client = build(registry=registry, allowed_operator_ids=DEPRECATED_IDS)
-
-    with pytest.raises(PlanningError, match="no authorized operators were discovered") as caught:
-        generator.generate(orders_request(), discovery_of(registry, DEPRECATED_IDS), None)
+    assert registry.get_card(DEPRECATED_ID) is None
+    with pytest.raises(PlanningError, match="no authorized operators") as caught:
+        generator.generate(orders_request(), DiscoverySnapshot(()), None)
 
     assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
     assert client.calls == []
@@ -450,27 +449,11 @@ def test_a_forged_card_fails_provenance_rather_than_the_lifecycle_skip(forged_fl
         registry=registry, allowed_operator_ids=(DEPRECATED_ID, "avg@2.0.0")
     )
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards") as caught:
+    with pytest.raises(PlanningError, match="requires supported built-in") as caught:
         generator.generate(orders_request(), DiscoverySnapshot((forged,)), None)
 
     assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
     assert client.calls == []
-
-
-def test_a_deprecated_card_outside_the_allowlist_is_still_skipped_by_the_allowlist() -> None:
-    """The allowlist must not be what hides the cohort in the tests above."""
-
-    registry = versioned_registry()
-    generator, _, client = build(
-        registry=registry,
-        client=RecordingClient(completed(AVG_ONLY_PAYLOAD)),
-        allowed_operator_ids=("avg@2.0.0",),
-    )
-
-    generator.generate(orders_request(), discovery_of(registry, (DEPRECATED_ID, "avg@2.0.0")), None)
-
-    document = json.loads(client.create_calls[0]["input"][0]["content"])
-    assert [entry["operator_id"] for entry in document["operators"]] == ["avg@2.0.0"]
 
 
 # --- 4. Disclosure ordering --------------------------------------------------------- #
@@ -1199,7 +1182,7 @@ def test_a_malformed_declaration_fails_before_any_provider_traffic() -> None:
     object.__setattr__(resolved, "attributes", ["not", "a", "declaration"])
     generator, _, client = build(registry=registry)
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards") as caught:
+    with pytest.raises(PlanningError, match="requires supported built-in") as caught:
         generator.generate(orders_request(), discovery_of(registry), cast(Any, FakeSnapshot()))
 
     assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID

@@ -4,8 +4,14 @@ import re
 from collections.abc import Sequence
 
 from blue_data_ops.operator_skills import OperatorSkillLoader
-from blue_data_ops.operators import OperatorEmbeddingIndex, versioned_registry
-from blue_data_ops.plan import DiscoveryQuery, PipelinePlanner, PlanningRequest, RulePlanGenerator
+from blue_data_ops.operators import OperatorEmbeddingIndex, active_registry
+from blue_data_ops.plan import (
+    SELECT_THEN_AVERAGE_TEMPLATE,
+    DiscoveryQuery,
+    PipelinePlanner,
+    PlanningRequest,
+    RulePlanGenerator,
+)
 
 
 class KeywordEmbedder:
@@ -21,7 +27,7 @@ class KeywordEmbedder:
 
 
 def main() -> None:
-    registry = versioned_registry()
+    registry = active_registry()
     loader = OperatorSkillLoader(registry)
     eligible_ids = set(loader.available_operator_ids())
 
@@ -34,12 +40,22 @@ def main() -> None:
     assert embedding_selected.name == "avg"
     assert embedding_descriptor.card is embedding_selected
 
-    planner = PipelinePlanner(registry, RulePlanGenerator())
-    request = PlanningRequest(
-        goal="average values",
-        discovery_queries=(DiscoveryQuery("average", tags=("domain-arithmetic",), limit=1),),
+    planner = PipelinePlanner(
+        registry,
+        RulePlanGenerator([SELECT_THEN_AVERAGE_TEMPLATE]),
     )
-    snapshot = planner.discover(request)
+    request = PlanningRequest(
+        goal="average values above zero",
+        discovery_queries=(
+            DiscoveryQuery("select", tags=("capability-filter",), limit=1),
+            DiscoveryQuery("average", tags=("domain-arithmetic",), limit=1),
+        ),
+        operator_attributes={
+            "select": {"operand_key": "value", "operand": ">", "operand_val": 0},
+            "avg": {"avg_key": "value", "output_key": "average_value"},
+        },
+    )
+    snapshot = planner.plan(request).discovery
     planner_selected = snapshot.one("avg")
     assert planner_selected.operator_id in eligible_ids
     planner_descriptor = loader.describe(planner_selected.operator_id)

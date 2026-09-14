@@ -292,8 +292,12 @@ def bind_case(case: dict[str, Any], directory: Path) -> Generator[BoundCall, Non
     bound = BoundCall(data, attributes, {}, Observation())
     setup = case.get("setup")
     if setup == SQLITE_SETUP:
-        from blue_data.registry.data_registry import DataRegistry
-        from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+        from blue_data.registry.data_registry import (  # pyright: ignore[reportMissingTypeStubs]
+            DataRegistry,
+        )
+        from blue_data.source.sql.sqlite.sqlite_sql_source import (  # pyright: ignore[reportMissingTypeStubs]
+            SQLiteDBSource,
+        )
 
         from blue_data_ops.data import RegistrySeam
 

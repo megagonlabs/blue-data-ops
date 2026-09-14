@@ -1,10 +1,4 @@
-"""Discovery compatibility: PlanDiscover v1/v2 views, the OperatorDiscover facade, the Blue
-``DeclarativeOperator`` import path, and the explicit legacy-id upgrader.
-
-None of the compatibility surfaces enters a built-in registry or the primary card catalog:
-``OperatorDiscoverOperator`` and ``DeclarativeOperator`` have no card, and ``question_answer`` has
-no core recipe. ``resolve()`` and ``DataPipeline.from_dict()`` never upgrade a stored reference.
-"""
+"""Retained discovery facade and explicit legacy-ID upgrade compatibility."""
 
 from __future__ import annotations
 
@@ -14,7 +8,6 @@ from typing import Any, cast
 import pytest
 
 from blue_data_ops.operators import (
-    DeclarativeOperator,
     DiscoveryError,
     EmbeddingDiscoveryError,
     OperatorDiscoverOperator,
@@ -25,24 +18,10 @@ from blue_data_ops.operators import (
     upgrade_legacy_operator_id,
     versioned_registry,
 )
-from blue_data_ops.operators import operator as operator_module
 from blue_data_ops.operators.registry import (
     _builtin_operator_classes,  # pyright: ignore[reportPrivateUsage]
 )
-from blue_data_ops.plan import DataPipeline, RefinableOperator
-from blue_data_ops.plan import pipeline as pipeline_module
-from tests.unit.operators._plan_operator_helpers import operator_ids
-
-
-def _id_sequence() -> Any:
-    current = 0
-
-    def next_id() -> str:
-        nonlocal current
-        current += 1
-        return f"catalog_{current:04d}"
-
-    return next_id
+from blue_data_ops.plan import DataPipeline
 
 
 # --------------------------------------------------------------------------------------------------
@@ -193,84 +172,6 @@ def test_facade_run_contains_embedding_errors() -> None:
     assert meta.errors[0].message == "operator execution failed"
 
 
-# --------------------------------------------------------------------------------------------------
-# PlanDiscover v1/v2 views
-# --------------------------------------------------------------------------------------------------
-def test_v1_plan_discover_emits_v1_children_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    operator = cast(RefinableOperator, versioned_registry().resolve("plan_discover@1.0.0"))
-    plans, meta = operator.refine([[]], {"task": "select", "data": "rows", "approximate": True})
-    assert meta.errors == [] and plans
-    for plan in plans:
-        assert {i.rpartition("@")[2] for i in operator_ids(plan.to_dict())} == {"1.0.0"}
-
-
-def test_v2_plan_discover_emits_v2_children_and_filters_by_tags(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    operator = cast(RefinableOperator, versioned_registry().resolve("plan_discover@2.0.0"))
-    plans, meta = operator.refine(
-        [[]],
-        {
-            "task": "records",
-            "data": "rows",
-            "approximate": True,
-            "tags": ["flow-transform", "domain-relational"],
-        },
-    )
-    assert meta.errors == [] and plans
-    matched = {i.partition("@")[0] for plan in plans for i in operator_ids(plan.to_dict())}
-    assert matched <= {"delete", "insert", "project", "select"}
-    for plan in plans:
-        assert {i.rpartition("@")[2] for i in operator_ids(plan.to_dict())} == {"2.0.0"}
-
-
-def test_v2_plan_discover_limit_applies_after_the_filter(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    operator = cast(RefinableOperator, versioned_registry().resolve("plan_discover@2.0.0"))
-    plans, meta = operator.refine(
-        [[]], {"task": "records", "data": "rows", "approximate": True, "limit": 1}
-    )
-    assert meta.errors == []
-    assert len(plans) == 1
-
-
-def test_v2_plan_discover_never_falls_back_from_an_injected_registry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from blue_data_ops.operators import OperatorRegistry
-    from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
-
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    empty = OperatorRegistry()  # injected, empty: no fallback to default_registry
-    operator = PlanDiscoverOperator(empty)
-    plans, meta = operator.refine([[]], {"task": "select", "data": "rows", "approximate": True})
-    assert meta.errors == []
-    assert plans == []  # empty injected registry yields no starter plans, never a v1 fallback
-
-
-# --------------------------------------------------------------------------------------------------
-# DeclarativeOperator compatibility import path (no card)
-# --------------------------------------------------------------------------------------------------
-def test_declarative_operator_has_the_blue_compatible_import_path() -> None:
-    from blue_data_ops.operators.operator import DeclarativeOperator as FromOperatorModule
-
-    assert FromOperatorModule is DeclarativeOperator
-    assert operator_module.DeclarativeOperator is DeclarativeOperator
-    assert issubclass(DeclarativeOperator, RefinableOperator)
-
-
-def test_declarative_operator_has_no_registry_card() -> None:
-    assert DeclarativeOperator not in _builtin_operator_classes()
-    assert "declarative" not in {c.name for c in versioned_registry().list_cards()}
-
-
-def test_operator_module_getattr_rejects_unknown_names() -> None:
-    with pytest.raises(AttributeError):
-        _ = operator_module.NotARealSymbol  # type: ignore[attr-defined]
-
-
 def test_question_answer_has_no_core_recipe() -> None:
     names = {c.name for c in versioned_registry().list_cards()}
     assert "question_answer" not in names
@@ -339,44 +240,23 @@ def test_resolve_and_from_dict_never_upgrade_implicitly() -> None:
 
     registry = versioned_registry()
     with pytest.raises(ResolveError):
-        registry.resolve("select")  # bare name is never silently upgraded
-    # a serialized v1 plan keeps its exact pinned ids through DataPipeline.from_dict round-trip
-    operator = cast(RefinableOperator, registry.resolve("plan_discover@1.0.0"))
-    plans, _ = operator.refine([[]], {"task": "select", "data": "rows", "approximate": True})
-    if plans:
-        record = plans[0].to_dict()
-        assert DataPipeline.from_dict(record).to_dict() == record
-        assert all(i.endswith("@1.0.0") for i in operator_ids(record))
+        registry.resolve("select")
 
+    pipeline = DataPipeline(label="historical exact-id record")
+    source_node = pipeline.define_input("input")
+    selected = pipeline.define_operator(
+        "select@1.0.0",
+        attributes={"operand_key": "value", "operand": "eq", "operand_val": 1},
+    )
+    output_node = pipeline.define_output("output")
+    pipeline.connect_nodes(source_node, selected)
+    pipeline.connect_nodes(selected, output_node)
+    pipeline.set_plan_input(source_node)
+    pipeline.set_plan_output(output_node)
+    record = pipeline.to_dict()
 
-def test_v2_plan_discover_rejects_malformed_tags_before_the_registry() -> None:
-    from blue_data_ops.operators import ErrorCategory, ErrorCode, ErrorStage, OperatorRegistry
-    from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
-
-    class _SpyRegistry(OperatorRegistry):
-        def __init__(self) -> None:
-            super().__init__()
-            self.find_calls = 0
-
-        def find(self, query: str, tags: Any = None) -> Any:
-            self.find_calls += 1
-            return super().find(query, tags)
-
-    spy = _SpyRegistry()  # the discovery source
-    host = OperatorRegistry()
-    operator = PlanDiscoverOperator(spy)
-    host.register(operator, "2.0.0")  # bind as plan_discover@2.0.0 so the v2 path is selected
-    bound = cast(RefinableOperator, host.resolve("plan_discover@2.0.0"))
-
-    for bad in (["BAD TAG"], ["flow-\thead"], [123], "flow-plan"):
-        _, meta = bound.refine(
-            [[]], {"task": "find", "data": "rows", "approximate": True, "tags": bad}
-        )
-        error = meta.errors[0]
-        assert error.category is ErrorCategory.RECOVERABLE
-        assert error.code is ErrorCode.INVALID_INPUT
-        assert error.stage is ErrorStage.VALIDATE
-    assert spy.find_calls == 0  # malformed tags are rejected before any registry access
+    assert DataPipeline.from_dict(record).to_dict() == record
+    assert registry.resolve("select@1.0.0").operator_id == "select@1.0.0"
 
 
 def test_upgrade_rejects_an_ambiguous_name_alias_collision() -> None:

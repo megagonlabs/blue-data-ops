@@ -1,7 +1,7 @@
-"""Representative outcomes for all 36 versioned operators.
+"""Representative outcomes for the 32 retained v2 operators.
 
 Expectations come from ``tests/fixtures/v2_operator_outcomes.json``. Deterministic
-doubles replace external services, not operator bodies or refiners.
+doubles replace external services, not operator bodies.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from blue_data_ops import ErrorCode, ErrorStage, ExecMeta
 from blue_data_ops.llm import LLMClient
 from blue_data_ops.operators import Operator, versioned_registry
 from blue_data_ops.operators.types import Attributes, DataBundle
-from blue_data_ops.plan import DataPipeline, RefinableOperator
 from blue_data_ops.plan import pipeline as pipeline_module
 from tests.unit.operators._outcome_test_helpers import (
     RecordingSeam,
@@ -55,12 +54,11 @@ def _reconstruct(obj: Any) -> Any:
 # Expectations load from the checked-in fixture so mutation controls exercise the assertions.
 _FIXTURE: dict[str, Any] = _reconstruct(json.loads(_FIXTURE_PATH.read_text()))
 _ROWS: dict[str, dict[str, Any]] = {row["name"]: row for row in _FIXTURE["rows"]}
-_NAMES: list[str] = sorted(_ROWS)
-_PLAN: set[str] = {name for name, row in _ROWS.items() if row["is_refinable"]}
+_NAMES: list[str] = sorted(name for name, row in _ROWS.items() if not row["is_refinable"])
 
 
 # --------------------------------------------------------------------------------------------------
-# Boundary doubles keyed by profile. Nothing here replaces a body or refiner.
+# Boundary doubles keyed by profile. Nothing here replaces an operator body.
 # --------------------------------------------------------------------------------------------------
 class _Boundary:
     def __init__(
@@ -157,16 +155,6 @@ def _v1(name: str) -> Operator:
     return versioned_registry().resolve(f"{name}@1.0.0")
 
 
-def _refine(
-    operator: Operator,
-    input_data: DataBundle,
-    attributes: Attributes,
-    properties: dict[str, Any] | None,
-) -> tuple[list[DataPipeline], ExecMeta]:
-    """Call refine() through the RefinableOperator surface (the 4 plan operators)."""
-    return cast(RefinableOperator, operator).refine(input_data, attributes, properties)
-
-
 def _case(name: str, key: str) -> dict[str, Any]:
     return cast("dict[str, Any]", _ROWS[name]["cases"][key])
 
@@ -201,19 +189,13 @@ def _invoke_raw(
         if check.get("with_properties"):
             return operator.validate(input_data, attrs, properties)
         return operator.validate(input_data, attrs)
-    if method == "refiner":
-        return cast(RefinableOperator, operator).refiner(input_data, attrs, properties)
     raise AssertionError(f"unknown raw method {method!r}")
 
 
-def _spy_body(operator: Operator, kind: str, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
-    """Count real _execute/_refiner entries by wrapping (not replacing) the body.
-
-    Recoverable-invalid input must never enter the real body; this sees the pure/refiner path the
-    LLM-client / registry-seam no-call check cannot.
-    """
+def _spy_body(operator: Operator, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Count real _execute entries by wrapping, without replacing the operator body."""
     counter = {"n": 0}
-    attr = "_refiner" if kind == "refine" else "_execute"
+    attr = "_execute"
     original: Any = getattr(operator, attr)
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -227,12 +209,12 @@ def _spy_body(operator: Operator, kind: str, monkeypatch: pytest.MonkeyPatch) ->
 # --------------------------------------------------------------------------------------------------
 # Structural and mutation controls
 # --------------------------------------------------------------------------------------------------
-def test_exactly_the_36_versioned_names() -> None:
+def test_exactly_the_32_retained_versioned_names() -> None:
     registry_names = sorted(
         {c.operator_id.split("@")[0] for c in versioned_registry().list_cards()}
     )
     assert registry_names == _NAMES
-    assert len(_NAMES) == 36
+    assert len(_NAMES) == 32
     assert _FIXTURE["operator_count"] == 36
 
 
@@ -244,7 +226,8 @@ def test_fixture_is_canonical_json_with_expected_structure() -> None:
     assert parsed["operator_count"] == 36
     assert set(parsed) >= {"operator_count", "source_manifest", "rows"}
     assert set(parsed["source_manifest"]) >= {"files", "aggregate_sha256"}
-    assert {row["name"] for row in parsed["rows"]} == set(_NAMES)
+    assert {row["name"] for row in parsed["rows"]} == set(_ROWS)
+    assert set(_NAMES) < set(_ROWS)
 
 
 def test_source_manifest_matches_current_sources() -> None:
@@ -255,12 +238,9 @@ def test_source_manifest_matches_current_sources() -> None:
         name: hashlib.sha256((src / f"{name}_operator.py").read_bytes()).hexdigest()
         for name in _NAMES
     }
-    assert recomputed == _FIXTURE["source_manifest"]["files"]
-    lines = [f"{recomputed[n]}  src/blue_data_ops/operators/{n}_operator.py" for n in _NAMES]
-    aggregate = hashlib.sha256("\n".join(lines).encode() + b"\n").hexdigest()
-    assert aggregate == _FIXTURE["source_manifest"]["aggregate_sha256"]
-
-    row_manifest = {name: row["source_sha256"] for name, row in _ROWS.items()}
+    expected_files = _FIXTURE["source_manifest"]["files"]
+    assert recomputed == {name: expected_files[name] for name in _NAMES}
+    row_manifest = {name: _ROWS[name]["source_sha256"] for name in _NAMES}
     assert row_manifest == recomputed
 
 
@@ -276,20 +256,8 @@ def test_selected_version_identity(name: str) -> None:
 @pytest.mark.parametrize("name", _NAMES)
 def test_success(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _case(name, "success")
-    kind = case.get("kind", "run")
     boundary = _build_boundary(case.get("profile", "none"), case.get("config", {}), monkeypatch)
     operator = _v2(name)
-
-    if kind == "refine":
-        plans, meta = _refine(
-            operator,
-            copy.deepcopy(case["input"]),
-            copy.deepcopy(case["attributes"]),
-            boundary.properties,
-        )
-        assert meta.errors == []
-        assert len(plans) >= case.get("min_plans", 1)
-        return
 
     caller_attrs = copy.deepcopy(case["attributes"])
     out, out_attrs, meta = operator.run(
@@ -301,13 +269,9 @@ def test_success(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
         f"{name}: output_attributes must not alias the caller dict"
     )
     _assert_side_effects(name, case, boundary)
-    # The plan operators' raw compute run() is a documented successful-empty placeholder; their
-    # productive path is refine() (test_refine_success).
     if case.get("is_empty"):
         assert_successful_empty((out, out_attrs, meta))
         return
-    # The plan operators' raw compute run() is a documented successful-empty placeholder;
-    # their productive path is refine() (test_refine_success).
     assert meta.is_empty is False
     if case.get("expected_output") is not None:
         assert out == case["expected_output"], f"{name}: {out!r}"
@@ -346,23 +310,14 @@ def test_successful_empty_or_no_result(name: str, monkeypatch: pytest.MonkeyPatc
 @pytest.mark.parametrize("name", _NAMES)
 def test_recoverable_invalid_input(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _case(name, "invalid")
-    kind = case.get("kind", "run")
     boundary = _build_boundary(case.get("profile", "none"), case.get("config", {}), monkeypatch)
     operator = _v2(name)
     op_id = f"{name}@2.0.0"
-    body_calls = _spy_body(operator, kind, monkeypatch)
+    body_calls = _spy_body(operator, monkeypatch)
 
-    if kind == "refine":
-        _, meta = _refine(
-            operator,
-            copy.deepcopy(case["input"]),
-            copy.deepcopy(case["attributes"]),
-            boundary.properties,
-        )
-    else:
-        _, _, meta = operator.run(
-            copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
-        )
+    _, _, meta = operator.run(
+        copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
+    )
     error = assert_recoverable_invalid(meta, op_id)
     assert case["suggestion_substr"] in (error.suggestion or ""), (
         f"{name}: {error.suggestion!r} lacks {case['suggestion_substr']!r}"
@@ -374,34 +329,23 @@ def test_recoverable_invalid_input(name: str, monkeypatch: pytest.MonkeyPatch) -
 @pytest.mark.parametrize("name", [n for n in _NAMES if _ROWS[n]["cases"].get("failure")])
 def test_contained_failure(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
     case = _case(name, "failure")
-    kind = case.get("kind", "run")
     boundary = _build_boundary(case.get("profile", "none"), case.get("config", {}), monkeypatch)
     operator = _v2(name)
     op_id = f"{name}@2.0.0"
     code = _CODE[case["code"]]
     stage = _STAGE[case["stage"]]
 
-    if kind == "refine":
-        out, meta = _refine(
-            operator,
-            copy.deepcopy(case["input"]),
-            copy.deepcopy(case["attributes"]),
-            boundary.properties,
-        )
-        assert out == []
-    else:
-        out, out_attrs, meta = operator.run(
-            copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
-        )
-        assert out == [[]]
-        assert out_attrs == {}
+    out, out_attrs, meta = operator.run(
+        copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
+    )
+    assert out == [[]]
+    assert out_attrs == {}
     assert_contained_failure(meta, op_id, code, stage)
 
 
 @pytest.mark.parametrize("name", _NAMES)
 def test_raw_v1_divergence(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Execute the row's raw v1 claim: invoke the raw apply()/validate()/refiner() and assert the
-    # concrete result or exception, so the raw-v1 note is evidence, not prose.
+    # Execute the row's raw v1 claim through apply() or validate() and check its concrete result.
     check = _case(name, "raw_v1")
     assert isinstance(check.get("note"), str) and check["note"]
     if "from_case" in check:
@@ -434,21 +378,12 @@ def test_selected_error_identity(name: str, monkeypatch: pytest.MonkeyPatch) -> 
     # The recoverable-invalid edge suppresses the body, so it exercises the selected-version error
     # identity without a provider call: v1 carries name@1.0.0, v2 carries name@2.0.0.
     case = _case(name, "invalid")
-    kind = case.get("kind", "run")
     for version, expected in (("1.0.0", f"{name}@1.0.0"), ("2.0.0", f"{name}@2.0.0")):
         boundary = _build_boundary(case.get("profile", "none"), case.get("config", {}), monkeypatch)
         operator = versioned_registry().resolve(f"{name}@{version}")
-        if kind == "refine":
-            _, meta = _refine(
-                operator,
-                copy.deepcopy(case["input"]),
-                copy.deepcopy(case["attributes"]),
-                boundary.properties,
-            )
-        else:
-            _, _, meta = operator.run(
-                copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
-            )
+        _, _, meta = operator.run(
+            copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
+        )
         assert first_error(meta).operator_id == expected
 
 
@@ -461,14 +396,6 @@ def test_result_containers_are_fresh(name: str, monkeypatch: pytest.MonkeyPatch)
     def _run(case: dict[str, Any]) -> tuple[Any, ExecMeta]:
         boundary = _build_boundary(case.get("profile", "none"), case.get("config", {}), monkeypatch)
         operator = _v2(name)
-        if case.get("kind") == "refine":
-            _, meta = _refine(
-                operator,
-                copy.deepcopy(case["input"]),
-                copy.deepcopy(case["attributes"]),
-                boundary.properties,
-            )
-            return {}, meta
         out_attrs, meta = operator.run(
             copy.deepcopy(case["input"]), copy.deepcopy(case["attributes"]), boundary.properties
         )[1:]
@@ -487,43 +414,6 @@ def test_result_containers_are_fresh(name: str, monkeypatch: pytest.MonkeyPatch)
     _, d_meta = _run(invalid)
     assert c_meta.errors is not d_meta.errors
     assert c_meta.errors[0] is not d_meta.errors[0], f"{name}: ErrorRecord container reused"
-
-
-# --------------------------------------------------------------------------------------------------
-# Plan-family refinement (production, empty, failure)
-# --------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("name", sorted(_PLAN))
-def test_refine_success(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    case = _case(name, "refine_success")
-    boundary = _build_boundary(case.get("profile", "plan"), case.get("config", {}), monkeypatch)
-    operator = _v2(name)
-    plans, meta = _refine(
-        operator,
-        copy.deepcopy(case["input"]),
-        copy.deepcopy(case["attributes"]),
-        boundary.properties,
-    )
-    assert meta.errors == []
-    assert meta.is_empty is False
-    assert len(plans) >= case.get("min_plans", 1)
-    for plan in plans:
-        assert isinstance(plan.to_dict(), dict)  # the plan serializes to a mapping
-
-
-@pytest.mark.parametrize("name", sorted(_PLAN))
-def test_refine_empty(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    case = _case(name, "refine_empty")
-    boundary = _build_boundary(case.get("profile", "plan"), case.get("config", {}), monkeypatch)
-    operator = _v2(name)
-    plans, meta = _refine(
-        operator,
-        copy.deepcopy(case["input"]),
-        copy.deepcopy(case["attributes"]),
-        boundary.properties,
-    )
-    assert plans == []
-    assert meta.is_empty is True
-    assert meta.errors == []
 
 
 # --------------------------------------------------------------------------------------------------
@@ -625,21 +515,3 @@ def test_timeout_data_registry_family() -> None:
     assert started.wait(timeout=1.0)
     assert finished.wait(timeout=1.0)
     assert seam.hits == 1, "the real registry search is entered exactly once"
-
-
-def test_timeout_refinement_family(monkeypatch: pytest.MonkeyPatch) -> None:
-    started, finished = threading.Event(), threading.Event()
-    client = _SlowClient(started, finished)
-    monkeypatch.setattr(pipeline_module, "_new_id", id_sequence())
-    operator = _v2("query_breakdown")
-    plans, meta = _refine(
-        operator,
-        [[]],
-        {"query": "count roles"},
-        {"llm_client": client, "execution.timeout_seconds": 0.02},
-    )
-    assert plans == []
-    assert_timeout(meta, "query_breakdown@2.0.0", ErrorStage.REFINE)
-    assert started.wait(timeout=1.0)
-    assert client.calls == 1
-    assert finished.wait(timeout=1.0)

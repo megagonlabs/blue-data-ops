@@ -1,7 +1,7 @@
 """Versioned registry discovery and metadata validation.
 
 The checked-in catalog covers card metadata, validation, resolution, ranking,
-tag filtering, custom registrations, and the 36-card v2 selection.
+tag filtering, custom registrations, and the retained 32-card v2 selection.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ _FIXTURE_PATH = _LIB / "tests/fixtures/v2_discovery_catalog.json"
 
 _FIXTURE: dict[str, Any] = json.loads(_FIXTURE_PATH.read_text())
 _CARDS: dict[str, dict[str, Any]] = {card["operator_id"]: card for card in _FIXTURE["cards"]}
-_NAMES: list[str] = sorted({card["name"] for card in _FIXTURE["cards"]})
+_NAMES: list[str] = sorted({card.name for card in LEGACY_CARDS})
 
 
 # --------------------------------------------------------------------------------------------------
@@ -67,18 +67,16 @@ def test_source_manifest_matches_current_sources() -> None:
         name: hashlib.sha256((src / f"{name}_operator.py").read_bytes()).hexdigest()
         for name in _NAMES
     }
-    assert recomputed == _FIXTURE["source_manifest"]["files"]
-    lines = [f"{recomputed[n]}  src/blue_data_ops/operators/{n}_operator.py" for n in _NAMES]
-    aggregate = hashlib.sha256("\n".join(lines).encode() + b"\n").hexdigest()
-    assert aggregate == _FIXTURE["source_manifest"]["aggregate_sha256"]
+    expected_files = _FIXTURE["source_manifest"]["files"]
+    assert recomputed == {name: expected_files[name] for name in _NAMES}
 
 
-def test_exactly_36_names_and_72_cards() -> None:
+def test_exactly_32_retained_names_and_64_legacy_cards() -> None:
     cards = assert_legacy_cards(versioned_registry().list_cards())
     registry_names = sorted({c.name for c in cards})
-    assert len(cards) == 72
+    assert len(cards) == 64
     assert registry_names == _NAMES
-    assert len(_NAMES) == 36
+    assert len(_NAMES) == 32
     assert _FIXTURE["operator_count"] == 36
     assert _FIXTURE["card_count"] == 72
 
@@ -129,7 +127,7 @@ def test_catalog_comparator_rejects_missing_or_duplicate_cards(mutation: str) ->
         cards.append(cards[0])
     else:
         cards = [card for card in cards if card.operator_id != "avg@3.0.0"]
-    with pytest.raises(AssertionError, match="93 distinct"):
+    with pytest.raises(AssertionError, match="85 distinct"):
         _assert_catalog(cards)
     if mutation != "missing-added":
         with pytest.raises(AssertionError, match="legacy inventory/order"):
@@ -147,7 +145,7 @@ def test_catalog_comparator_rejects_unexpected_ids(operator_id: str, replace_add
         cards[index] = unexpected
     else:
         cards.append(unexpected)
-    with pytest.raises(AssertionError, match="inventory|93 distinct"):
+    with pytest.raises(AssertionError, match="inventory|85 distinct"):
         _assert_catalog(cards)
     with pytest.raises(AssertionError, match="unexpected operator IDs"):
         assert_legacy_cards(cards)
@@ -173,7 +171,7 @@ def test_catalog_comparator_rejects_altered_old_metadata(change: dict[str, Any])
         _assert_catalog(cards)
 
 
-@pytest.mark.parametrize("operator_id", ["avg@3.0.0", "plan_discover@2.0.0"])
+@pytest.mark.parametrize("operator_id", ["avg@3.0.0", "avg@2.0.0"])
 def test_catalog_comparator_rejects_wrong_lifecycle_flags(operator_id: str) -> None:
     cards = _synthetic_catalog()
     index = next(i for i, card in enumerate(cards) if card.operator_id == operator_id)
@@ -248,9 +246,9 @@ def test_builtin_validation_rejects_malformed_specs(bad: DiscoverySpec) -> None:
         validate_builtin_discovery("probe", bad)
 
 
-def test_all_36_builtin_specs_validate() -> None:
+def test_all_32_builtin_specs_validate() -> None:
     specs = _builtin_discovery_specs()
-    assert len(specs) == 36  # the validation pre-pass ran on every built-in without raising
+    assert len(specs) == 32
 
 
 # --------------------------------------------------------------------------------------------------
@@ -415,22 +413,19 @@ def test_multi_valued_axes_are_published() -> None:
     assert "capability-embedding-filter" in join
 
 
-def test_frozen_v2_selection_is_36_ids_inside_the_72_card_catalog() -> None:
+def test_retained_v2_selection_is_32_ids_inside_the_85_card_catalog() -> None:
     cards = versioned_registry().list_cards()
     v2_ids = sorted(c.operator_id for c in cards if c.version == "2.0.0")
     assert v2_ids == sorted(f"{name}@2.0.0" for name in _NAMES)
-    assert len(v2_ids) == 36
+    assert len(v2_ids) == 32
     resolved = versioned_registry()
     for operator_id in v2_ids:
         assert resolved.resolve(operator_id).operator_id == operator_id
 
 
-def test_default_registry_is_36_raw_v1_cards_preserving_the_frozen_mcp_surface() -> None:
-    # default_registry() is the frozen v1 compatibility surface: raw cards (no tags/when_to_invoke),
-    # so the v1 MCP deployment's raw 36-tool inventory and byte-identical v1 discovery are kept.
-    # The enriched six-namespace metadata lives on versioned_registry()'s 93 cards.
+def test_default_registry_is_32_raw_v1_cards() -> None:
     cards = default_registry().list_cards()
-    assert len(cards) == 36
+    assert len(cards) == 32
     assert all(c.version == "1.0.0" for c in cards)
     assert all(c.tags == () and c.when_to_invoke == "" for c in cards)
     # versioned_registry() carries the metadata on both versions

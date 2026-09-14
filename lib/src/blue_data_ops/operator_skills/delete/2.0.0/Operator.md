@@ -15,4 +15,4 @@ Negative positions count from the end. Duplicate positions are removed once and 
 
 Raw `apply()` returns `[]` for empty outer input or an empty first group. `invoke()` returns `None` for an invalid setting. `run()` materializes the default list, contains failures, normalizes an empty result to `[[]]`, and returns `{}` for `output_attributes`.
 
-`explain()` uses shared statistics. There is no external disclosure, side effect, or optional extra. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`explain()` uses shared statistics. There is no external disclosure, side effect, or optional extra.

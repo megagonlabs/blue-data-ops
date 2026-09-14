@@ -18,4 +18,4 @@ Repeated key matches produce the Cartesian combinations for that key. `keep_keys
 
 Raw guards return `[]` when the number of key lists does not equal the number of input groups, or when supplied suffixes repeat. A valid join with no matches returns `[[]]`. Empty outer input and a single empty group return `[]`; two input groups with an empty side return `[[]]`. `invoke()` returns `None` for settings rejected by validation, but guard failures can pass validation and return `[]`. `run()` normalizes these empty shapes to `[[]]`, contains exceptions, and returns `{}` for `output_attributes`.
 
-`explain()` uses shared statistics. There is no external disclosure, side effect, or optional extra. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`explain()` uses shared statistics. There is no external disclosure, side effect, or optional extra.

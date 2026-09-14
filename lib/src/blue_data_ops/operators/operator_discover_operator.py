@@ -7,7 +7,7 @@ from blue_data_ops.operators.embedding_discovery import (
     OperatorEmbeddingIndex,
 )
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.registry import OperatorRegistry, default_registry
+from blue_data_ops.operators.registry import OperatorRegistry, active_registry
 from blue_data_ops.operators.types import (
     Attributes,
     AttributeSpec,
@@ -66,7 +66,7 @@ class OperatorDiscoverOperator(Operator):
         if hybrid:
             raise EmbeddingDiscoveryError("MODE_UNAVAILABLE")
 
-        registry = self._registry if self._registry is not None else default_registry()
+        registry = self._registry if self._registry is not None else active_registry()
         query = attributes.get("search_query", "")
         tags = attributes.get("tags") or None
         if approximate:

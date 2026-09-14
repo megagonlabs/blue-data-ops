@@ -15,16 +15,10 @@ from blue_data_ops.operators import (
     NL2LLMOperator,
     Operator,
     OperatorRegistry,
-    PlanDiscoverOperator,
     SelectOperator,
 )
-from blue_data_ops.operators.plan_discover_operator import (
-    plan_discover_operator_validator,
-)
-from blue_data_ops.plan import RefinableOperator
 from blue_data_ops.tools import Tool
 from blue_data_ops.tools.tool import Tool as ModuleTool
-from tests.unit.operators._plan_operator_helpers import operator_ids
 
 DATA = [[{"value": 1}]]
 
@@ -64,15 +58,6 @@ def custom_explainer(
     return {"output": output, "inputs": len(input_data), "attributes": attributes}
 
 
-def custom_refiner(
-    input_data: list[list[dict[str, Any]]],
-    attributes: dict[str, Any],
-    properties: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    del properties
-    return [{"groups": len(input_data), "attributes": attributes}]
-
-
 class ProbeOperator(Operator):
     name = "metadata_probe"
     description = "metadata probe"
@@ -100,30 +85,6 @@ class ProbeOperator(Operator):
     ) -> list[list[dict[str, Any]]]:
         del attributes, properties
         return input_data
-
-
-class ProbeRefiner(RefinableOperator):
-    name = "metadata_refiner"
-    description = "metadata refiner"
-    attributes = {"alpha": AttributeSpec("int", required=True)}
-
-    def apply(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[list[dict[str, Any]]]:
-        del attributes, properties
-        return input_data
-
-    def refiner(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        del input_data, attributes, properties
-        return []
 
 
 class CopyBomb:
@@ -161,14 +122,12 @@ def test_public_tool_imports_and_direct_constructor_fields() -> None:
         description="operator description",
         validator=custom_validator,
         explainer=custom_explainer,
-        refiner=custom_refiner,
     )
     assert operator.name == "direct-operator"
     assert operator.description == "operator description"
     assert operator.function is sample_function
     assert operator.validator is custom_validator
     assert operator.explainer is custom_explainer
-    assert getattr(operator, "refiner") is custom_refiner
 
 
 def test_blue_stored_defaults_merge_order_and_per_instance_class_state() -> None:
@@ -182,7 +141,7 @@ def test_blue_stored_defaults_merge_order_and_per_instance_class_state() -> None
     assert first.properties["timeout"] == 222
     assert first.properties["error_handling"] == "skip"
     assert first.properties["log_processing_stats"] is True
-    assert first.properties["refine"] is False
+    assert "refine" not in first.properties
     assert first.properties["class_only"] == "class"
     assert first.get_attributes() is not second.get_attributes()
     assert first.get_hyperparameters() is not second.get_hyperparameters()
@@ -385,7 +344,6 @@ def test_signature_parameter_coupling_and_falsy_default_quirk() -> None:
 
 def test_default_helpers_and_validation_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert operator_module.default_operator_function(DATA, {}) == []
-    assert operator_module.default_operator_refiner(DATA, {}) == []
     assert operator_module.default_operator_validator(DATA, {}) is True
     explanation = operator_module.default_operator_explainer(DATA, DATA, {"x": 1})
     assert sorted(explanation) == [
@@ -439,107 +397,6 @@ def test_version_bindings_share_one_live_metadata_state() -> None:
     assert v2.operator_id == "metadata_probe@2.0.0"
 
 
-def test_plan_discover_bindings_validate_one_live_metadata_state() -> None:
-    discovery = OperatorRegistry()
-    selectable = SelectOperator()
-    discovery.register(selectable, "1.0.0", tags=("starter",))
-    discovery.register(selectable, "2.0.0", tags=("starter",))
-    registrations = OperatorRegistry()
-    target = PlanDiscoverOperator(discovery)
-    registrations.register(target, "1.0.0")
-    registrations.register(target, "2.0.0")
-    v1 = registrations.resolve("plan_discover@1.0.0")
-    v2 = registrations.resolve("plan_discover@2.0.0")
-    assert isinstance(v1, RefinableOperator)
-    assert isinstance(v2, RefinableOperator)
-    base = {
-        "task": "starter",
-        "data": "rows",
-        "approximate": True,
-        "search_query": "starter",
-    }
-
-    v2.update_attributes(
-        {
-            "live_edit": {
-                "type": "str",
-                "description": "required after registration",
-                "required": True,
-            }
-        }
-    )
-    runtime_properties = {
-        "caller": "runtime",
-        "attributes": {"live_edit": {"type": "str", "required": False}},
-    }
-    for resolved in (v1, v2):
-        assert resolved.validator is not None
-        assert resolved.validate([[]], base, runtime_properties) is False
-        assert resolved.validator([[]], base, runtime_properties) is False
-        plans, meta = resolved.refine([[]], base, runtime_properties)
-        assert plans == []
-        assert meta.errors[0].category is ErrorCategory.RECOVERABLE
-        assert meta.errors[0].code is ErrorCode.INVALID_INPUT
-        assert meta.errors[0].stage is ErrorStage.VALIDATE
-        assert meta.errors[0].operator_id == resolved.operator_id
-
-        valid = {**base, "live_edit": "value"}
-        assert resolved.validate([[]], valid, runtime_properties) is True
-        assert resolved.validator([[]], valid, runtime_properties) is True
-        plans, meta = resolved.refine([[]], valid, runtime_properties)
-        assert len(plans) == 1
-        assert meta.errors == []
-        version = resolved.operator_id.rpartition("@")[2]
-        assert operator_ids(plans[0].to_dict()) == [f"select@{version}"]
-
-    v1.update_attributes(
-        {
-            "live_edit": {
-                "type": "int",
-                "description": "type changed through v1",
-                "required": True,
-            }
-        }
-    )
-    for resolved in (v1, v2):
-        assert resolved.validator is not None
-        wrong_type = {**base, "live_edit": "wrong"}
-        assert resolved.validate([[]], wrong_type) is False
-        assert resolved.validator([[]], wrong_type) is False
-        plans, meta = resolved.refine([[]], wrong_type)
-        assert plans == []
-        assert meta.errors[0].operator_id == resolved.operator_id
-        assert resolved.validate([[]], {**base, "live_edit": 1}) is True
-        plans, meta = resolved.refine([[]], {**base, "live_edit": 1})
-        assert len(plans) == 1
-        assert meta.errors == []
-        version = resolved.operator_id.rpartition("@")[2]
-        assert operator_ids(plans[0].to_dict()) == [f"select@{version}"]
-
-
-def test_plan_discover_standalone_validator_uses_supplied_properties_only() -> None:
-    attributes = {
-        "task": "starter",
-        "data": "rows",
-        "approximate": True,
-        "search_query": "starter",
-    }
-    properties = {
-        "attributes": {"extra": {"type": "str", "required": True}},
-        "validation_error_handling": "fail",
-    }
-    assert plan_discover_operator_validator([[]], attributes) is True
-    assert plan_discover_operator_validator([[]], attributes, properties) is False
-    assert (
-        plan_discover_operator_validator(
-            [[]],
-            {**attributes, "extra": "value"},
-            properties,
-        )
-        is True
-    )
-
-
 def test_malformed_live_schema_is_contained_only_on_canonical_boundaries() -> None:
     operator = ProbeOperator()
     operator.get_attributes()["alpha"] = "broken"  # type: ignore[assignment]
@@ -553,15 +410,6 @@ def test_malformed_live_schema_is_contained_only_on_canonical_boundaries() -> No
     assert meta.errors[0].code is ErrorCode.VALIDATION_FAILED
     assert meta.errors[0].stage is ErrorStage.VALIDATE
     assert "broken" not in meta.errors[0].message
-
-    refinable = ProbeRefiner()
-    refinable.get_attributes()["alpha"] = "broken"  # type: ignore[assignment]
-    assert refinable.refiner(DATA, {}) == []
-    plans, refine_meta = refinable.refine(DATA, {})
-    assert plans == []
-    assert refine_meta.errors[0].category is ErrorCategory.FAILED
-    assert refine_meta.errors[0].code is ErrorCode.VALIDATION_FAILED
-    assert refine_meta.errors[0].stage is ErrorStage.VALIDATE
 
 
 def test_hostile_default_remains_a_defaults_failure_not_a_projection_failure() -> None:
@@ -586,7 +434,6 @@ def test_hostile_default_remains_a_defaults_failure_not_a_projection_failure() -
             DataDiscoverOperator(),
             {"search_query": "jobs", "approximate": True},
         ),
-        (PlanDiscoverOperator(), {}),
     ],
 )
 def test_legal_metadata_edits_do_not_change_raw_or_canonical_results(

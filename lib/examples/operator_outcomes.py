@@ -5,11 +5,13 @@ import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import (  # pyright: ignore[reportMissingTypeStubs]
+    SQLiteDBSource,
+)
 
 from blue_data_ops import RegistrySeam
-from blue_data_ops.operators import versioned_registry
+from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
 
 
@@ -42,7 +44,10 @@ def main() -> None:
         )
         seam = RegistrySeam(DataRegistry(name="outcome-example", rebuild=True))
         seam.register_source(source)
-        executor = PipelineExecutor(versioned_registry())
+        registry = active_registry()
+        assert registry.resolve("insert_table@3.0.0").operator_id == "insert_table@3.0.0"
+        assert registry.resolve("avg@3.0.0").operator_id == "avg@3.0.0"
+        executor = PipelineExecutor(registry)
         properties = {"data_registry": seam}
 
         empty = executor.execute(

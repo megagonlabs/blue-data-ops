@@ -2,7 +2,7 @@
   "format": "blue-data-ops/operator-skill@1",
   "operator_id": "argmin@2.0.0",
   "resources": {
-    "guide": {"path": "Operator.md", "sha256": "5545eac67d90b5d87c4ca109b48ee5898371fed79ad4eb43eb851061ad3dd133"},
+    "guide": {"path": "Operator.md", "sha256": "05c533a6e21920aad7322af6f5c0b74e7d3c0435c78d241371f136e9d0f47d46"},
     "examples": {"path": "examples.md", "sha256": "8fe9c6d6512e45e934cdf9574d96909c871bc2d81f52224ae7286c7291fbea97"}
   }
 }

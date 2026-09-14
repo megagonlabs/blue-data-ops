@@ -1,11 +1,11 @@
 # blue-data-ops
 
-`blue-data-ops 2.10.0` is the standalone Python package for Blue data operators. It includes record-oriented transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`: a list of record groups.
+`blue-data-ops 3.0.0` is a standalone Python package for Blue data operators. It includes record transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`, a list of record groups.
 
 ## Requirements
 
 - Python 3.11+
-- `blue-data` 0.1.0 or later. It is an eager import-time dependency and must be importable whenever `blue_data_ops` is imported. Registry-backed operators access it through the data seam.
+- `blue-data` 0.1.0 or later. This is an eager dependency and must be importable with `blue_data_ops`.
 
 ## Installation
 
@@ -28,64 +28,100 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.10.0"
+  "blue-data-ops[ml,vector,llm]==3.0.0"
 ```
 
-The artifact-index command works only when that index also provides `blue-data>=0.1.0`. The sibling-checkout commands above are the direct path for a new contributor.
+The artifact index must also provide `blue-data>=0.1.0`. The sibling-checkout commands are the direct path for a contributor.
 
-The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown`, and `openai` for `OpenAIPlanGenerator`. `nl2query_router` does not need the `llm` extra. The `openai` extra is the only one the planner needs, and only for that one generator:
+The optional extras are `ml` for `classify` and `cluster`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators, and `openai` for `OpenAIPlanGenerator`.
 
 ```bash
 python -m pip install -e "./blue-data-ops/lib[openai]"
 ```
 
-The `openai` extra pins `openai>=2.54,<3`. Nothing in the package imports that SDK until an `OpenAIPlanGenerator` has to build its own client, so every other path installs and runs without it.
+The `openai` extra pins `openai>=2.54,<3`. The SDK is imported only when an `OpenAIPlanGenerator` needs to create its own client. An LLM-backed `run()` call that cannot import its extra returns an `EXECUTION_FAILED` error in `ExecMeta`.
 
-If an LLM-backed `run()` call cannot import a member of the `llm` extra, its `ExecMeta` contains an `EXECUTION_FAILED` error with an instruction to install `blue-data-ops[llm]`. Other execution failures keep the generic contained error.
-
-After installation, read the distribution version separately from an exact operator-card version such as `@2.0.0` or `@3.0.0`:
+Read the distribution version separately from an operator-card version:
 
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "2.10.0"
+assert version("blue-data-ops") == "3.0.0"
 ```
 
 ## Usage
 
-Start with the credential-free examples:
+Run the credential-free examples from the directory containing this README. In a source checkout, that directory is `blue-data-ops/lib`; in an extracted source distribution, it is the extraction root.
 
 ```bash
-cd blue-data-ops/lib
 python examples/core_quickstart.py
 python examples/sqlite_quickstart.py
-python examples/refinement.py
 ```
 
-`sqlite_quickstart.py` creates a temporary SQLite database with ten rows, registers it, performs a real insert, and removes the database when it exits. `refinement.py` calls the seam deprecated in 2.8.0 and stays runnable as compatibility evidence; start from the other two. See [examples/README.md](examples/README.md) for the ML, vector, and live-provider examples. See [OPERATORS.md](OPERATORS.md) for the generated attribute and outcome reference for all 36 operators. These reference and example files ship in the source distribution; they are not installed as files beside the Python package in the wheel.
+`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. Source checkouts and source distributions include `examples/README.md` for the ML, vector, planner, and live-provider examples and the generated `OPERATORS.md` reference for the 32 active exact IDs. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.0.0` source distribution from the same artifact index.
+
+### Registry roles
+
+Use `default_registry()` for the raw compatibility view, `active_registry()` for ordinary 3.0 discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 32 exact cards: 11 at `@2.0.0` and 21 at `@3.0.0`. The history factory has 85 cards.
+
+<!-- blue-data-ops-test: registry-roles -->
+```python
+from blue_data_ops.operators import active_registry, default_registry, versioned_registry
+
+raw = default_registry()
+raw_override = default_registry(avg="2.7.4")
+ordinary = active_registry()
+history = versioned_registry()
+
+assert raw.resolve("avg@1.0.0").operator_id == "avg@1.0.0"
+assert raw_override.resolve("avg@2.7.4").operator_id == "avg@2.7.4"
+assert ordinary.resolve("avg@3.0.0").operator_id == "avg@3.0.0"
+assert history.resolve("avg@2.0.0").operator_id == "avg@2.0.0"
+assert len(raw.list_cards()) == 32
+assert len(ordinary.list_cards()) == 32
+assert len(history.list_cards()) == 85
+```
+
+`default_registry(**versions)` preserves the legacy per-name override for the 32 retained names. An override becomes that card's version after semver validation. For the 21 outcome-enabled names, only an exact `"3.0.0"` override selects the outcome implementation; other versions use the raw implementation. Unknown names are ignored. These cards are raw: their `tags` and `when_to_invoke` fields are empty.
+
+Registry construction does not grant planning authority. A raw override card is not automatically planning-authorized: core 3.0 rejects every card from `default_registry()` as planning authority, even when its ID text matches a supported v2/v3 ID. Use `active_registry()` for the ordinary reviewed selection, or use `versioned_registry()` with an exact allowlist when a rule-based plan deliberately needs a supported retained v2/v3 built-in. Caller-created v2 cards require a caller-owned registry and rule or generator. `OpenAIPlanGenerator` accepts only supported package built-ins from an enriched package registry.
+
+The private in-memory tables that distinguish reviewed built-ins from raw cards are integrity controls for ordinary planner admission. They are not a tamper-proof isolation boundary against arbitrary same-process code that mutates private registry state.
+
+`OperatorRegistry.resolve()` accepts only `name@<MAJOR.MINOR.PATCH>` and raises `ResolveError` on a miss. The eight retired IDs for `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` at versions 1 and 2 are absent from all 3.0 factories. There is no latest-version fallback at resolution time.
+
+### Direct execution
+
+Concrete operator classes retain their raw v1-compatible `apply()` and `invoke()` calls. `apply()` invokes the transform directly. `invoke()` runs boolean validation first and returns `None` when validation fails. Raw exceptions are not converted to execution metadata. Use `run()` for canonical defaults, structured errors, and normalized empty output.
 
 ```python
 from blue_data_ops import SelectOperator
 
-op = SelectOperator()
-data = [
-    [
-        {"name": "a", "score": 3},
-        {"name": "b", "score": 9},
-    ]
-]
+operator = SelectOperator()
+data = [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]]
+attributes = {"operand_key": "score", "operand": ">", "operand_val": 5}
 
-# Raw v1-compatible call: validate, then apply.
-out = op.invoke(data, {"operand_key": "score", "operand": ">", "operand_val": 5})
-# [[{"name": "b", "score": 9}]]
+output = operator.invoke(data, attributes)
+assert output == [[{"name": "b", "score": 9}]]
 
-op.attributes  # declared attribute schema (name -> AttributeSpec)
-op.validate(data, {})  # False: operand_key/operand/operand_val are required
+output_data, output_attributes, meta = operator.run(data, attributes)
+assert output_data == output
+assert output_attributes == {}
+assert meta.is_empty is False
+assert meta.errors == []
 ```
+
+The internal `_execute()` hook returns `FunctionResult(output_data, output_attributes)`. `run()` normalizes that result and gives every call a fresh output-attributes mapping. `ExecMeta` has `is_empty`, `errors`, `logs`, and `traces`. Error records carry a category, code, exact operator ID, stage, message, retryability flag, and optional suggestion. Categories are `RECOVERABLE`, `FAILED`, and `TIMEOUT`; stages cover defaults, validation, execution, normalization, and the retained error vocabulary.
+
+A successful empty result is `[[]]` with `is_empty=True` and no errors. Mixed multi-group output preserves every group, including empty groups. Invalid input or an execution failure is contained as `[[]]` with an error record rather than raised by `run()`.
+
+Set a wrapper deadline with `properties={"execution.timeout_seconds": <finite-positive-number>}`. The wrapper never retries. The legacy `properties["timeout"]` field remains observable but does not set the deadline.
+
+The three-argument `validate(input_data, attributes, properties)` checks the live attribute schema and returns `False` for invalid values. `explain()` describes a completed transform. `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes. Operators also retain the Blue Tool/Operator signature and parameter metadata surface.
 
 ### Registry-backed data operations
 
-`create_database`, `create_table`, `insert_table`, and `data_discover` need a `blue-data` registry. The complete runnable setup is [examples/sqlite_quickstart.py](examples/sqlite_quickstart.py). Its core steps are:
+`create_database`, `create_table`, `insert_table`, and `data_discover` need a `blue-data` registry. The source-checkout and source-distribution file `examples/sqlite_quickstart.py` contains a complete setup. Its central call is:
 
 ```python
 from tempfile import TemporaryDirectory
@@ -110,35 +146,34 @@ with TemporaryDirectory() as directory:
         {"source": source.name, "database": "main"},
         {"data_registry": seam},
     )
+    assert output == [[]]
     assert meta.errors == []
 ```
 
-You may inject a raw `DataRegistry` instead; `resolve_registry()` wraps it. Without an injection, pass both `platform.name` and `data_registry.name`. The default provider then creates and caches an in-memory `DataRegistry` for that pair. A missing injection or naming pair leaves the registry unresolved.
+You may inject a raw `DataRegistry`; `resolve_registry()` wraps it. Without an injection, pass both `platform.name` and `data_registry.name`. The default provider creates and caches an in-memory registry for that pair.
 
 ## Operators
 
-| Category | Operators |
+| Category | Active logical operators |
 |---|---|
 | Filter / shape | `select`, `project`, `delete`, `insert` |
 | Join / set | `join`, `union`, `intersect` |
 | Aggregate | `argmax`, `argmin`, `max`, `min`, `avg`, `sum` |
 | Text | `normalize_text`, `segment_text` |
-| ML (extra: `ml`) | `classify`, `cluster` |
-| Vector (extra: `vector`) | `vector_embed`, `vector_search`, `vector_similarity` |
-| LLM (extra: `llm`) | `nl2llm`, `nl2sql`, `nl2bn`, `semantic_extract`, `semantic_filter`, `semantic_join`, `semantic_project`, `semantic_transform` |
+| ML (`ml` extra) | `classify`, `cluster` |
+| Vector (`vector` extra) | `vector_embed`, `vector_search`, `vector_similarity` |
+| LLM (`llm` extra) | `nl2llm`, `nl2sql`, `nl2bn`, `semantic_extract`, `semantic_filter`, `semantic_join`, `semantic_project`, `semantic_transform` |
 | Registry-backed | `create_database`, `create_table`, `insert_table`, `data_discover` |
-| Plan-producing (deprecated) | `multipart_query`, `nl2query_router`, `plan_discover`, `query_breakdown` |
 
-`nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown` send requests through [LiteLLM](https://github.com/BerriAI/litellm); configure the model per call via properties (default `openai.model: gpt-4o`). `classify` uses NumPy and scikit-learn from the `ml` extra. Registry-backed operators talk to `blue-data` through the data seam.
-
-The four plan-producing operators are deprecated in 2.8.0 and removed in 3.0.0. They still resolve and run for the rest of 2.x; see [Deprecations in 2.8.0](#deprecations-in-280).
+`nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators send requests through LiteLLM. Configure the model through call properties; the default is `openai.model: gpt-4o`. `classify` uses NumPy and scikit-learn. Registry-backed operators use the `blue-data` seam.
 
 This short `nl2llm` call uses a live provider:
 
 ```python
-from blue_data_ops import NL2LLMOperator
+from blue_data_ops.operators import active_registry
 
-output, _, meta = NL2LLMOperator().run(
+operator = active_registry().resolve("nl2llm@3.0.0")
+output, _, meta = operator.run(
     [[]],
     {
         "query": "Return two example products",
@@ -149,283 +184,154 @@ output, _, meta = NL2LLMOperator().run(
 assert meta.errors == []
 ```
 
-Install `[llm]` and configure the provider credential before running it. The complete `nl2sql` example in [examples/nl2sql_sqlite.py](examples/nl2sql_sqlite.py) builds a real SQLite schema and defaults to `execute_query=False`. Add `--execute` to run the generated SQL. The prefix check is a case-insensitive `startswith` guard, not a SQL parser or sandbox; callers remain responsible for database permissions and query safety.
+Install `[llm]` and configure the provider credential before running it. The source-checkout and source-distribution file `examples/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
 
-### Versioned registries
+### Discovery
 
-`OperatorRegistry` (in `blue_data_ops.operators`) registers operators under an immutable `name@<MAJOR.MINOR.PATCH>` id. `resolve()` accepts only an exact pinned id and raises `ResolveError` when it cannot resolve one.
+`find(query, tags=...)` returns cards using deterministic text scoring and an optional exact AND tag filter. A blank query with tags performs tag-only discovery; a blank query without tags returns no cards. `find()` strips surrounding whitespace and lowercases each requested filter token. A filter passes shape validation when the result is nonempty, contains no whitespace, and includes at least one hyphen. It is then matched as a complete tag. Shape validation does not check taxonomy membership or hyphen position, so `domain-`, `-vector`, and `domain_-vector` are well-formed filters but match no built-in card. A malformed filter raises `DiscoveryError`; a well-formed tag that is not present matches no cards. There is no OR or negative-tag syntax. `find_latest(name)` returns the highest version for one exact name. Ordinary discovery should use the active registry.
 
-`default_registry()` is the frozen v1 view: 36 raw cards at `1.0.0`. `versioned_registry()` has 93 cards: the same `1.0.0` and `2.0.0` cards for every operator, plus 21 outcome operators at `3.0.0`. Its cards add ordered tags and `when_to_invoke` guidance. Resolve a new exact ID explicitly, or select it with a factory override such as `default_registry(avg="3.0.0")`. Constructing either catalog does not query a data registry. Ordinary `PipelinePlanner` and MCP selection still use `@2.0.0`.
+Built-in active cards use five required axes and one optional axis. A tag states something true in at least one productive public mode.
 
+| Axis | What it tells the caller | Built-in cardinality |
+|---|---|---|
+| `domain-*` | Primary subject area, not the output type | exactly one |
+| `flow-*` | Valid role in a pipeline | one or more |
+| `accepts-*` | Kind of upstream input consumed; `accepts-none` means records are not consumed | one or more |
+| `produces-*` | Result kind or externally visible effect | one or more |
+| `capability-*` | Operation family or specific action | one or more |
+| `requires-*` | Unconditional operator-specific runtime requirement | zero or more |
+
+Values are flat exact labels, not a hierarchy. A card may carry both a broad and a specific capability, such as `capability-reduction` and `capability-average`. `accepts-none` does not make the `input_data` argument optional; pass an empty bundle such as `[[]]`. The `requires-*` axis covers operator-specific requirements and does not replace the package installation requirements above. Source checkouts and source distributions include the generated `OPERATORS.md` tag taxonomy with every value found on the active cards and each card's tags. The active `domain-plan` value is a retained compatibility label on `data_discover@2.0.0`; use `capability-metadata-search` or `produces-metadata` when searching for its behavior. It returns metadata and does not produce a plan.
+
+<!-- blue-data-ops-test: tag-discovery -->
 ```python
-from blue_data_ops.operators import default_registry, versioned_registry
+from blue_data_ops.operators import active_registry
 
-v1 = default_registry()
-v1_select = v1.resolve("select@1.0.0")
+catalog = active_registry()
 
-catalog = versioned_registry()
-v2_cards = [card for card in catalog.list_cards() if card.version == "2.0.0"]
-select_card = next(card for card in v2_cards if card.name == "select")
-v2_select = catalog.resolve(select_card.operator_id)
+available_tags = sorted({tag for card in catalog.list_cards() for tag in card.tags})
+assert "capability-metadata-search" in available_tags
+
+vector_steps = catalog.find("", tags=["domain-vector", "flow-transform"])
+assert [card.operator_id for card in vector_steps] == [
+    "vector_embed@3.0.0",
+    "vector_search@3.0.0",
+]
+
+cards = catalog.find("filter", tags=["domain-relational", "flow-transform"])
+assert [card.operator_id for card in cards] == ["select@2.0.0"]
+operator = catalog.resolve(cards[0].operator_id)
 ```
 
-`find(query, tags=...)` performs deterministic text discovery with an optional exact AND tag filter. It returns cards, not operator instances. `find_latest(name)` returns the highest-version card for an exact name:
+Inspect `card.tags` when composing filters dynamically. Built-in package cards use the closed vocabulary above. `register()` preserves arbitrary custom tags for compatibility. Filters are normalized as described above, so a custom tag is discoverable only when its stored value equals the normalized filter.
+
+`OperatorEmbeddingIndex` adds embedding search. The caller supplies the embedder and its `space_id`; the package does not choose or install an embedding model.
 
 ```python
-cards = catalog.find("filter", tags=["domain-relational"])
-latest = catalog.find_latest("nl2sql")
-op = catalog.resolve(latest.operator_id) if latest is not None else None
-```
-
-Tags have six axes: `capability-*` describes the operation, `domain-*` the data family, `flow-*` the pipeline position, `accepts-*` the input shape, `produces-*` the result or side effect, and `requires-*` the runtime dependency or integration. A card may carry several values on an axis. Tag strings are exact; with multiple tags, every tag must be present. Free-text scoring ranks only the cards that pass that filter. The generated [operator reference](OPERATORS.md#tag-taxonomy) lists the current values and every card assignment.
-
-`OperatorEmbeddingIndex` adds embedding search for direct Python callers. The caller supplies the embedder and its `space_id`; the package does not select or install an embedding model.
-
-```python
-from blue_data_ops.operators import OperatorEmbeddingIndex, versioned_registry
+from blue_data_ops.operators import OperatorEmbeddingIndex, active_registry
 
 
 class KeywordEmbedder:
-    @property
-    def space_id(self) -> str:
-        return "readme-keywords-v1"
+    space_id = "readme-keywords-v1"
 
     def __call__(self, texts: tuple[str, ...]) -> list[list[float]]:
         terms = ("filter", "join", "query")
         return [[1.0, *(float(term in text.casefold()) for term in terms)] for text in texts]
 
 
-catalog = versioned_registry()
-embedding_index = OperatorEmbeddingIndex.build(catalog, KeywordEmbedder())
-cards = embedding_index.find("filter rows", tags=["produces-data"])
-op = catalog.resolve(cards[0].operator_id) if cards else None
+catalog = active_registry()
+index = OperatorEmbeddingIndex.build(catalog, KeywordEmbedder())
+cards = index.find("filter rows", tags=["produces-data"])
+operator = catalog.resolve(cards[0].operator_id) if cards else None
 ```
 
-`build()` passes every card's name, `when_to_invoke`, description, and ordered tags to the embedder in one batch. A nonblank search passes the query unchanged in a separate call; a whitespace-only query is blank. With a nonblank query, `find()` returns every tag-matching card in cosine order. It applies no threshold or limit; callers limit the returned list. Rebuild the index after registering another card or changing the embedding model or preprocessing, and give each embedding space a distinct `space_id`. Callback failures, invalid vectors, and stale snapshots raise `EmbeddingDiscoveryError` with a stable `reason`.
+`build()` sends every card's name, invocation guidance, description, and ordered tags to the embedder in one batch. With a nonblank query, `find()` returns every tag-matching card in cosine order. It applies no threshold or limit; callers limit the returned list. Invalid vectors, callback failures, and stale snapshots raise `EmbeddingDiscoveryError` with a stable `reason`.
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` loads versioned guidance for exact package-owned operators. Its 54 packages include `@2.0.0` packages for all 32 active execution operators and the `multipart_query@2.0.0` package, plus 21 outcome packages at `@3.0.0`. It also lets callers inspect package availability and resource metadata before loading text. A level-2 view combines the current card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. Loading a view does not invoke the operator or add the text to planner or provider input.
+`blue_data_ops.operator_skills` ships 53 exact-version packages: 32 retained `@2.0.0` packages and 21 outcome packages at `@3.0.0`. Every active exact ID has a package. All 53 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in 3.0 includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
-from blue_data_ops.operators import versioned_registry
+from blue_data_ops.operators import active_registry
 
-registry = versioned_registry()
+registry = active_registry()
 loader = OperatorSkillLoader(registry)
-skill = loader.load("nl2sql@2.0.0", level=3)
+skill = loader.load("nl2sql@3.0.0", level=3)
 
-assert skill.card is registry.get_card("nl2sql@2.0.0")
+assert skill.card is registry.get_card("nl2sql@3.0.0")
 assert skill.io.attributes["question"].required
 ```
 
-To expand a discovered card, first intersect the discovery result with the packages available to this loader:
+History inspection is an intentional use of `versioned_registry()`:
 
 ```python
+from blue_data_ops.operators import versioned_registry
+
+history = versioned_registry()
+loader = OperatorSkillLoader(history)
 eligible_ids = set(loader.available_operator_ids())
-
-matches = registry.find("average", tags=["domain-arithmetic"])
-selected = next(card for card in matches if card.operator_id in eligible_ids)
-descriptor = loader.describe(selected.operator_id)
-skill = loader.load(selected.operator_id, level=max(descriptor.declared_levels))
-
-assert selected.operator_id == "avg@3.0.0"
-assert descriptor.declared_kinds == ("guide", "examples")
-assert descriptor.declared_levels == (2, 3)
-assert skill.card is selected
-```
-
-`available_operator_ids()` validates the package index and intersects it with package-built cards in the loader's registry. `describe()` validates the selected card, the full index, and its manifest, then reports the resource kinds and complete levels declared there. Neither method opens Markdown or validates the live attribute schema. Calling them in sequence reads the index twice and the selected manifest once because the loader keeps no cache or snapshot.
-
-A discovered card may have no skill package. Eligibility is separate from both visibility and lifecycle: `avg@1.0.0` is current and searchable and still ships no package, while both `avg@2.0.0` and `avg@3.0.0` are eligible. Check eligibility before expansion instead of treating the miss as a failed discovery:
-
-```python
+matches = history.find("average", tags=["domain-arithmetic"])
 skipped = next(card for card in matches if card.operator_id not in eligible_ids)
 
 assert skipped.operator_id == "avg@1.0.0"
-assert registry.get_card(skipped.operator_id) is not None
 ```
 
-Metadata calls do not guarantee that a later resource read will succeed. A package can change between calls, and `load()` or `read()` may still raise `OperatorSkillLoadError`. Handle `OperatorSkillErrorCode.NOT_AVAILABLE` when an optional level or resource is absent. The loader has no latest-version fallback and does not accept custom registrations.
+`avg@1.0.0` remains searchable in the history registry but has no skill package. Check `available_operator_ids()` before expansion. It validates the package index and intersects it with package-built cards in the loader's registry. `describe()` validates the selected card, index, and manifest, then reports declared resource kinds and levels without opening Markdown. Calling these methods in sequence rereads the index because the loader has no cache. `load()` and `read()` can still fail if a package changes between calls, and neither has a latest-version fallback. Custom registrations are not eligible.
 
-The runnable [`operator_skill_discovery.py`](examples/operator_skill_discovery.py) and [`operator_skill_integrations.py`](examples/operator_skill_integrations.py) examples show lexical, embedding-first, and planner-adjacent caller flows. The planner itself never loads skill metadata or text.
+## Outcome operators
 
-### Structured execution
+The 21 exact `@3.0.0` outcome operators may add shallow `input_shape`, successful `output_shape`, and monotonic `elapsed_ms` measurements to `ExecMeta.traces`. `input_shape` is captured before validation for a structurally valid bundle. `output_shape` appears only after successful normalization. The counts do not alias later caller mutation. Missing measurements are unavailable, not zero.
 
-`run()` is the canonical v2 call. It applies canonical defaults, validates, executes once, and returns `(output_data, output_attributes, exec_meta)`. The internal `_execute()` hook returns `FunctionResult(output_data, output_attributes)`; `run()` normalizes that result and adds `ExecMeta`. Result-produced `output_attributes` is a fresh mapping for each call.
+The `nl2llm@3.0.0` built-in client may report a finite nonnegative `cost` in USD with `cost_basis="estimated"` after exactly one priced provider attempt. A proven local response-cache hit reports `cost=0.0`; provider prompt caching still counts as an attempt. Retries, failures, unknown prices, and injected clients omit those cost fields.
 
+The generated `OPERATORS.md` file in source checkouts and source distributions binds each active exact ID to its live implementation and accepted success, empty, invalid, and failure coordinates. Unsupported coordinates stay labeled with their evidence limit.
+
+## Pipelines and planning
+
+`DataPipeline` is a serializable graph record. `PipelineExecutor` preflights exact IDs, graph structure, attributes, and reachability before execution. It executes nodes in stable topological order and stops at the first structured operator failure.
+
+<!-- blue-data-ops-test: pipeline-execution -->
 ```python
-from blue_data_ops.operators import versioned_registry
-
-op = versioned_registry().resolve("select@2.0.0")
-data = [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]]
-attributes = {"operand_key": "score", "operand": ">", "operand_val": 5}
-
-output_data, output_attributes, meta = op.run(data, attributes)
-assert output_data == [[{"name": "b", "score": 9}]]
-assert output_attributes == {}
-assert meta.is_empty is False
-assert meta.errors == []
-```
-
-`ExecMeta` has four fields: `is_empty`, `errors`, `logs`, and `traces`. Each `ErrorRecord` has `category`, `code`, `operator_id`, `stage`, `message`, `retryable`, and `suggestion`. Categories are `RECOVERABLE`, `FAILED`, or `TIMEOUT`; stages are `DEFAULTS`, `VALIDATE`, `EXECUTE`, `NORMALIZE`, or `REFINE`.
-
-`nl2llm@3.0.0` has a synchronous cost pilot for its built-in client. After a successful `run()`, `meta.traces` contains numeric `cost` in USD and `cost_basis="estimated"` when the call made exactly one provider attempt with an available finite nonnegative LiteLLM price. A proven local response-cache hit reports `cost=0.0`; provider prompt caching still counts as a provider attempt. The two fields are absent for unknown pricing, retries, errors, timeouts, and every caller-supplied `llm_client`. Treat absence as unavailable rather than zero:
-
-```python
-cost = meta.traces.get("cost")
-if cost is not None:
-    compare_execution_cost(cost, meta.traces["cost_basis"])
-```
-
-The 21 exact outcome operators at `@3.0.0` may add shallow bundle counts to `traces`:
-
-```python
-{
-    "input_shape": {"groups": 2, "rows_per_group": [3, 0]},
-    "output_shape": {"groups": 1, "rows_per_group": [2]},
-}
-```
-
-`input_shape` is captured before validation and execution for structurally valid bundles. Its counts
-are independent of later caller-data mutation. Invalid bundle structure omits it. `output_shape` is
-captured after successful normalization; failures and timeouts omit it. Both keys are optional, so
-callers should distinguish a missing measurement from a zero-row group.
-
-Continuing the structured-execution example, an empty result is still successful. `run()` normalizes
-an empty outer bundle or an output whose groups are all empty to `[[]]`, sets `is_empty=True`, and
-leaves `errors` empty. Mixed multi-group output keeps every group, including empty ones:
-
-```python
-empty_data, _, empty_meta = op.run(
-    [[{"score": 3}]],
-    {"operand_key": "score", "operand": ">", "operand_val": 99},
-)
-assert empty_data == [[]]
-assert empty_meta.is_empty is True
-assert empty_meta.errors == []
-```
-
-In the same example, invalid input and execution failures are data, not raised operator exceptions. The failure output is `[[]]`, and the error record identifies the boundary:
-
-```python
-failed_data, failed_attributes, failed_meta = op.run([[{"score": 3}]], {})
-error = failed_meta.errors[0]
-assert failed_data == [[]]
-assert failed_attributes == {}
-assert (error.category.value, error.code.value, error.stage.value) == (
-    "RECOVERABLE",
-    "INVALID_INPUT",
-    "VALIDATE",
-)
-assert error.operator_id == "select@2.0.0"
-```
-
-Set a canonical wrapper deadline with `properties={"execution.timeout_seconds": <finite-positive-number>}`. The wrapper never retries. The legacy `properties["timeout"]` field remains observable but does not set this deadline.
-
-`apply()` and `invoke()` remain the raw v1-compatible paths through v2.x. For ordinary data operators, `apply()` calls the transform directly and `invoke()` runs boolean `validate()` before `apply()`, returning `None` when validation is false. `multipart_query` and `nl2query_router` preserve Blue's two-argument `validate(attributes, properties)` call shape; their inherited three-argument `invoke()` is not a supported path. Use `refine()` for those plan-producing operators. Raw calls do not provide canonical default materialization or contained `ExecMeta`; use `run()` when the caller needs those semantics. Those four operators and every `refiner()` and `refine()` call are deprecated in 2.8.0. See [COMPATIBILITY.md](COMPATIBILITY.md) for the migration boundary.
-
-The rest of the compatibility surface remains public. The ordinary three-argument `validate(input_data, attributes, properties)` path checks the live attribute schema and returns `False` for invalid attribute values. The two plan-producing exceptions above use their Blue call shape. `explain()` describes a completed transform, and `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes.
-
-### Outcome guides for exact `@3.0.0` versions
-
-These exact versions may record `input_shape`, successful `output_shape`, and monotonic wall-clock
-`elapsed_ms` in `ExecMeta.traces`. Shape values contain `groups` and `rows_per_group`; elapsed time
-includes validation and the wait until a timeout result. Existing exact IDs keep their behavior.
-
-The catalog includes guides for [`avg@3.0.0`](src/blue_data_ops/operator_skills/avg/3.0.0/Operator.md), [`classify@3.0.0`](src/blue_data_ops/operator_skills/classify/3.0.0/Operator.md), [`cluster@3.0.0`](src/blue_data_ops/operator_skills/cluster/3.0.0/Operator.md), [`insert@3.0.0`](src/blue_data_ops/operator_skills/insert/3.0.0/Operator.md), [`insert_table@3.0.0`](src/blue_data_ops/operator_skills/insert_table/3.0.0/Operator.md), [`intersect@3.0.0`](src/blue_data_ops/operator_skills/intersect/3.0.0/Operator.md), [`join@3.0.0`](src/blue_data_ops/operator_skills/join/3.0.0/Operator.md), [`max@3.0.0`](src/blue_data_ops/operator_skills/max/3.0.0/Operator.md), [`min@3.0.0`](src/blue_data_ops/operator_skills/min/3.0.0/Operator.md), [`nl2bn@3.0.0`](src/blue_data_ops/operator_skills/nl2bn/3.0.0/Operator.md), [`nl2llm@3.0.0`](src/blue_data_ops/operator_skills/nl2llm/3.0.0/Operator.md), [`nl2sql@3.0.0`](src/blue_data_ops/operator_skills/nl2sql/3.0.0/Operator.md), [`project@3.0.0`](src/blue_data_ops/operator_skills/project/3.0.0/Operator.md), [`semantic_extract@3.0.0`](src/blue_data_ops/operator_skills/semantic_extract/3.0.0/Operator.md), [`semantic_filter@3.0.0`](src/blue_data_ops/operator_skills/semantic_filter/3.0.0/Operator.md), [`semantic_join@3.0.0`](src/blue_data_ops/operator_skills/semantic_join/3.0.0/Operator.md), [`semantic_project@3.0.0`](src/blue_data_ops/operator_skills/semantic_project/3.0.0/Operator.md), [`semantic_transform@3.0.0`](src/blue_data_ops/operator_skills/semantic_transform/3.0.0/Operator.md), [`vector_embed@3.0.0`](src/blue_data_ops/operator_skills/vector_embed/3.0.0/Operator.md), [`vector_search@3.0.0`](src/blue_data_ops/operator_skills/vector_search/3.0.0/Operator.md), and [`vector_similarity@3.0.0`](src/blue_data_ops/operator_skills/vector_similarity/3.0.0/Operator.md). Average returns successful empty when no values contribute and reports `num_values_used` on success. `insert_table` keeps records flowing on successful nonempty output and supplies `num_rows_insert` only when the whole successful count is reliable. Join rejects invalid group/key counts and supplied suffixes before joining, including on empty groups. Their `run()` metadata may include monotonic wall-clock `traces["elapsed_ms"]`, including validation and time until a timeout result. Existing exact IDs keep their behavior.
-
-```python
-from blue_data_ops.operators import versioned_registry
-
-average = versioned_registry().resolve("avg@3.0.0")
-data, attributes, meta = average.run(
-    [[{"reading": 7}, {"reading": 19}, {"reading": "unavailable"}]],
-    {"avg_key": "reading"},
-)
-if meta.errors:
-    raise RuntimeError(meta.errors)
-assert data == [[{"avg": 13.0}]] and not meta.is_empty
-assert meta.traces["input_shape"] == {"groups": 1, "rows_per_group": [3]}
-assert meta.traces["output_shape"] == {"groups": 1, "rows_per_group": [1]}
-count = attributes.get("num_values_used")
-if count is not None:
-    assert count == 2
-    print(f"Average of {count} readings: {data[0][0]['avg']}")
-
-empty, empty_attributes, empty_meta = average.run([[], []], {"avg_key": "reading"})
-assert not empty_meta.errors and empty_meta.is_empty and empty == [[]]
-assert empty_attributes["num_values_used"] == 0
-assert empty_meta.traces["input_shape"] == {"groups": 2, "rows_per_group": [0, 0]}
-assert empty_meta.traces["output_shape"] == {"groups": 1, "rows_per_group": [0]}
-```
-
-Check errors before reading the data, attributes, or successful-empty flag. A missing count is unavailable, not zero. The runnable [operator_outcomes.py](examples/operator_outcomes.py) example creates disposable SQLite data, passes inserted records through a materialized `DataPipeline` to an average node, and reads all three outputs from each `NodeRun`. It also checks successful empty and caller-input rejection. Run it with `python examples/operator_outcomes.py` from `lib/`. A write may partly complete before an error or timeout; inspect the target before repeating it. The generated [OPERATORS.md](OPERATORS.md) remains the `@2.0.0` reference.
-
-### Refinement and plan representation
-
-The whole refinement seam is deprecated in 2.8.0 and removed in 3.0.0, including the calls below and `RefinableOperator` itself. It stays callable for the rest of 2.x, and each call warns. Treat this section and [`examples/refinement.py`](examples/refinement.py) as evidence that existing integrations keep working, not as the shape for a new one.
-
-The four plan-producing operators expose raw `refiner()` and normalized `refine()` calls. `refiner()` keeps the v1 serialized-record shape. `refine()` returns `(list[DataPipeline], ExecMeta)` and reports empty or failed refinement through the same metadata model as `run()`.
-
-```python
-from copy import deepcopy
-
-from blue_data_ops.operators import versioned_registry
-from blue_data_ops.plan import DataPipeline, RefinableOperator
-
-refinable = versioned_registry().resolve("multipart_query@2.0.0")
-assert isinstance(refinable, RefinableOperator)
-input_data = [[]]
-attributes = {}
-plans, refine_meta = refinable.refine(input_data, attributes)
-assert len(plans) == 1
-assert refine_meta.errors == []
-records = [plan.to_dict() for plan in plans]
-restored = [DataPipeline.from_dict(record) for record in records]
-detached = [DataPipeline.from_dict(deepcopy(record)) for record in records]
-```
-
-`DataPipeline.to_dict()` and `DataPipeline.from_dict()` are the portable representation boundary. `to_dict()` exposes the pipeline's live mapping, and `from_dict(record)` adopts `record` as its live mapping rather than copying it. Use `deepcopy(record)` as shown above when the restored pipeline must not update the reusable serialized record.
-
-A pipeline records pinned operator IDs, nodes, and edges. `PipelineExecutor` runs a materialized pipeline locally:
-
-```python
-from blue_data_ops.operators import versioned_registry
+from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
 
-plan = DataPipeline(label="high-scores")
+plan = DataPipeline(label="select high scores")
 source = plan.define_input("records")
-selected = plan.define_operator(
+step = plan.define_operator(
     "select@2.0.0",
     attributes={"operand_key": "score", "operand": ">", "operand_val": 5},
 )
-result = plan.define_output("result")
+result = plan.define_output("selected")
 plan.set_plan_input(source)
 plan.set_plan_output(result)
-plan.connect_nodes(source, selected)
-plan.connect_nodes(selected, result)
+plan.connect_nodes(source, step)
+plan.connect_nodes(step, result)
 
-run = PipelineExecutor(versioned_registry()).execute(
+run = PipelineExecutor(active_registry()).execute(
     plan,
     [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]],
 )
-assert run.succeeded
 assert run.output_data == [[{"name": "b", "score": 9}]]
+assert run.succeeded
+assert run.failed_node_id is None
+assert len(run.node_runs) == 1
+
+select_run = run.node_runs[0]
+assert select_run.operator_id == "select@2.0.0"
+assert select_run.output_data == run.output_data
+assert select_run.output_attributes == {}
+assert select_run.exec_meta.errors == []
 ```
 
-`PipelineExecutor.preflight()` and `execute()` raise `blue_data_ops.plan.PipelineError` when the materialized graph or execution input cannot be used safely. Operator failures after preflight remain contained in the returned `PipelineRun`: `succeeded` is false, `failed_node_id` names the stopped node, and its `NodeRun.exec_meta` carries the operator error records.
+`PipelineRun.output_data` is the final pipeline output. `PipelineRun.node_runs` records completed operator nodes in execution order; each `NodeRun` exposes `node_id`, `operator_id`, `status`, `output_data`, `output_attributes`, and the operator's `exec_meta`. Read `node.exec_meta.errors`, `is_empty`, `logs`, and `traces` for the structured outcome of that node. `failed_node_id` identifies the first failed node, and `succeeded` is true when it is absent.
 
-The executor resolves every pinned ID before it calls an operator, traverses the graph in stable topological order, forwards predecessor groups, and records each completed operator in `run.node_runs`. A successful empty result continues through the graph. The first structured node error stops the run and sets `failed_node_id`.
+`PipelineExecutor.preflight()` and `execute()` raise `PipelineError` for an unusable graph or input. Operator failures after preflight remain contained in `PipelineRun.node_runs[*].exec_meta`. Execution mutates node values and statuses on the supplied plan; round-trip a copy when the original record must stay unchanged.
 
-Only materialized plans are executable. Call `refine()` first, choose one returned plan, and pass that plan to the executor. An execution node that still resolves to a `RefinableOperator` is rejected during preflight. The executor does not retry, replan, select alternatives, dispatch remotely, or provide Redis/pubsub synchronization. Execution updates node values and statuses on the supplied plan; round-trip a copy first if the original record must remain unchanged.
-
-## Planning
-
-`PipelinePlanner` turns a goal and a set of discovery queries into a compiled `DataPipeline`, and optionally executes it. It runs discovery, data-context collection, generation, selection, and compilation, then hands the compiled plan to executor preflight. A plan generator supplies candidates; the planner owns every other stage.
+`PipelinePlanner` runs discovery, bounded data-context collection, generation, selection, compilation, and preflight. A plan generator supplies candidate drafts; the planner owns the other stages.
 
 ```python
-from blue_data_ops.operators import versioned_registry
+from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import (
     SELECT_THEN_AVERAGE_TEMPLATE,
     DiscoveryQuery,
@@ -434,8 +340,9 @@ from blue_data_ops.plan import (
     RulePlanGenerator,
 )
 
+registry = active_registry()
 planner = PipelinePlanner(
-    versioned_registry(),
+    registry,
     RulePlanGenerator([SELECT_THEN_AVERAGE_TEMPLATE]),
 )
 request = PlanningRequest(
@@ -452,240 +359,72 @@ request = PlanningRequest(
 
 run = planner.run(request, [[{"total": 120.0}, {"total": 215.0}, {"total": 50.0}]])
 assert run.execution.output_data == [[{"average_total": 167.5}]]
+assert all(not node.exec_meta.errors for node in run.execution.node_runs)
 assert [step.operator_id for step in run.planning.selected.steps] == [
     "select@2.0.0",
-    "avg@2.0.0",
+    "avg@3.0.0",
 ]
 ```
 
-`plan(request)` returns a `PlanningResult` without executing anything: a copy of the `request`, the `discovery` snapshot, the generated `candidates`, the `selected` draft, the compiled `pipeline`, its `preflight`, and the `data_context` retained for the run. `run(request, input_data)` returns a `PlannerRun` holding that `PlanningResult` and the `PipelineRun` from executing it. `execute(planning, input_data)` executes a `PlanningResult` produced earlier; it runs a copy, so the result's own pipeline record stays unchanged.
+`plan(request)` returns a `PlanningResult` with the request copy, discovery snapshot, candidates, selected draft, compiled pipeline, preflight result, and retained data context. `run(request, input_data)` adds a `PipelineRun`, while `execute(planning, input_data)` executes a copy of a prior planning result. `PlanningRequest` bounds discovery cards, candidates, steps, nodes, and edges. `RequireSinglePlan` is the shipped selector and accepts exactly one candidate; callers may inject a different selector.
 
-The planner uses `@2.0.0` operators unless the request explicitly allowlists a current built-in `@3.0.0` ID. Once a request opts into v3, every allowlisted ID must name a package-built `@2.0.0` or `@3.0.0` card in the same registry. Generated steps must still be allowlisted, returned by discovery, active, and exactly resolvable. A rule template accepts one allowed version for each operator name; allowing two versions of the same required name raises `INVALID_REQUEST` instead of choosing one. A v2-only allowlist keeps its existing behavior, and `discover()` and `plan_refinement()` keep their v2 compatibility paths.
+`SELECT_THEN_AVERAGE_TEMPLATE` is the shipped filter-then-average rule. `project_then_aggregate_template(name)` supports `"avg"`, `"sum"`, `"min"`, and `"max"`. A `RulePlanTemplate` requires exact discovered operator metadata and caller-supplied attributes for every step. `RulePlanGenerator(rules)` evaluates rules in order and keeps their drafts; its default recognizes the built-in select-then-average request.
 
-`RequireSinglePlan` is the shipped selector and accepts exactly one candidate; pass a `selector` of your own to choose among several. `PlanningRequest` carries the bounds: `max_discovery_cards`, `max_candidates`, `max_steps`, `max_nodes`, and `max_edges`.
+Planning failures raise `PlanningError`, a `ValueError` subclass whose `record` contains category, code, stage, message, retryability, and suggestion. Planning stages are `VALIDATION`, `DISCOVERY`, `DATA_CONTEXT`, `GENERATION`, `SELECTION`, `COMPILATION`, and `PREFLIGHT`. Planning raises because no partial pipeline exists to carry the record.
 
-`plan()` admits active cards only. `discover()` is unchanged and still returns deprecated cards, so the two can disagree; see [Deprecations in 2.8.0](#deprecations-in-280).
+`PipelinePlanner` compiles admitted, supported exact operator IDs returned by its discovery snapshot. Without an allowlist, package built-ins are limited to the `active_registry()` selection. An exact allowlist may admit supported retained v2/v3 built-ins from `versioned_registry()`. A caller-owned registry and rule or generator may admit caller-created v2 cards; custom v1 and v3 cards are unsupported.
 
-### Rule templates
+A generator that needs schema context receives `DataContextSnapshot`, never rows. `RegistryDataContextProvider` reads source properties, entity names, descriptions, and declared attribute types. Its default limits are 32 entities, 64 attributes per entity, 512 total attributes, 512 description characters, and 131072 serialized bytes. It reads no relations or rows and records `raw_rows: 0` in provenance. A request with `data_scope` requires a provider; a request without a scope does not touch the registry.
 
-A `RulePlanTemplate` builds one linear candidate from exact discovered operators and caller-supplied attributes. Each `RuleTemplateStep` names the operator, the attributes the caller has to supply, and the exact tag tuple the discovered card must carry, so a template fails rather than planning against an operator whose metadata moved.
+### OpenAI plan generation
 
-`SELECT_THEN_AVERAGE_TEMPLATE` is the shipped filter-then-average template. `project_then_aggregate_template(name)` returns the project-to-aggregate template for `"avg"`, `"sum"`, `"min"`, or `"max"`:
-
-```python
-from blue_data_ops.plan import project_then_aggregate_template
-
-template = project_then_aggregate_template("sum")
-assert template.label == "project-then-sum"
-```
-
-`RulePlanGenerator(rules)` runs each rule in order and keeps the drafts that are not `None`. A rule is any callable taking `(request, discovery, data_context)` and returning `PlanDraft | None`, and a `RulePlanTemplate` is itself such a callable. Constructed with no argument, `RulePlanGenerator()` uses the built-in select-then-average rule, which recognizes its own goal wording and returns `None` for anything else.
-
-### Planning errors
-
-Planning raises `PlanningError` instead of reporting through `ExecMeta`. It is a `ValueError` subclass carrying a structured `record`:
+`OpenAIPlanGenerator` makes one non-streaming Responses call per `generate()` and requires the `openai` extra.
 
 ```python
-from blue_data_ops.operators import versioned_registry
-from blue_data_ops.plan import (
-    DiscoveryQuery,
-    PipelinePlanner,
-    PlanningError,
-    PlanningRequest,
-    RulePlanGenerator,
-)
-
-planner = PipelinePlanner(versioned_registry(), RulePlanGenerator())
-request = PlanningRequest(
-    goal="average total of orders above 100",
-    discovery_queries=(DiscoveryQuery("filter", tags=("capability-filter",)),),
-)
-
-try:
-    planner.plan(request)
-except PlanningError as error:
-    record = error.record
-    print(record.category, record.code, record.stage, record.retryable, record.suggestion)
-```
-
-`PlanningErrorRecord` has `category`, `code`, `stage`, `message`, `retryable`, and `suggestion`. `category` reuses the operator `ErrorCategory` (`RECOVERABLE`, `FAILED`, `TIMEOUT`). `PlanningStage` is `VALIDATION`, `DISCOVERY`, `DATA_CONTEXT`, `GENERATION`, `SELECTION`, `COMPILATION`, or `PREFLIGHT`. Each `PlanningErrorCode` names what happened to planning rather than which dependency caused it, so a code stays stable across generators and providers.
-
-Planning raises where execution returns metadata because there is no partial result to attach a record to: either a pipeline compiled or it did not.
-
-### Bounded data context
-
-A generator that needs to know the schema receives a `DataContextSnapshot`, never rows. `DataScope` names the exact registry address to plan against, with an optional entity projection. The following constructor excerpt assumes the application has already created `registry`, `generator`, and `seam`; [examples/sqlite_quickstart.py](examples/sqlite_quickstart.py) shows the complete registry setup.
-
-```python
-from blue_data_ops.plan import DataScope, PipelinePlanner, RegistryDataContextProvider
-
-scope = DataScope("demo_sqlite", "shop", "public", entities=("orders",))
-planner = PipelinePlanner(
-    registry,
-    generator,
-    data_context_provider=RegistryDataContextProvider(seam),  # seam is a RegistrySeam
-)
-```
-
-`RegistryDataContextProvider` uses three read-only registry operations: source properties, the collection's entity list, and each entity's attributes. It returns entity names, optional descriptions, and attribute names with declared types, where an unknown type is `null`. It reads no relations and no rows, and the snapshot's provenance records `raw_rows: 0`. Its limits are `max_entities` (32), `max_attributes_per_entity` (64), `max_total_attributes` (512), `max_description_chars` (512), and `max_serialized_bytes` (131072). A snapshot that exists already satisfies every limit it reports.
-
-A request carrying a `data_scope` needs a provider; without one the planner raises `DATA_CONTEXT_REQUIRED` rather than planning blind. A request without a scope never reaches the registry at all, configured provider or not.
-
-The planner hands the generator one snapshot and keeps a second, equal one on the `PlanningResult`. The two are distinct objects that serialize identically, both rebuilt from the provider's document into package-owned instances, so whatever a generator does to its copy cannot reach the recorded result.
-
-### The OpenAI plan generator
-
-`OpenAIPlanGenerator` is a `PlanGenerator` backed by one non-streaming Responses call per `generate()`. It needs the `openai` extra.
-
-```python
-from blue_data_ops.operators import versioned_registry
+from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import OpenAIPlanGenerator, PipelinePlanner
 
-registry = versioned_registry()
+registry = active_registry()
 generator = OpenAIPlanGenerator(
     "gpt-4o",
     registry=registry,
-    allowed_operator_ids=["select@2.0.0", "avg@2.0.0"],
+    allowed_operator_ids=["select@2.0.0", "avg@3.0.0"],
 )
 planner = PipelinePlanner(registry, generator)
 ```
 
-`allowed_operator_ids` is an authorization boundary rather than a ranking hint. A card is offered to the model only when the caller allowlisted it, discovery returned it, this same registry built it, it pins a supported built-in `@2.0.0` or `@3.0.0` version, and it carries no `produces-side-effect` tag. The decoder re-checks that same set, so a model naming anything else fails before a `PlanDraft` exists. Caller-supplied `operator_attributes` are constraints: the model may add declared attributes, but it cannot overwrite or drop one the caller set. A conflicting value raises `GENERATION_RESULT_INVALID` and fails the whole generator or planner call before any drafts are returned.
+`allowed_operator_ids` is an authorization boundary. The same enriched package registry must have built each supported card, discovery must have returned it, and the card must not produce a side effect. Raw compatibility cards and caller-created cards are not accepted. The decoder checks the same set. Caller-supplied attributes are constraints that the model cannot drop or overwrite. An `nl2sql` step requires a supplied and disclosed schema snapshot.
 
-To extend the preceding generator with data-context disclosure, set a second, explicit opt-in:
+Set `send_data_context=True` to disclose an available snapshot; otherwise the generator fails before importing the SDK or making provider traffic. Pass `client=` to inject a configured OpenAI client. Without one, the generator constructs `openai.OpenAI()` at first use. Each request uses `store=False`, disables SDK retries, and defaults to `timeout_seconds=60.0`, `max_output_tokens=4096`, and one candidate. Provider failures map to stable planning codes such as `GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, and `GENERATOR_UNAVAILABLE`; records exclude response bodies, request payloads, credentials, and provider-specific exception text.
 
-```python
-generator = OpenAIPlanGenerator(
-    "gpt-4o",
-    registry=registry,
-    allowed_operator_ids=["nl2sql@2.0.0", "select@2.0.0", "avg@2.0.0"],
-    send_data_context=True,
-)
-```
+## Migrating from 2.x
 
-Without `send_data_context=True`, a snapshot reaching `generate()` raises `DATA_CONTEXT_DISCLOSURE_REQUIRED` before the SDK import, the client, and any provider traffic; the snapshot is never quietly dropped. An `nl2sql` step is refused unless a snapshot was both supplied and disclosed.
+Core 3.0 removes the four plan-producing operator names, the refinement API, and their helper modules. Exact resolution of all eight retired v1/v2 package IDs now fails through the package registries. A saved `DataPipeline` containing one of those IDs still parses as data, then fails executor preflight because the active registry cannot resolve it.
 
-Pass `client=` to inject a configured `OpenAI` instance, whether for a different base URL or for a test double. Left as `None`, the generator constructs `openai.OpenAI()` at first use, and the SDK reads the credential from the environment in its usual way; the generator neither reads nor records that value. Each call sets `store=False`, disables the SDK's retries, and makes none of its own. `timeout_seconds` (60.0) and `max_output_tokens` (4096) bound it, and `max_candidates` is 1 because the shipped selector accepts exactly one plan.
+The supported manual migration covers two cases. Replace a `DeclarativeOperator` used as an executable leaf with an ordinary `Operator` subclass. For one fixed graph, construct and execute a materialized `DataPipeline` directly, or implement `PlanGenerator.generate()` to return `Sequence[PlanDraft]` for `PipelinePlanner`.
 
-Provider failures map to provider-independent codes chosen by exception class and HTTP status: `GENERATOR_DEPENDENCY_MISSING`, `GENERATOR_REQUEST_REJECTED`, `GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, `GENERATOR_UNAVAILABLE`, `GENERATOR_REFUSED`, and `GENERATOR_RESPONSE_INVALID`. No response body, request payload, credential, or provider identifier reaches a planning record.
+This is a non-drop-in migration. Core 3.0 does not automatically refine an operator or expand old declarative plan definitions. The supported graph example covers one fixed linear expansion; it does not preserve dynamic alternatives, malformed-plan normalization, raw v1 refiner behavior, or a general `DeclarativeOperator` subclass hierarchy. Callers that need those semantics should remain on a compatible core 2.x/MCP 0.x pair, such as core 2.10.0 with MCP 0.12.0.
 
-### Planning from refinement candidates
-
-`plan_refinement()` is deprecated in 2.8.0 and removed in 3.0.0, along with the refinement sources it accepts. Its behavior is unchanged for the rest of 2.x.
-
-`plan_refinement()` accepts one explicit package-built `@2.0.0` refinement source and its call input. The request must have a nonempty exact-ID allowlist that admits the source and every child. The planner calls normalized `refine()` once, rejects an error-bearing, over-limit, or invalid batch as a whole, projects each complete portable graph into a draft, and then uses the configured selector before fresh compilation and preflight.
-
-The eligible sources are `multipart_query@2.0.0`, `nl2query_router@2.0.0`, `plan_discover@2.0.0`, and `query_breakdown@2.0.0`. The default `RequireSinglePlan` selector still rejects a batch with more than one candidate. A scoped request remains anchored throughout projection and compilation, including a matching `nl2query_router` to `nl2sql` path.
-
-Planning remains one pass. There is no refinement loop, retry, or replanning after execution. This path does not load operator skill resources, collect a data-context snapshot, or send skill text to a planner, provider, or MCP response.
-
-## Deprecations in 2.8.0
-
-Two groups of surfaces are deprecated in this release and removed in 3.0.0. Everything named here still imports, resolves, and runs for the rest of 2.x.
-
-The four plan-producing operators are the first group. Both registered versions of `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` carry the lifecycle flag, so eight of the 93 cards are marked. The second group is the refinement seam for every operator: `refiner()`, `refine()`, `PipelinePlanner.plan_refinement()`, `RefinableOperator`, `DeclarativeOperator`, the refiner helpers those operator modules export, and the four `__refine` tools on the MCP adapter.
-
-Read the flag off a card rather than keeping your own list of names:
-
-```python
-from blue_data_ops.operators import versioned_registry
-
-registry = versioned_registry()
-going_away = sorted(card.operator_id for card in registry.list_cards() if card.deprecated)
-
-assert len(going_away) == 8
-assert registry.resolve("plan_discover@2.0.0") is not None
-```
-
-Discovery and exact resolution are unchanged. `find()`, embedding search, `get_card()`, and `resolve()` all still return deprecated cards.
-
-### Warnings
-
-A deprecated call emits one `BlueDataOpsDeprecationWarning` per top-level entry, reported against your calling line. The category subclasses `DeprecationWarning`, so CPython's default filters hide it outside `__main__`. Where the compatibility use is deliberate, silence that one category rather than promoting warnings process-wide:
-
-```python
-import warnings
-
-from blue_data_ops import BlueDataOpsDeprecationWarning
-
-warnings.filterwarnings("ignore", category=BlueDataOpsDeprecationWarning)
-```
-
-### Planning admits active cards only
-
-`discover()` still returns deprecated cards, and `plan()` drops them before admission without charging them against `max_discovery_cards`. The same request can therefore report different cards through the two calls, and `plan()` can reach active cards that the limit used to hide behind deprecated ones:
-
-```python
-from blue_data_ops.plan import DiscoveryQuery, PipelinePlanner, PlanningRequest, RulePlanGenerator
-
-planner = PipelinePlanner(registry, RulePlanGenerator())
-request = PlanningRequest(
-    goal="summarize a query",
-    discovery_queries=(DiscoveryQuery("query"),),
-    max_discovery_cards=2,
-)
-
-assert [card.operator_id for card in planner.discover(request).cards] == [
-    "multipart_query@2.0.0",
-    "nl2query_router@2.0.0",
-]
-```
-
-`DataPipeline`, `PipelineExecutor`, rule-based generation, and the injected-client LLM path are unaffected and stay the supported way to plan and run operators locally.
-
-### Stored plans
-
-A saved plan record that names a deprecated operator still parses, and its ids still resolve. Given a `record` written earlier by `DataPipeline.to_dict()`, walk the restored plan to see what it depends on:
-
-```python
-from blue_data_ops.plan import DataPipeline
-
-restored = DataPipeline.from_dict(record)
-inventory = {}
-for entity in restored.get_entities(type="OPERATOR").values():
-    operator_id = entity["operator_id"]
-    registry.resolve(operator_id)
-    inventory[operator_id] = registry.get_card(operator_id).deprecated
-```
-
-Whether that plan can execute has not changed. A node holding a plan-producing operator was rejected by `PipelineExecutor.preflight()` before this release and still is, because such a node is not materialized.
-
-See [COMPATIBILITY.md](COMPATIBILITY.md#deprecated-in-280) for the full statement, including what 3.0.0 removes.
+Use `active_registry()` for new work. Keep `versioned_registry()` only where code deliberately resolves retained 1.x or 2.x behavior. The supported migration boundary is stated above; source checkouts and source distributions also include `COMPATIBILITY.md` with per-surface details.
 
 ## Utility compatibility
 
-`blue_data_ops.utils` carries over the Blue helper functions that operators and tools rely on, so code moving off `blue.utils` keeps the same calls and only changes the import path. The functions match Blue's behavior, including its return types and edge cases.
-
-| `blue.utils` | `blue_data_ops.utils` |
-|---|---|
-| `type_utils.string_to_python_type` | `string_to_python_type` |
-| `type_utils.create_pydantic_model` | `create_pydantic_model` |
-| `type_utils.validate_parameter_type` | `validate_parameter_type` |
-| `tool_utils.annotation_to_type_str` | `annotation_to_type_str` |
-| `tool_utils.extract_signature` | `extract_signature` |
-| `tool_utils.convert_type_string_to_mcp` | `convert_type_string_to_mcp` |
-| `json_utils.merge_json` | `merge_json` |
-| `json_utils.json_query` | `json_query` |
-| `json_utils.json_query_set` | `json_query_set` |
-| `uuid_utils.create_uuid` (`split_ids`, `extract_sid`, `extract_name_id`, `extract_prefix`, `concat_ids`) | `create_uuid` (same names) |
-| `string_utils.safe_substitute` | `safe_substitute` |
+`blue_data_ops.utils` carries the Blue helpers used by the operator surface: `string_to_python_type`, `create_pydantic_model`, `validate_parameter_type`, `annotation_to_type_str`, `extract_signature`, `convert_type_string_to_mcp`, `merge_json`, `json_query`, `json_query_set`, `create_uuid` and its ID helpers, and `safe_substitute`. Most unrelated Blue JSON, base64, and logging helpers are outside this package. Source checkouts and source distributions document service-client and similarity differences in `COMPATIBILITY.md`.
 
 ```python
-from blue_data_ops.utils import validate_parameter_type, safe_substitute
+from blue_data_ops.utils import safe_substitute, validate_parameter_type
 
-validate_parameter_type("3", "int")  # True: same lax coercion as Blue
-safe_substitute("$greeting", greeting="hi")  # "hi"
+assert validate_parameter_type("3", "int")
+assert safe_substitute("$greeting", greeting="hi") == "hi"
 ```
-
-Helpers outside the operator surface are not carried over. Most of `json_utils`, the base64 helpers in `string_utils`, and the logging helpers are omitted. The similarity and service helpers work differently here; see [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Compatibility
 
-See [COMPATIBILITY.md](COMPATIBILITY.md) for deliberate behavior differences that callers and maintainers should preserve across upgrades.
+This README summarizes the compatibility and migration contracts needed by wheel-only users. Source checkouts and source distributions include `COMPATIBILITY.md` for the detailed per-surface matrix.
 
 ## Running tests
 
-With the `dev` extra installed (see [Installation](#installation)), from the `lib/` directory:
+With the `dev` extra installed, run from `lib/`:
 
 ```bash
 python -m pytest
@@ -693,37 +432,21 @@ python -m pytest
 
 ## Project structure
 
-```
+```text
 lib/
-├── COMPATIBILITY.md             # supported modes and compatibility boundaries
-├── MANIFEST.in                  # source-distribution examples and reference files
-├── OPERATORS.md                 # generated 36-operator attribute and outcome reference
-├── examples/                    # runnable base, SQLite, ML, vector, refinement, and LLM calls
+├── COMPATIBILITY.md             # compatibility and migration boundaries
+├── MANIFEST.in                  # source-distribution resources
+├── OPERATORS.md                 # generated 32-operator reference
+├── examples/                    # runnable local and provider-backed examples
 ├── pyproject.toml
-├── scripts/                     # reference generator and installed-LiteLLM check
-├── src/
-│   └── blue_data_ops/
-│       ├── __init__.py           # public exports
-│       ├── operators/
-│       │   ├── operator.py       # Operator base
-│       │   ├── types.py          # AttributeSpec, DataBundle, error types
-│       │   ├── registry.py       # OperatorRegistry (pinned name@version)
-│       │   └── *_operator.py     # one module per operator
-│       ├── utils/                # Blue-compatible type, tool, JSON, uuid, string helpers
-│       ├── llm/                  # LLM client, templating, resolution (litellm-backed)
-│       ├── operator_skills/      # versioned resources keyed by exact operator id
-│       ├── plan/
-│       │   ├── pipeline.py       # serializable DataPipeline record
-│       │   ├── refiner.py        # operator-level refinement
-│       │   ├── executor.py       # local PipelineExecutor
-│       │   ├── planner.py        # PipelinePlanner, rule templates, planning records
-│       │   ├── context.py        # DataScope, snapshots, planning error vocabulary
-│       │   └── openai_generator.py  # OpenAIPlanGenerator (extra: openai)
-│       ├── data/
-│       │   ├── registry_seam.py  # facade over a blue-data DataRegistry
-│       │   └── provider.py       # registry resolution + default cached provider
-│       └── tools/                 # compatibility Tool and helper interfaces
+├── scripts/                     # reference generator and install checks
+├── src/blue_data_ops/
+│   ├── operators/               # operator implementations and registries
+│   ├── operator_skills/         # resources keyed by exact operator ID
+│   ├── plan/                    # DataPipeline, planner, executor, generators
+│   ├── data/                    # blue-data registry seam and provider
+│   ├── llm/                     # LiteLLM-backed client support
+│   ├── tools/                   # compatibility tool interfaces
+│   └── utils/                   # Blue-compatible helper functions
 └── tests/
-    ├── doubles/                  # in-memory seam and source doubles
-    └── unit/
 ```

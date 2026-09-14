@@ -45,17 +45,16 @@ def _resource_events(root: Path, events: list[Path]) -> list[str]:
 
 def _negative_paths(include_mcp: bool) -> None:
     import blue_data_ops
-    from blue_data_ops.operators import versioned_registry
+    from blue_data_ops.operators import active_registry
     from blue_data_ops.plan import (
         DiscoveryQuery,
         PipelinePlanner,
         PlanningRequest,
-        RefinableOperator,
         RulePlanGenerator,
     )
 
     assert blue_data_ops.__file__
-    registry = versioned_registry()
+    registry = active_registry()
     cards = registry.list_cards()
     assert cards
     registry.find("average")
@@ -69,9 +68,6 @@ def _negative_paths(include_mcp: bool) -> None:
     planner = PipelinePlanner(registry, RulePlanGenerator())
     planner.discover(request)
     registry.resolve(average_card.operator_id).run([[{"value": 1}]], {"avg_key": "value"})
-    resolved = (registry.resolve(card.operator_id) for card in cards)
-    refinable = next(operator for operator in resolved if isinstance(operator, RefinableOperator))
-    refinable.refine([[]], {}, None)
 
     if include_mcp:
         registration = importlib.import_module("blue_data_ops_mcp.registration")

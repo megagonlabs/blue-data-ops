@@ -7,12 +7,17 @@ from itertools import islice
 from math import isfinite
 from typing import Any, Literal, Protocol, cast
 
-from blue_data_ops import _deprecation
 from blue_data_ops.operators.embedding_discovery import (
     EmbeddingDiscoveryError,
     OperatorEmbeddingIndex,
 )
-from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, is_builtin_card
+from blue_data_ops.operators.registry import (
+    _ACTIVE_OPERATOR_IDS,  # pyright: ignore[reportPrivateUsage]
+    OperatorCard,
+    OperatorRegistry,
+    is_builtin_card,
+    is_reviewed_builtin_card,
+)
 from blue_data_ops.operators.types import DataBundle, ErrorCategory, Properties
 from blue_data_ops.plan.context import (
     DataContextProvider,
@@ -34,13 +39,9 @@ from blue_data_ops.plan.executor import (
     PipelineRun,
 )
 from blue_data_ops.plan.pipeline import DataPipeline, Node
-from blue_data_ops.plan.types import PlanRecord
 
 _PLANNER_OPERATOR_VERSION = "2.0.0"
-_EXPLICIT_OPERATOR_VERSIONS = frozenset({_PLANNER_OPERATOR_VERSION, "3.0.0"})
-_COMPATIBILITY_ADMISSION = "compatibility-v2"
-_EXPLICIT_ADMISSION = "explicit-v2-v3"
-_PlannerAdmission = Literal["compatibility-v2", "explicit-v2-v3"]
+_SUPPORTED_OPERATOR_VERSIONS = frozenset({_PLANNER_OPERATOR_VERSION, "3.0.0"})
 # The one built-in operator whose attributes name a data-source address.
 _ADDRESSED_OPERATOR_NAME = "nl2sql"
 
@@ -66,7 +67,7 @@ def _invalid_compiled_plan(message: str) -> PlanningError:
         PlanningErrorCode.PLAN_INVALID,
         message,
         category=ErrorCategory.RECOVERABLE,
-        suggestion="Use discovered 2.0.0 operators in a valid bounded plan.",
+        suggestion="Use discovered supported pinned operators in a valid bounded plan.",
     )
 
 
@@ -127,25 +128,22 @@ def _scope_anchor(request: PlanningRequest) -> DataScope | None:
 
 def _current_operator_id_parts(operator_id: str) -> tuple[str, str] | None:
     name, separator, version = operator_id.partition("@")
-    if separator != "@" or not name or "@" in version or version not in _EXPLICIT_OPERATOR_VERSIONS:
+    if (
+        separator != "@"
+        or not name
+        or "@" in version
+        or version not in _SUPPORTED_OPERATOR_VERSIONS
+    ):
         return None
     return name, version
 
 
-def _requests_v3_admission(operator_ids: tuple[str, ...]) -> bool:
-    for operator_id in operator_ids:
-        parts = _current_operator_id_parts(operator_id)
-        if parts is not None and parts[1] == "3.0.0":
-            return True
-    return False
-
-
 def _template_operator_id(request: PlanningRequest, operator_name: str) -> str | None:
-    """Return the one exact ID a rule slot may use, or None when it is not allowed."""
+    """Return one explicitly allowed ID for a rule slot, if an allowlist exists."""
 
     allowed = request.allowed_operator_ids
     if not allowed:
-        return f"{operator_name}@{_PLANNER_OPERATOR_VERSION}"
+        return None
 
     parsed: list[tuple[str, str, str]] = []
     for operator_id in allowed:
@@ -362,321 +360,6 @@ def _normalize_draft(
     return PlanDraft(steps=tuple(steps), label=draft.label)
 
 
-# The built-in refiners whose returned plan properties have a known projection contract.
-_REFINABLE_SOURCE_IDS = frozenset(
-    {
-        "multipart_query@2.0.0",
-        "nl2query_router@2.0.0",
-        "plan_discover@2.0.0",
-        "query_breakdown@2.0.0",
-    }
-)
-_PRODUCES_PLAN_TAG = "produces-plan"
-
-
-def _refinement_error(
-    code: PlanningErrorCode,
-    message: str,
-    *,
-    category: ErrorCategory,
-    suggestion: str,
-    stage: PlanningStage = PlanningStage.GENERATION,
-) -> PlanningError:
-    return planning_error(stage, code, message, category=category, suggestion=suggestion)
-
-
-def _ineligible_source() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.GENERATION_RESULT_INVALID,
-        "refinement source is not eligible",
-        category=ErrorCategory.RECOVERABLE,
-        suggestion="Choose one discovered v2 plan-producing operator.",
-    )
-
-
-def _source_resolution_failed() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.DISCOVERY_FAILED,
-        "refinement source resolution failed",
-        category=ErrorCategory.FAILED,
-        suggestion="Check the operator registry and discovery filters.",
-        stage=PlanningStage.DISCOVERY,
-    )
-
-
-def _refinement_input_copy_failed() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.GENERATION_FAILED,
-        "refinement input could not be copied",
-        category=ErrorCategory.FAILED,
-        suggestion="Use refinement input and attributes containing copyable data.",
-    )
-
-
-def _refinement_result_invalid() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.GENERATION_RESULT_INVALID,
-        "operator refinement returned an invalid plan result",
-        category=ErrorCategory.FAILED,
-        suggestion=(
-            "Check the refinement operator output and materialize nested refiners separately."
-        ),
-    )
-
-
-def _refinement_conversion_failed() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.GENERATION_FAILED,
-        "refinement plan conversion failed",
-        category=ErrorCategory.FAILED,
-        suggestion="Check the refinement operator and returned plan.",
-    )
-
-
-def _refinement_child_failed() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.GENERATION_FAILED,
-        "refinement plan resolution failed",
-        category=ErrorCategory.FAILED,
-        suggestion="Check the operator registry and refinement output.",
-    )
-
-
-def _refinement_limit() -> PlanningError:
-    return _refinement_error(
-        PlanningErrorCode.CANDIDATE_LIMIT_EXCEEDED,
-        "operator refinement exceeded a planning limit",
-        category=ErrorCategory.RECOVERABLE,
-        suggestion="Return fewer alternatives or raise the corresponding planning limit.",
-    )
-
-
-# One operator failure maps to one planning record, so several operator errors collapse by
-# severity: a failure outranks a timeout, which outranks a recoverable error.
-_OPERATOR_FAILURE_SUGGESTIONS = {
-    ErrorCategory.FAILED: "Check the refinement operator and its runtime dependencies.",
-    ErrorCategory.TIMEOUT: "Increase the bounded timeout or simplify refinement.",
-    ErrorCategory.RECOVERABLE: "Correct the refinement input and try again.",
-}
-
-
-def _operator_refinement_failed(categories: tuple[ErrorCategory, ...]) -> PlanningError:
-    for category in (ErrorCategory.FAILED, ErrorCategory.TIMEOUT, ErrorCategory.RECOVERABLE):
-        if category in categories:
-            chosen = category
-            break
-    else:
-        chosen = ErrorCategory.FAILED
-    return _refinement_error(
-        PlanningErrorCode.GENERATION_FAILED,
-        "operator refinement failed",
-        category=chosen,
-        suggestion=_OPERATOR_FAILURE_SUGGESTIONS[chosen],
-    )
-
-
-def _exact_str_keyed_dict(value: object) -> dict[str, Any]:
-    """Return an exact dict with exact string keys."""
-
-    if type(value) is not dict:
-        raise _refinement_result_invalid()
-    exact = cast("dict[Any, Any]", value)
-    for key in exact:
-        if type(key) is not str:
-            raise _refinement_result_invalid()
-    return cast("dict[str, Any]", exact)
-
-
-def _exact_str(value: object) -> str:
-    """Require an exact string before anything compares it to one."""
-
-    if type(value) is not str:
-        raise _refinement_result_invalid()
-    return value
-
-
-def _require_representable_record(
-    record: PlanRecord,
-    *,
-    max_steps: int,
-    max_nodes: int,
-    max_edges: int,
-) -> dict[str, dict[str, Any]]:
-    """Validate the returned graph before projecting it to a draft."""
-
-    # Establish every structural container and key before interrogating a value.
-    top = _exact_str_keyed_dict(record)
-    node_records = _exact_str_keyed_dict(top.get("nodes"))
-    if len(node_records) > max_nodes:
-        raise _refinement_limit()
-    # Every node record, completely, before any edge or membership question is asked of
-    # the node map: a key validated late is a key some earlier lookup already trusted.
-    for node_id in node_records:
-        _exact_str_keyed_dict(node_records[node_id])
-    entity_sections = _exact_str_keyed_dict(top.get("entities"))
-    operator_entities = _exact_str_keyed_dict(entity_sections.get("OPERATOR"))
-    for entity_key in operator_entities:
-        _exact_str_keyed_dict(operator_entities[entity_key])
-
-    kinds: dict[str, list[str]] = {"INPUT": [], "OUTPUT": [], "OPERATOR": []}
-    adjacency_counts = {"prev": 0, "next": 0}
-    for node_id in node_records:
-        node = cast("dict[str, Any]", node_records[node_id])
-        kind = _exact_str(node.get("type"))
-        if kind not in kinds:
-            raise _refinement_result_invalid()
-        kinds[kind].append(node_id)
-        for direction in ("prev", "next"):
-            neighbours = node.get(direction)
-            if type(neighbours) is not list:
-                raise _refinement_result_invalid()
-            entries = cast("list[Any]", neighbours)
-            adjacency_counts[direction] += len(entries)
-            if adjacency_counts[direction] > max_edges:
-                raise _refinement_limit()
-            for other in entries:
-                if type(other) is not str:
-                    raise _refinement_result_invalid()
-            exact_entries = cast("list[str]", entries)
-            if len(exact_entries) != len(set(exact_entries)):
-                raise _refinement_result_invalid()
-            for other in exact_entries:
-                if other not in node_records:
-                    raise _refinement_result_invalid()
-
-    if len(kinds["INPUT"]) != 1 or len(kinds["OUTPUT"]) != 1 or not kinds["OPERATOR"]:
-        raise _refinement_result_invalid()
-    if len(kinds["OPERATOR"]) > max_steps:
-        raise _refinement_limit()
-    source, sink = kinds["INPUT"][0], kinds["OUTPUT"][0]
-
-    if _exact_str(top.get("input")) != source:
-        raise _refinement_result_invalid()
-    if _exact_str(top.get("output")) != sink:
-        raise _refinement_result_invalid()
-
-    # Other entity sections carry state that a PlanDraft cannot preserve.
-    if set(entity_sections) != {"OPERATOR"}:
-        raise _refinement_result_invalid()
-
-    # The entity and node hold independently writable links; both must agree.
-    by_node: dict[str, dict[str, Any]] = {}
-    for key in operator_entities:
-        entity_record = cast("dict[str, Any]", operator_entities[key])
-        if _exact_str(entity_record.get("id")) != key:
-            raise _refinement_result_invalid()
-        if _exact_str(entity_record.get("type")) != "OPERATOR":
-            raise _refinement_result_invalid()
-        owned = entity_record.get("nodes")
-        if type(owned) is not list:
-            raise _refinement_result_invalid()
-        entries = cast("list[Any]", owned)
-        if len(entries) != 1:
-            raise _refinement_result_invalid()
-        node_id = _exact_str(entries[0])
-        if node_id not in node_records:
-            raise _refinement_result_invalid()
-        node = cast("dict[str, Any]", node_records[node_id])
-        if _exact_str(node.get("type")) != "OPERATOR" or node_id in by_node:
-            raise _refinement_result_invalid()
-        # The reverse link, to the same entity, by exact key.
-        if _exact_str(node.get("OPERATOR")) != key:
-            raise _refinement_result_invalid()
-        # Dropping child properties could change execution semantics.
-        properties = entity_record.get("properties")
-        if type(properties) is not dict:
-            raise _refinement_result_invalid()
-        if len(cast("dict[Any, Any]", properties)) != 0:
-            raise _refinement_result_invalid()
-        by_node[node_id] = entity_record
-    if set(by_node) != set(kinds["OPERATOR"]):
-        raise _refinement_result_invalid()
-    # An input or output node claiming an operator entity is a link the projection would
-    # never follow, so it would otherwise pass unexamined.
-    for node_id in kinds["INPUT"] + kinds["OUTPUT"]:
-        if cast("dict[str, Any]", node_records[node_id]).get("OPERATOR") is not None:
-            raise _refinement_result_invalid()
-
-    # Unique adjacency plus reciprocal membership establishes one-for-one edges.
-    for node_id in node_records:
-        node = cast("dict[str, Any]", node_records[node_id])
-        for other in cast("list[str]", node.get("next")):
-            back = cast("dict[str, Any]", node_records[other])
-            if node_id not in cast("list[str]", back.get("prev")):
-                raise _refinement_result_invalid()
-        for other in cast("list[str]", node.get("prev")):
-            back = cast("dict[str, Any]", node_records[other])
-            if node_id not in cast("list[str]", back.get("next")):
-                raise _refinement_result_invalid()
-    if cast("dict[str, Any]", node_records[source]).get("prev"):
-        raise _refinement_result_invalid()
-    if cast("dict[str, Any]", node_records[sink]).get("next"):
-        raise _refinement_result_invalid()
-
-    def reachable(start: str, direction: str) -> set[str]:
-        seen: set[str] = set()
-        stack = [start]
-        while stack:
-            current = stack.pop()
-            if current in seen:
-                continue
-            seen.add(current)
-            stack.extend(
-                cast("list[str]", cast("dict[str, Any]", node_records[current]).get(direction))
-            )
-        return seen
-
-    if reachable(source, "next") != set(node_records):
-        raise _refinement_result_invalid()
-    if reachable(sink, "prev") != set(node_records):
-        raise _refinement_result_invalid()
-
-    remaining = {
-        node_id: len(cast("dict[str, Any]", raw).get("prev", []))
-        for node_id, raw in node_records.items()
-    }
-    ready = [node_id for node_id, count in remaining.items() if count == 0]
-    settled = 0
-    while ready:
-        current = ready.pop()
-        settled += 1
-        for other in cast("list[str]", cast("dict[str, Any]", node_records[current]).get("next")):
-            remaining[other] -= 1
-            if remaining[other] == 0:
-                ready.append(other)
-    if settled != len(node_records):
-        raise _refinement_result_invalid()
-
-    roots = [
-        n for n in kinds["OPERATOR"] if "OPERATOR" not in _neighbour_kinds(node_records, n, "prev")
-    ]
-    tails = [
-        n for n in kinds["OPERATOR"] if "OPERATOR" not in _neighbour_kinds(node_records, n, "next")
-    ]
-    if len(roots) != 1 or len(tails) != 1:
-        raise _refinement_result_invalid()
-    root, tail = roots[0], tails[0]
-
-    # Compilation can preserve only these endpoint edges. This rejects direct
-    # input-to-output bypasses and endpoint edges to non-root or non-terminal steps.
-    source_next = cast("list[str]", cast("dict[str, Any]", node_records[source]).get("next"))
-    sink_previous = cast("list[str]", cast("dict[str, Any]", node_records[sink]).get("prev"))
-    if source_next != [root] or sink_previous != [tail]:
-        raise _refinement_result_invalid()
-    return by_node
-
-
-def _neighbour_kinds(nodes: dict[str, Any], node_id: str, direction: str) -> set[str]:
-    # Every type here was established as an exact string by the caller, so this reads
-    # them rather than converting them: str() on an unestablished value would be one
-    # more place a replaced field gets to answer for itself.
-    node = cast("dict[str, Any]", nodes[node_id])
-    return {
-        cast(str, cast("dict[str, Any]", nodes[other]).get("type"))
-        for other in cast("list[str]", node.get(direction))
-    }
-
-
 @dataclass(frozen=True)
 class DiscoveryQuery:
     text: str
@@ -756,6 +439,55 @@ class DiscoverySnapshot:
                 suggestion="Narrow discovery until exactly one required operator remains.",
             )
         return matches[0]
+
+
+@dataclass(frozen=True)
+class _AdmittedCard:
+    card: OperatorCard
+    operator: object
+    operator_id: str
+    name: str
+    version: str
+    deprecated: bool
+
+
+@dataclass(frozen=True)
+class _AdmissionSnapshot:
+    allowed_operator_ids: tuple[str, ...]
+    cards: tuple[_AdmittedCard, ...]
+
+    @property
+    def operator_ids(self) -> tuple[str, ...]:
+        return tuple(item.operator_id for item in self.cards)
+
+
+def _capture_admission(
+    registry: OperatorRegistry,
+    allowed_operator_ids: tuple[str, ...],
+    discovery: DiscoverySnapshot,
+) -> _AdmissionSnapshot:
+    cards: list[_AdmittedCard] = []
+    for card in discovery.cards:
+        try:
+            operator = registry.resolve(card.operator_id)
+        except Exception:
+            raise _invalid_compiled_plan(
+                f"operator {card.operator_id!r} was not admitted"
+            ) from None
+        cards.append(
+            _AdmittedCard(
+                card=card,
+                operator=operator,
+                operator_id=card.operator_id,
+                name=card.name,
+                version=card.version,
+                deprecated=card.deprecated,
+            )
+        )
+    return _AdmissionSnapshot(
+        allowed_operator_ids=allowed_operator_ids,
+        cards=tuple(cards),
+    )
 
 
 @dataclass(frozen=True)
@@ -898,7 +630,7 @@ class RulePlanTemplate:
         previous_step_id: str | None = None
         for template_step in self.steps:
             expected_operator_id = _template_operator_id(typed_request, template_step.operator_name)
-            if expected_operator_id is None:
+            if typed_request.allowed_operator_ids and expected_operator_id is None:
                 raise planning_error(
                     PlanningStage.DISCOVERY,
                     PlanningErrorCode.DISCOVERY_RESULT_INVALID,
@@ -908,12 +640,12 @@ class RulePlanTemplate:
                     suggestion="Allow exactly one required operator version.",
                 )
             card = discovery.one(template_step.operator_name)
-            expected_parts = _current_operator_id_parts(expected_operator_id)
-            if expected_parts is None:  # established by _template_operator_id
+            expected_parts = _current_operator_id_parts(card.operator_id)
+            if expected_parts is None:
                 raise invalid_request("planning request is malformed")
             _, expected_version = expected_parts
             if (
-                card.operator_id != expected_operator_id
+                (expected_operator_id is not None and card.operator_id != expected_operator_id)
                 or card.name != template_step.operator_name
                 or card.version != expected_version
                 or card.tags != template_step.expected_tags
@@ -924,7 +656,7 @@ class RulePlanTemplate:
                     f"discovered {template_step.operator_name!r} metadata does not match "
                     "the rule template",
                     category=ErrorCategory.RECOVERABLE,
-                    suggestion="Use the versioned built-in registry or update the rule template.",
+                    suggestion="Use an enriched built-in registry or update the rule template.",
                 )
             try:
                 attributes = deepcopy(
@@ -1154,61 +886,108 @@ class PipelinePlanner:
         self._embedding_index = embedding_index
 
     def _validate_explicit_operator_ids(self, request: PlanningRequest) -> None:
-        for operator_id in request.allowed_operator_ids:
+        identifiers = request.allowed_operator_ids
+        if len(identifiers) != len(set(identifiers)):
+            raise invalid_request("allowed_operator_ids must be unique")
+        for operator_id in identifiers:
             parts = _current_operator_id_parts(operator_id)
             if parts is None:
                 raise invalid_request(
-                    "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+                    "allowed_operator_ids must contain supported pinned 2.0.0 or 3.0.0 ids"
                 )
             name, version = parts
             try:
                 card = self._registry.get_card(operator_id)
                 resolved = self._registry.resolve(operator_id)
                 built_in = is_builtin_card(self._registry, card)
+                reviewed_builtin = is_reviewed_builtin_card(self._registry, card)
             except Exception:
                 raise invalid_request(
-                    "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+                    "allowed_operator_ids must contain supported pinned 2.0.0 or 3.0.0 ids"
                 ) from None
             if (
                 card is None
-                or not built_in
                 or card.operator_id != operator_id
                 or card.name != name
                 or card.version != version
                 or getattr(resolved, "operator_id", None) != operator_id
+                or (built_in and not reviewed_builtin)
+                or (version == "3.0.0" and not built_in)
             ):
                 raise invalid_request(
-                    "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
+                    "allowed_operator_ids must contain supported pinned 2.0.0 or 3.0.0 ids"
                 )
 
+    def _active_policy(self) -> frozenset[str] | None:
+        """Validate the exact package policy when this registry contains built-ins."""
+
+        try:
+            cards = tuple(self._registry.list_cards())
+            package_backed = any(is_builtin_card(self._registry, card) for card in cards)
+        except Exception:
+            raise planning_error(
+                PlanningStage.DISCOVERY,
+                PlanningErrorCode.DISCOVERY_RESULT_INVALID,
+                "operator registry could not establish the active built-in policy",
+                category=ErrorCategory.FAILED,
+                suggestion="Use one unmodified package registry instance.",
+            ) from None
+        if not package_backed:
+            return None
+        for operator_id in _ACTIVE_OPERATOR_IDS:
+            parts = _current_operator_id_parts(operator_id)
+            if parts is None:
+                raise RuntimeError("package active policy contains a malformed operator id")
+            name, version = parts
+            try:
+                card = self._registry.get_card(operator_id)
+                resolved = self._registry.resolve(operator_id)
+            except Exception:
+                card = None
+                resolved = None
+            if (
+                card is None
+                or not is_reviewed_builtin_card(self._registry, card)
+                or card.operator_id != operator_id
+                or card.name != name
+                or card.version != version
+                or card.deprecated
+                or getattr(resolved, "operator_id", None) != operator_id
+            ):
+                raise planning_error(
+                    PlanningStage.DISCOVERY,
+                    PlanningErrorCode.DISCOVERY_RESULT_INVALID,
+                    f"active built-in policy member {operator_id!r} is unavailable",
+                    category=ErrorCategory.RECOVERABLE,
+                    suggestion="Use an unmodified active_registry() or versioned_registry().",
+                )
+        return frozenset(_ACTIVE_OPERATOR_IDS)
+
     def discover(self, request: PlanningRequest) -> DiscoverySnapshot:
-        """Compatibility discovery: every discoverable 2.0.0 card, deprecated or not.
+        """Compatibility discovery over exact 2.0.0 cards, including lifecycle history."""
 
-        `plan_refinement()` reaches its sources through this snapshot and rejects a source
-        that is missing from it, so the lifecycle filter belongs on the active-only path
-        rather than here.
-        """
-
-        return self._discovery(
-            request,
-            active_only=False,
-            admission=_COMPATIBILITY_ADMISSION,
-        )
+        return self._discovery(request, active_only=False, plan_mode=False)
 
     def _discovery(
         self,
         request: PlanningRequest,
         *,
         active_only: bool,
-        admission: _PlannerAdmission,
+        plan_mode: bool,
     ) -> DiscoverySnapshot:
         typed_request = _validate_request_data(request)
+        active_policy = (
+            self._active_policy() if plan_mode and not typed_request.allowed_operator_ids else None
+        )
         try:
             return self._discover(
                 typed_request,
                 active_only=active_only,
-                admission=admission,
+                plan_mode=plan_mode,
+                active_policy=active_policy,
             )
+        except PlanningError:
+            raise
         except Exception:
             raise planning_error(
                 PlanningStage.DISCOVERY,
@@ -1223,7 +1002,8 @@ class PipelinePlanner:
         request: PlanningRequest,
         *,
         active_only: bool = False,
-        admission: _PlannerAdmission = _COMPATIBILITY_ADMISSION,
+        plan_mode: bool = False,
+        active_policy: frozenset[str] | None = None,
     ) -> DiscoverySnapshot:
         allowed = set(request.allowed_operator_ids)
         cards: list[OperatorCard] = []
@@ -1236,26 +1016,32 @@ class PipelinePlanner:
             )
             query_count = 0
             for card in matches:
-                if admission == _EXPLICIT_ADMISSION:
-                    if (
-                        card.operator_id not in allowed
-                        or card.version not in _EXPLICIT_OPERATOR_VERSIONS
-                        or not is_builtin_card(self._registry, card)
-                    ):
-                        continue
-                    self._registry.resolve(card.operator_id)
-                elif card.version != _PLANNER_OPERATOR_VERSION:
+                if type(card) is not OperatorCard:
                     continue
-                # In the loop, so a skipped card spends neither the query limit nor the
-                # card budget: the caller's discovery budget buys active cards.
                 if active_only and card.deprecated:
                     continue
-                if (
-                    admission == _COMPATIBILITY_ADMISSION
-                    and allowed
-                    and card.operator_id not in allowed
-                ):
+                if not plan_mode:
+                    if card.version != _PLANNER_OPERATOR_VERSION:
+                        continue
+                    if allowed and card.operator_id not in allowed:
+                        continue
+                elif allowed:
+                    if card.operator_id not in allowed:
+                        continue
+                elif is_builtin_card(self._registry, card):
+                    if active_policy is None or card.operator_id not in active_policy:
+                        continue
+                elif card.version != _PLANNER_OPERATOR_VERSION:
                     continue
+                resolved = self._registry.resolve(card.operator_id)
+                if getattr(resolved, "operator_id", None) != card.operator_id:
+                    raise planning_error(
+                        PlanningStage.DISCOVERY,
+                        PlanningErrorCode.DISCOVERY_RESULT_INVALID,
+                        f"operator {card.operator_id!r} did not resolve exactly",
+                        category=ErrorCategory.RECOVERABLE,
+                        suggestion="Use exact registry-owned operator cards.",
+                    )
                 if card.operator_id in seen:
                     continue
                 cards.append(card)
@@ -1269,46 +1055,37 @@ class PipelinePlanner:
 
     def plan(self, request: PlanningRequest) -> PlanningResult:
         typed_request = _validate_request_data(request)
-        # Capture the caller's scope before any registry callback introduced by
-        # explicit admission. Discovery already follows the same boundary below.
         scope_anchor = _scope_anchor(typed_request)
-        admission = (
-            _EXPLICIT_ADMISSION
-            if _requests_v3_admission(typed_request.allowed_operator_ids)
-            else _COMPATIBILITY_ADMISSION
-        )
-        if admission == _EXPLICIT_ADMISSION:
+        allowed_anchor = tuple(typed_request.allowed_operator_ids)
+        if allowed_anchor:
             self._validate_explicit_operator_ids(typed_request)
             self._require_anchor(typed_request, scope_anchor)
         discovery = self._discovery(
             typed_request,
             active_only=True,
-            admission=admission,
+            plan_mode=True,
         )
         self._require_anchor(typed_request, scope_anchor)
-        # Two detached copies of one canonical document. The generator gets the
-        # first and may do what it likes with it; `retained` never leaves this frame
-        # until it lands on the result, so no later callback can reach it.
+        admission = _capture_admission(self._registry, allowed_anchor, discovery)
+        retained_discovery = DiscoverySnapshot(tuple(item.card for item in admission.cards))
+        generator_discovery = DiscoverySnapshot(tuple(item.card for item in admission.cards))
         generator_context, retained = self._collect_data_context(typed_request, scope_anchor)
-        candidates = self._generate_candidates(typed_request, discovery, generator_context)
+        candidates = self._generate_candidates(
+            typed_request, generator_discovery, generator_context
+        )
         _validate_request_data(typed_request)
         self._require_anchor(typed_request, scope_anchor)
         selected = self._select_candidate(candidates)
         try:
-            # The lookup calls the caller-supplied registry, so it belongs inside the
-            # boundary: an unexpected failure there is contained, not raised raw.
             self._reject_deprecated_steps(selected)
             self._require_anchor(typed_request, scope_anchor)
-            if admission == _EXPLICIT_ADMISSION:
-                pipeline = self._compile(
-                    typed_request,
-                    selected,
-                    discovery,
-                    scope_anchor,
-                    admission=admission,
-                )
-            else:
-                pipeline = self._compile(typed_request, selected, discovery, scope_anchor)
+            pipeline = self._compile(
+                typed_request,
+                selected,
+                retained_discovery,
+                scope_anchor,
+                admission,
+            )
         except PlanningError:
             raise
         except Exception:
@@ -1329,7 +1106,7 @@ class PipelinePlanner:
                 PlanningErrorCode.PREFLIGHT_FAILED,
                 str(error),
                 category=ErrorCategory.RECOVERABLE,
-                suggestion="Check operator resolution and materialize refinable steps.",
+                suggestion="Check exact operator resolution and the materialized plan.",
             ) from None
         except Exception:
             raise planning_error(
@@ -1352,7 +1129,7 @@ class PipelinePlanner:
             ) from None
         return PlanningResult(
             request=request_snapshot,
-            discovery=discovery,
+            discovery=retained_discovery,
             candidates=candidates,
             selected=selected,
             pipeline=pipeline,
@@ -1536,395 +1313,6 @@ class PipelinePlanner:
                     f"operator {operator_id!r} is deprecated and is not admitted by plan()"
                 )
 
-    @_deprecation.entry(subject="PipelinePlanner.plan_refinement()")
-    def plan_refinement(
-        self,
-        request: PlanningRequest,
-        source_operator_id: str,
-        input_data: DataBundle,
-        attributes: Mapping[str, Any],
-        properties: Properties | None = None,
-    ) -> PlanningResult:
-        """Plan from one built-in refiner's normalized alternatives.
-
-        The caller names the source because eligible refiners take different inputs and
-        may reach an LLM or registry. Returned pipelines are projected into drafts,
-        selected, freshly compiled, and preflighted.
-        """
-
-        typed_request = _validate_request_data(request)
-        scope_anchor = _scope_anchor(typed_request)
-        discovery = self.discover(typed_request)
-        self._require_anchor(typed_request, scope_anchor)
-        resolved = self._eligible_refinement_source(typed_request, discovery, source_operator_id)
-        self._require_anchor(typed_request, scope_anchor)
-        alternatives, categories = self._refine_once(resolved, input_data, attributes, properties)
-        # The refiner is caller-reachable code that just ran with caller-owned input, so
-        # the request is revalidated exactly as it is after a generator call.
-        _validate_request_data(typed_request)
-        self._require_anchor(typed_request, scope_anchor)
-        if categories:
-            raise _operator_refinement_failed(categories)
-
-        drafts, child_ids = self._convert_alternatives(typed_request, alternatives)
-        extended = self._extend_discovery(typed_request, discovery, child_ids)
-        self._require_anchor(typed_request, scope_anchor)
-        selected = self._select_candidate(drafts)
-        self._require_anchor(typed_request, scope_anchor)
-        pipeline = self._compile(typed_request, selected, extended, scope_anchor)
-        try:
-            preflight = self._executor.preflight(pipeline)
-        except PlanningError:
-            raise
-        except PipelineError as error:
-            raise planning_error(
-                PlanningStage.PREFLIGHT,
-                PlanningErrorCode.PREFLIGHT_FAILED,
-                str(error),
-                category=ErrorCategory.RECOVERABLE,
-                suggestion="Check operator resolution and materialize refinable steps.",
-            ) from None
-        except Exception:
-            raise planning_error(
-                PlanningStage.PREFLIGHT,
-                PlanningErrorCode.PREFLIGHT_FAILED,
-                "plan preflight failed",
-                category=ErrorCategory.FAILED,
-                suggestion="Check the planner registry and compiled pipeline.",
-            ) from None
-        self._require_anchor(typed_request, scope_anchor)
-        try:
-            request_snapshot = deepcopy(typed_request)
-        except Exception:
-            raise planning_error(
-                PlanningStage.COMPILATION,
-                PlanningErrorCode.RESULT_COPY_FAILED,
-                "planning request could not be copied",
-                category=ErrorCategory.FAILED,
-                suggestion="Use a planning request containing portable data.",
-            ) from None
-        return PlanningResult(
-            request=request_snapshot,
-            discovery=extended,
-            candidates=drafts,
-            selected=selected,
-            pipeline=pipeline,
-            preflight=preflight,
-        )
-
-    def _eligible_refinement_source(
-        self,
-        request: PlanningRequest,
-        discovery: DiscoverySnapshot,
-        source_operator_id: object,
-    ) -> Any:
-        """Resolve an eligible package-built refinement source.
-
-        Provenance and exact bound callables exclude public-registration lookalikes.
-        This is an API boundary, not in-process tamper resistance.
-        """
-
-        if type(source_operator_id) is not str:
-            raise _ineligible_source()
-        if not source_operator_id.endswith(f"@{_PLANNER_OPERATOR_VERSION}"):
-            raise _ineligible_source()
-        if source_operator_id not in _REFINABLE_SOURCE_IDS:
-            raise _ineligible_source()
-        if source_operator_id not in discovery.operator_ids:
-            raise _ineligible_source()
-        # Refinement requires explicit admission for the source and every child.
-        allowed = request.allowed_operator_ids
-        if type(allowed) is not tuple or not allowed:
-            raise _ineligible_source()
-        if source_operator_id not in allowed:
-            raise _ineligible_source()
-
-        try:
-            card = self._registry.get_card(source_operator_id)
-            resolved = self._registry.resolve(source_operator_id)
-        except Exception:
-            raise _source_resolution_failed() from None
-        if card is None or not is_builtin_card(self._registry, card):
-            raise _ineligible_source()
-        if _PRODUCES_PLAN_TAG not in card.tags:
-            raise _ineligible_source()
-
-        from blue_data_ops.operators.multipart_query_operator import MultipartQueryOperator
-        from blue_data_ops.operators.nl2query_router_operator import NL2QueryRouterOperator
-        from blue_data_ops.operators.plan_discover_operator import PlanDiscoverOperator
-        from blue_data_ops.operators.query_breakdown_operator import QueryBreakdownOperator
-        from blue_data_ops.plan.refiner import RefinableOperator
-
-        expected_types = {
-            "multipart_query@2.0.0": MultipartQueryOperator,
-            "nl2query_router@2.0.0": NL2QueryRouterOperator,
-            "plan_discover@2.0.0": PlanDiscoverOperator,
-            "query_breakdown@2.0.0": QueryBreakdownOperator,
-        }
-        expected_type = expected_types[source_operator_id]
-        if type(resolved) is not expected_type:
-            raise _ineligible_source()
-        expected_functions = {
-            "refine": RefinableOperator.refine,
-            "refiner": expected_type.refiner,
-            "_refiner": expected_type._refiner,  # pyright: ignore[reportPrivateUsage]
-        }
-        for name, expected_function in expected_functions.items():
-            bound = getattr(resolved, name, None)
-            if (
-                getattr(bound, "__self__", None) is not resolved
-                or getattr(bound, "__func__", None) is not expected_function
-            ):
-                raise _ineligible_source()
-        return resolved
-
-    def _refine_once(
-        self,
-        resolved: Any,
-        input_data: DataBundle,
-        attributes: Mapping[str, Any],
-        properties: Properties | None,
-    ) -> tuple[tuple[object, ...], tuple[ErrorCategory, ...]]:
-        """Call `refine()` exactly once and validate the transient result shape."""
-
-        try:
-            call_input = deepcopy(input_data)
-            call_attributes = deepcopy(dict(attributes))
-        except Exception:
-            raise _refinement_input_copy_failed() from None
-        try:
-            outcome = resolved.refine(call_input, call_attributes, properties)
-        except PlanningError:
-            raise
-        except Exception:
-            raise _refinement_error(
-                PlanningErrorCode.GENERATION_FAILED,
-                "operator refinement failed",
-                category=ErrorCategory.FAILED,
-                suggestion="Check the refinement operator and its runtime dependencies.",
-            ) from None
-
-        if type(outcome) is not tuple:
-            raise _refinement_result_invalid()
-        pair = cast("tuple[object, ...]", outcome)
-        if len(pair) != 2:
-            raise _refinement_result_invalid()
-        plans, meta = pair
-        if type(plans) is not list:
-            raise _refinement_result_invalid()
-        alternatives: tuple[object, ...] = tuple(cast("list[object]", plans))
-        # Lookalikes do not carry the normalized refinement contract.
-        from blue_data_ops.operators.types import ErrorCode, ErrorRecord, ErrorStage, ExecMeta
-
-        if type(meta) is not ExecMeta:
-            raise _refinement_result_invalid()
-        errors = meta.errors
-        if type(errors) is not list:
-            raise _refinement_result_invalid()
-        categories: list[ErrorCategory] = []
-        for record in cast("list[object]", errors):
-            if type(record) is not ErrorRecord:
-                raise _refinement_result_invalid()
-            if (
-                type(record.category) is not ErrorCategory
-                or type(record.code) is not ErrorCode
-                or type(record.stage) is not ErrorStage
-                or type(record.operator_id) is not str
-                or type(record.message) is not str
-                or type(record.retryable) is not bool
-                or (record.suggestion is not None and type(record.suggestion) is not str)
-            ):
-                raise _refinement_result_invalid()
-            categories.append(record.category)
-        # A refiner reporting errors must not also hand back plans; accepting both would
-        # leave the planner deciding which half of a contradictory result to believe.
-        if categories and alternatives:
-            raise _refinement_result_invalid()
-        is_empty = meta.is_empty
-        if type(is_empty) is not bool:
-            raise _refinement_result_invalid()
-        if not categories and is_empty != (len(alternatives) == 0):
-            raise _refinement_result_invalid()
-        return alternatives, tuple(categories)
-
-    def _convert_alternatives(
-        self,
-        request: PlanningRequest,
-        alternatives: tuple[object, ...],
-    ) -> tuple[tuple[PlanDraft, ...], tuple[str, ...]]:
-        """Project each returned pipeline into an isolated draft, in returned order.
-
-        The whole batch fails on the first bad alternative. Dropping one and keeping the
-        rest would hand the selector a silently narrowed candidate set, which is the one
-        outcome a caller could not detect from the result.
-        """
-
-        if len(alternatives) > request.max_candidates:
-            raise _refinement_limit()
-        drafts: list[PlanDraft] = []
-        child_ids: list[str] = []
-        for alternative in alternatives:
-            draft, ids = self._project_alternative(request, alternative)
-            drafts.append(draft)
-            for operator_id in ids:
-                if operator_id not in child_ids:
-                    child_ids.append(operator_id)
-        return tuple(drafts), tuple(child_ids)
-
-    def _project_alternative(
-        self,
-        request: PlanningRequest,
-        alternative: object,
-    ) -> tuple[PlanDraft, tuple[str, ...]]:
-        if type(alternative) is not DataPipeline:
-            raise _refinement_result_invalid()
-        try:
-            # Class dispatch, and only the graph containers are read. Plan properties,
-            # values, provenance, sync state, status, and statuses are all discarded, so
-            # an object that raises on copy or comparison in one of them cannot affect a
-            # conversion that never touches it.
-            record = DataPipeline.to_dict(alternative)
-        except Exception:
-            raise _refinement_conversion_failed() from None
-        if type(record) is not dict:
-            raise _refinement_result_invalid()
-
-        # The whole record, before anything is projected out of it.
-        by_node = _require_representable_record(
-            record,
-            max_steps=request.max_steps,
-            max_nodes=request.max_nodes,
-            max_edges=request.max_edges,
-        )
-        node_records = cast("dict[str, Any]", record["nodes"])
-        ordered = self._operator_order(node_records, by_node)
-        steps: list[PlanStep] = []
-        child_ids: list[str] = []
-        position = {node_id: index for index, node_id in enumerate(ordered)}
-        for index, node_id in enumerate(ordered, start=1):
-            entity_record = by_node[node_id]
-            operator_id = entity_record.get("operator_id")
-            if type(operator_id) is not str:
-                raise _refinement_result_invalid()
-            attributes = entity_record.get("attributes")
-            if type(attributes) is not dict or not _is_portable_plan_data(
-                cast("object", attributes)
-            ):
-                raise _refinement_result_invalid()
-            node = node_records.get(node_id)
-            if type(node) is not dict:
-                raise _refinement_result_invalid()
-            previous = cast("dict[str, Any]", node).get("prev")
-            if type(previous) is not list:
-                raise _refinement_result_invalid()
-            depends = tuple(
-                f"step-{position[str(other)] + 1:03d}"
-                for other in cast("list[Any]", previous)
-                if type(other) is str and other in position
-            )
-            label = cast("dict[str, Any]", node).get("label")
-            if label is not None and type(label) is not str:
-                raise _refinement_result_invalid()
-            steps.append(
-                PlanStep(
-                    step_id=f"step-{index:03d}",
-                    operator_id=operator_id,
-                    attributes=deepcopy(cast("dict[str, Any]", attributes)),
-                    depends_on=depends,
-                    label=label,
-                )
-            )
-            if operator_id not in child_ids:
-                child_ids.append(operator_id)
-        if not steps:
-            raise _refinement_result_invalid()
-        if len(steps) > request.max_steps:
-            raise _refinement_limit()
-        draft = _normalize_draft(
-            PlanDraft(steps=tuple(steps)),
-            stage=PlanningStage.GENERATION,
-            code=PlanningErrorCode.GENERATION_RESULT_INVALID,
-        )
-        return draft, tuple(child_ids)
-
-    def _operator_order(
-        self,
-        nodes: dict[str, Any],
-        operator_nodes: dict[str, dict[str, Any]],
-    ) -> list[str]:
-        """Stable topological order over operator nodes only."""
-
-        remaining = dict.fromkeys(operator_nodes)
-        ordered: list[str] = []
-        while remaining:
-            ready: list[str] = []
-            for node_id in remaining:
-                node = nodes.get(node_id)
-                if type(node) is not dict:
-                    raise _refinement_result_invalid()
-                previous = cast("dict[str, Any]", node).get("prev")
-                if type(previous) is not list:
-                    raise _refinement_result_invalid()
-                pending = [
-                    other
-                    for other in cast("list[Any]", previous)
-                    if type(other) is str and other in remaining
-                ]
-                if not pending:
-                    ready.append(node_id)
-            if not ready:
-                # A cycle among operator nodes: not representable as a PlanDraft.
-                raise _refinement_result_invalid()
-            for node_id in ready:
-                ordered.append(node_id)
-                del remaining[node_id]
-        return ordered
-
-    def _extend_discovery(
-        self,
-        request: PlanningRequest,
-        discovery: DiscoverySnapshot,
-        child_ids: tuple[str, ...],
-    ) -> DiscoverySnapshot:
-        """Add first-seen child cards by exact id, never by text discovery.
-
-        Refinement legitimately introduces operators the request's query never named, so
-        the snapshot has to grow. It grows only by exact pinned id resolved in this same
-        registry, so it cannot pull in a v1 card, a rewritten id, or a "latest".
-        """
-
-        cards = list(discovery.cards)
-        known = {card.operator_id for card in cards}
-        allowed = request.allowed_operator_ids
-        if type(allowed) is not tuple or not allowed:
-            raise _ineligible_source()
-        from blue_data_ops.plan.refiner import RefinableOperator
-
-        for operator_id in child_ids:
-            # Check every child, including one already present in the snapshot.
-            if operator_id not in allowed:
-                raise _refinement_result_invalid()
-            try:
-                card = self._registry.get_card(operator_id)
-            except Exception:
-                raise _refinement_child_failed() from None
-            if card is None or card.version != _PLANNER_OPERATOR_VERSION:
-                raise _refinement_result_invalid()
-            try:
-                resolved = self._registry.resolve(operator_id)
-            except Exception:
-                raise _refinement_child_failed() from None
-            # Recursive refinement has no materialization contract here.
-            if isinstance(resolved, RefinableOperator):
-                raise _refinement_result_invalid()
-            if operator_id in known:
-                continue
-            cards.append(card)
-            known.add(operator_id)
-        if len(cards) > request.max_discovery_cards:
-            raise _refinement_limit()
-        return DiscoverySnapshot(tuple(cards))
-
     def execute(
         self,
         planning: PlanningResult,
@@ -1952,9 +1340,13 @@ class PipelinePlanner:
         draft: PlanDraft,
         discovery: DiscoverySnapshot,
         scope: DataScope | None = None,
-        *,
-        admission: _PlannerAdmission = _COMPATIBILITY_ADMISSION,
+        admission: _AdmissionSnapshot | None = None,
     ) -> DataPipeline:
+        admitted = (
+            _capture_admission(self._registry, tuple(request.allowed_operator_ids), discovery)
+            if admission is None
+            else admission
+        )
         raw_steps = cast(tuple[object, ...], draft.steps)
         if not raw_steps:
             raise _invalid_compiled_plan("plan draft has no steps")
@@ -1971,53 +1363,54 @@ class PipelinePlanner:
         if len(step_ids) != len(set(step_ids)):
             raise _invalid_compiled_plan("plan step ids must be unique")
 
-        discovered_ids = set(discovery.operator_ids)
+        discovered_ids = set(admitted.operator_ids)
         by_id = {step.step_id: step for step in steps}
         successor_ids: dict[str, list[str]] = {step.step_id: [] for step in steps}
         edge_count = 0
         for step in steps:
             raw_operator_id = cast(object, step.operator_id)
             if not isinstance(raw_operator_id, str):
-                raise _invalid_compiled_plan(
-                    f"planner requires @{_PLANNER_OPERATOR_VERSION} operator ids"
-                )
+                raise _invalid_compiled_plan("planner requires supported pinned operator ids")
             operator_id = raw_operator_id
-            if admission == _EXPLICIT_ADMISSION:
-                if operator_id not in request.allowed_operator_ids:
-                    raise _invalid_compiled_plan(
-                        f"operator {operator_id!r} was not allowed by the planning request"
-                    )
-                matching_cards = tuple(
-                    card
-                    for card in discovery.cards
-                    if type(card) is OperatorCard and card.operator_id == operator_id
-                )
-                parts = _current_operator_id_parts(operator_id)
-                if len(matching_cards) != 1 or parts is None:
-                    raise _invalid_compiled_plan(f"operator {operator_id!r} was not discovered")
-                card = matching_cards[0]
-                name, version = parts
-                try:
-                    resolved = self._registry.resolve(operator_id)
-                    built_in = is_builtin_card(self._registry, card)
-                except Exception:
-                    raise _invalid_compiled_plan(
-                        f"operator {operator_id!r} was not admitted"
-                    ) from None
-                if (
-                    not built_in
-                    or card.name != name
-                    or card.version != version
-                    or cast(Any, card).deprecated
-                    or getattr(resolved, "operator_id", None) != operator_id
-                ):
-                    raise _invalid_compiled_plan(f"operator {operator_id!r} was not admitted")
-            elif not operator_id.endswith(f"@{_PLANNER_OPERATOR_VERSION}"):
+            parts = _current_operator_id_parts(operator_id)
+            if parts is None:
                 raise _invalid_compiled_plan(
-                    f"planner requires @{_PLANNER_OPERATOR_VERSION} operator ids"
+                    "planner requires supported pinned 2.0.0 or 3.0.0 operator ids"
+                )
+            if admitted.allowed_operator_ids and operator_id not in admitted.allowed_operator_ids:
+                raise _invalid_compiled_plan(
+                    f"operator {operator_id!r} was not allowed by the planning request"
                 )
             if operator_id not in discovered_ids:
                 raise _invalid_compiled_plan(f"operator {operator_id!r} was not discovered")
+            matching = tuple(item for item in admitted.cards if item.operator_id == operator_id)
+            if len(matching) != 1:
+                raise _invalid_compiled_plan(f"operator {operator_id!r} was not admitted")
+            item = matching[0]
+            name, version = parts
+            try:
+                current_card = self._registry.get_card(operator_id)
+                resolved = self._registry.resolve(operator_id)
+                built_in = is_builtin_card(self._registry, current_card)
+            except Exception:
+                raise _invalid_compiled_plan(f"operator {operator_id!r} was not admitted") from None
+            if (
+                current_card is None
+                or current_card is not item.card
+                or item.operator_id != operator_id
+                or item.name != name
+                or item.version != version
+                or item.deprecated
+                or current_card.operator_id != item.operator_id
+                or current_card.name != item.name
+                or current_card.version != item.version
+                or current_card.deprecated
+                or resolved is not item.operator
+                or getattr(resolved, "operator_id", None) != operator_id
+                or (built_in and not is_reviewed_builtin_card(self._registry, current_card))
+                or (version == "3.0.0" and not built_in)
+            ):
+                raise _invalid_compiled_plan(f"operator {operator_id!r} was not admitted")
             if operator_id.split("@", 1)[0] == _ADDRESSED_OPERATOR_NAME:
                 _check_addressed_step(scope, step)
             raw_dependencies = cast(tuple[object, ...], step.depends_on)

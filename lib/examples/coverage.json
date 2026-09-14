@@ -2,17 +2,16 @@
   "schema_version": "1.0.0",
   "reference_only_axes": ["capability"],
   "examples": {
-    "core_quickstart.py": ["select@2.0.0", "avg@2.0.0", "union@2.0.0", "normalize_text@2.0.0"],
-    "sqlite_quickstart.py": ["create_database@2.0.0", "insert_table@2.0.0", "data_discover@2.0.0"],
-    "ml_quickstart.py": ["classify@2.0.0"],
-    "vector_quickstart.py": ["vector_similarity@2.0.0"],
-    "embedding_planner.py": [],
+    "core_quickstart.py": ["select@2.0.0", "avg@3.0.0", "union@2.0.0", "normalize_text@2.0.0"],
+    "sqlite_quickstart.py": ["create_database@2.0.0", "insert_table@3.0.0", "data_discover@2.0.0"],
+    "ml_quickstart.py": ["classify@3.0.0"],
+    "vector_quickstart.py": ["vector_similarity@3.0.0"],
+    "embedding_planner.py": ["select@2.0.0", "avg@3.0.0", "argmax@2.0.0"],
     "operator_skill_discovery.py": [],
     "operator_skill_integrations.py": [],
     "operator_outcomes.py": ["insert_table@3.0.0", "avg@3.0.0"],
-    "nl2llm.py": ["nl2llm@2.0.0"],
-    "nl2sql_sqlite.py": ["nl2sql@2.0.0"],
-    "semantic_filter.py": ["semantic_filter@2.0.0"],
-    "refinement.py": ["multipart_query@2.0.0", "nl2query_router@2.0.0", "plan_discover@2.0.0"]
+    "nl2llm.py": ["nl2llm@3.0.0"],
+    "nl2sql_sqlite.py": ["nl2sql@3.0.0"],
+    "semantic_filter.py": ["semantic_filter@3.0.0"]
   }
 }

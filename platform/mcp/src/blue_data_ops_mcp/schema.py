@@ -47,15 +47,6 @@ class RunResult(BaseModel):
     exec_meta: ExecMetaModel
 
 
-class RefineResult(BaseModel):
-    """The structured envelope for a companion: normalized ``refine()`` projected once."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    plans: list[dict[str, Any]]
-    exec_meta: ExecMetaModel
-
-
 def attributes_json_schema(operator: Operator) -> dict[str, Any]:
     """Annotate known attributes, omitting defaults appropriately.
 

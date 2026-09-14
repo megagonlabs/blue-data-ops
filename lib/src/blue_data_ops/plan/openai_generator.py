@@ -29,7 +29,11 @@ from importlib import resources
 from typing import Any, cast
 
 from blue_data_ops.operators.operator import Operator
-from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry, is_builtin_card
+from blue_data_ops.operators.registry import (
+    OperatorCard,
+    OperatorRegistry,
+    is_reviewed_builtin_card,
+)
 from blue_data_ops.operators.types import ErrorCategory
 from blue_data_ops.plan.context import (
     DataContextSnapshot,
@@ -174,12 +178,11 @@ def _builtin_cards_required() -> PlanningError:
     return planning_error(
         PlanningStage.DISCOVERY,
         PlanningErrorCode.DISCOVERY_RESULT_INVALID,
-        "OpenAI plan generator requires built-in v2 operator cards or explicitly "
-        "allowed built-in v3 cards",
+        "OpenAI plan generator requires supported built-in 2.0.0 or 3.0.0 operator cards",
         category=ErrorCategory.RECOVERABLE,
         suggestion=(
-            "Pass one shared, unmodified versioned_registry() instance to the generator "
-            "and planner, or use a different plan generator."
+            "Pass one shared, unmodified active_registry() or versioned_registry() instance "
+            "to the generator and planner, or use a different plan generator."
         ),
     )
 
@@ -386,10 +389,7 @@ class OpenAIPlanGenerator:
         for card in discovery.cards:
             if type(card) is not OperatorCard or card.operator_id not in self._allowed:
                 continue
-            # Identity and package provenance together, from the one shared primitive.
-            # A card that is allowlisted and discovered but not this registry's built-in
-            # is a wiring error worth reporting, not something to quietly skip.
-            if not is_builtin_card(self._registry, card):
+            if not is_reviewed_builtin_card(self._registry, card):
                 raise _builtin_cards_required()
             if card.version not in _SUPPORTED_CARD_VERSIONS:
                 raise _builtin_cards_required()

@@ -36,13 +36,6 @@ from blue_data_ops.plan.planner import (
     RuleTemplateStep,
     project_then_aggregate_template,
 )
-from blue_data_ops.plan.refiner import (
-    DeclarativeOperator,
-    RefinableOperator,
-    declarative_operator_refiner,
-    default_operator_refiner,
-    normalized_declarative_operator_refiner,
-)
 from blue_data_ops.plan.types import (
     EntityType,
     NodeType,
@@ -56,7 +49,6 @@ __all__ = [
     "DataContextSnapshot",
     "DataPipeline",
     "DataScope",
-    "DeclarativeOperator",
     "DiscoveryQuery",
     "DiscoverySnapshot",
     "Entity",
@@ -82,7 +74,6 @@ __all__ = [
     "PlanningResult",
     "PlanningStage",
     "PlanStep",
-    "RefinableOperator",
     "RegistryDataContextProvider",
     "RequireSinglePlan",
     "RulePlanGenerator",
@@ -91,8 +82,5 @@ __all__ = [
     "SELECT_THEN_AVERAGE_TEMPLATE",
     "Status",
     "SyncBackend",
-    "declarative_operator_refiner",
-    "default_operator_refiner",
-    "normalized_declarative_operator_refiner",
     "project_then_aggregate_template",
 ]

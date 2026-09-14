@@ -16,4 +16,4 @@ Raw `apply()` treats any negative scalar as append, while validation accepts onl
 
 Raw `apply()` returns `[]` when the outer input or first group is empty, even if `insert_records` is present. `invoke()` returns `None` for settings the validator rejects. The current validator accepts tuple, string, and float scalar forms that can raise `AttributeError` or `TypeError` in `apply()` and `invoke()`; `run()` contains those failures as `EXECUTION_FAILED` and returns `[[]]`. `output_attributes` is `{}`.
 
-`explain()` uses shared statistics. The operator has no external disclosure, persistent side effect, or optional extra. Its default raw `refiner()` returns `[]`; it has no structured `refine()` method.
+`explain()` uses shared statistics. The operator has no external disclosure, persistent side effect, or optional extra.

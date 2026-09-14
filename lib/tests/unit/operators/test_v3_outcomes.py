@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import (  # pyright: ignore[reportMissingTypeStubs]
+    SQLiteDBSource,
+)
 
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.operators.operator import Operator

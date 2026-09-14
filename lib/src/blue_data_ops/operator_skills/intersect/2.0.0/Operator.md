@@ -15,4 +15,4 @@
 
 Raw `apply()` returns `[]` when every group is empty and `[[]]` for a valid intersection with no matches. An invalid match option can raise `ValueError` when a signature is built. `invoke()` returns `None` for that invalid setting. `run()` contains failures, normalizes empty output to `[[]]`, and returns `{}` for `output_attributes`.
 
-The operator has no custom `explain()`, external disclosure, side effect, or optional extra. Its default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+The operator has no custom `explain()`, external disclosure, side effect, or optional extra.

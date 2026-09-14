@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from blue_data_ops.operators import OperatorEmbeddingIndex, versioned_registry
+from blue_data_ops.operators import OperatorEmbeddingIndex, active_registry
 from blue_data_ops.plan import DiscoveryQuery, PipelinePlanner, PlanningRequest, RulePlanGenerator
 
 
@@ -29,7 +29,7 @@ class KeywordEmbedder:
 
 
 def main() -> None:
-    registry = versioned_registry()
+    registry = active_registry()
     index = OperatorEmbeddingIndex.build(registry, KeywordEmbedder())
     planner = PipelinePlanner(
         registry,
@@ -46,7 +46,7 @@ def main() -> None:
             "select": {"operand_key": "total", "operand": ">", "operand_val": 100},
             "avg": {"avg_key": "total", "output_key": "average_total"},
         },
-        allowed_operator_ids=("select@2.0.0", "avg@2.0.0", "argmax@2.0.0"),
+        allowed_operator_ids=("select@2.0.0", "avg@3.0.0", "argmax@2.0.0"),
         input_label="orders",
         output_label="answer",
     )
@@ -62,7 +62,7 @@ def main() -> None:
     result = planner.run(request, orders)
 
     assert result.execution.succeeded
-    assert result.planning.discovery.operator_ids == ("select@2.0.0", "avg@2.0.0")
+    assert result.planning.discovery.operator_ids == ("select@2.0.0", "avg@3.0.0")
     assert result.execution.output_data == [[{"average_total": 167.5}]]
     print("discovered:", result.planning.discovery.operator_ids)
     print("output:", result.execution.output_data)

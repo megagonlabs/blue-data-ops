@@ -3,7 +3,7 @@ from __future__ import annotations
 from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import versioned_registry
 
-# The v1 average card is current and searchable; it just ships no skill package.
+# The retained v1 average card is searchable in the history registry but ships no skill package.
 SKILL_INELIGIBLE_OPERATOR_ID = "avg@1.0.0"
 
 

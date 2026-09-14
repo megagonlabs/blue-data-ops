@@ -16,4 +16,4 @@ Integers and floats are compared directly. Other values are converted with `int(
 
 `apply()` returns one new record. Empty input, an empty first group, a missing key, or no convertible value produces `[[{"min": None}]]`; this is a successful result. `invoke()` returns `None` for invalid settings. Raw exceptions outside the guarded conversions propagate, while `run()` contains them and timeout failures in `ExecMeta`. `output_attributes` is `{}`.
 
-`explain()` uses the shared statistics. There is no side effect, external disclosure, or optional extra. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`explain()` uses the shared statistics. There is no side effect, external disclosure, or optional extra.

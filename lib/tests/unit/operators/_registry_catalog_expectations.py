@@ -9,9 +9,16 @@ from blue_data_ops.operators import OperatorCard
 
 _LIB = Path(__file__).resolve().parents[3]
 _FIXTURE = json.loads((_LIB / "tests/fixtures/v2_discovery_catalog.json").read_text())
+_RETIRED_NAMES = {
+    "multipart_query",
+    "nl2query_router",
+    "plan_discover",
+    "query_breakdown",
+}
 LEGACY_CARDS = tuple(
     OperatorCard(**cast(dict[str, Any], {**card, "tags": tuple(card["tags"])}))
     for card in _FIXTURE["cards"]
+    if card["name"] not in _RETIRED_NAMES
 )
 LEGACY_OPERATOR_IDS = tuple(card.operator_id for card in LEGACY_CARDS)
 ADDED_OPERATOR_IDS = (
@@ -65,7 +72,7 @@ def assert_legacy_cards(cards: Sequence[OperatorCard]) -> list[OperatorCard]:
 
 def assert_full_inventory(cards: Sequence[OperatorCard]) -> None:
     ids = tuple(card.operator_id for card in cards)
-    assert len(ids) == len(set(ids)) == 93, "expected 93 distinct operator IDs"
+    assert len(ids) == len(set(ids)) == 85, "expected 85 distinct operator IDs"
     assert ids == FULL_OPERATOR_IDS, "full inventory/order changed"
 
 

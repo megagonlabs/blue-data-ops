@@ -16,4 +16,4 @@ Integers and floats count directly, including Boolean values. Other values are c
 
 `apply()` returns one new result record. Empty input, an empty first group, or no convertible values produces `[[{"avg": 0}]]`, which is a successful non-empty result. `invoke()` returns `None` for invalid settings. `run()` contains execution and timeout failures in `ExecMeta`; `output_attributes` is `{}`.
 
-`explain()` uses the shared statistics. The operator has no side effect, provider call, registry call, or optional extra. Its default raw `refiner()` returns `[]`; it has no structured `refine()` surface.
+`explain()` uses the shared statistics. The operator has no side effect, provider call, registry call, or optional extra.

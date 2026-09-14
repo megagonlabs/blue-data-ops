@@ -8,7 +8,12 @@ from typing import Any, cast
 
 import pytest
 
-from blue_data_ops.operators import OperatorCard, OperatorRegistry, versioned_registry
+from blue_data_ops.operators import (
+    OperatorCard,
+    OperatorRegistry,
+    default_registry,
+    versioned_registry,
+)
 from blue_data_ops.operators.select_operator import SelectOperator
 from blue_data_ops.operators.types import ErrorCategory
 from blue_data_ops.plan import (
@@ -237,7 +242,7 @@ def test_explicit_v3_registry_validation_cannot_change_the_scope_before_discover
     assert generator.calls == 0
 
 
-def test_empty_allowlist_and_compatibility_discover_remain_v2() -> None:
+def test_empty_allowlist_uses_active_defaults_and_compatibility_discover_remains_v2() -> None:
     registry = versioned_registry()
     planner = PipelinePlanner(registry, RulePlanGenerator((_template(),)))
     request = _request(allowed=())
@@ -245,10 +250,10 @@ def test_empty_allowlist_and_compatibility_discover_remain_v2() -> None:
     result = planner.plan(request)
 
     assert tuple(step.operator_id for step in result.selected.steps) == (
-        "join@2.0.0",
-        "avg@2.0.0",
+        "join@3.0.0",
+        "avg@3.0.0",
     )
-    assert result.preflight.operator_ids == ("join@2.0.0", "avg@2.0.0")
+    assert result.preflight.operator_ids == ("join@3.0.0", "avg@3.0.0")
     assert PipelinePlanner(registry, cast(Any, None)).discover(_request()).operator_ids == ()
 
 
@@ -289,6 +294,105 @@ def test_ordinary_plan_rejects_a_custom_v3_registration() -> None:
     assert generator.calls == 0
 
 
+def test_caller_rule_can_plan_with_a_caller_registered_v2_operator() -> None:
+    registry = OperatorRegistry()
+    card = registry.register(SelectOperator(name="custom_select"), "2.0.0")
+    draft = PlanDraft(
+        (
+            PlanStep(
+                "filter",
+                card.operator_id,
+                {"operand_key": "amount", "operand": ">", "operand_val": 10},
+            ),
+        )
+    )
+    request = PlanningRequest(
+        goal="Filter rows with a caller operator",
+        discovery_queries=(DiscoveryQuery("custom_select"),),
+        allowed_operator_ids=(card.operator_id,),
+    )
+
+    result = PipelinePlanner(registry, _FixedGenerator(draft)).plan(request)
+
+    assert result.preflight.operator_ids == ("custom_select@2.0.0",)
+
+
+def test_raw_default_override_is_not_builtin_planning_authority() -> None:
+    registry = default_registry(argmax="3.0.0")
+    generator = _FixedGenerator(PlanDraft((PlanStep("largest", "argmax@3.0.0"),)))
+    card = registry.get_card("argmax@3.0.0")
+    assert card is not None
+    assert card.tags == ()
+    assert registry.resolve(card.operator_id).operator_id == card.operator_id
+
+    with pytest.raises(PlanningError) as caught:
+        PipelinePlanner(registry, generator).plan(
+            PlanningRequest(
+                goal="Find the row with the largest value",
+                discovery_queries=(DiscoveryQuery("argmax"),),
+                allowed_operator_ids=(card.operator_id,),
+            )
+        )
+
+    assert caught.value.record.code is PlanningErrorCode.INVALID_REQUEST
+    assert generator.calls == 0
+
+
+@pytest.mark.parametrize("swap_window", ["generator", "selector"])
+def test_admission_rejects_same_id_operator_swaps(swap_window: str) -> None:
+    registry = versioned_registry()
+    operator_id = "select@2.0.0"
+    original = registry.resolve(operator_id)
+    replacement = SelectOperator()
+    cast(Any, replacement)._bind_operator_id(operator_id)
+    draft = PlanDraft(
+        (
+            PlanStep(
+                "filter",
+                operator_id,
+                {"operand_key": "amount", "operand": ">", "operand_val": 10},
+            ),
+        )
+    )
+
+    def swap() -> None:
+        cast(Any, registry)._operators[operator_id] = replacement
+
+    class SwappingGenerator(_FixedGenerator):
+        def generate(
+            self,
+            request: PlanningRequest,
+            discovery: DiscoverySnapshot,
+            data_context: DataContextSnapshot | None,
+        ) -> Sequence[PlanDraft]:
+            if swap_window == "generator":
+                swap()
+            return super().generate(request, discovery, data_context)
+
+    class SwappingSelector:
+        def select(self, candidates: Sequence[PlanDraft]) -> PlanDraft:
+            if swap_window == "selector":
+                swap()
+            return candidates[0]
+
+    request = PlanningRequest(
+        goal="Filter rows",
+        discovery_queries=(DiscoveryQuery("select"),),
+        allowed_operator_ids=(operator_id,),
+    )
+    planner = PipelinePlanner(
+        registry,
+        SwappingGenerator(draft),
+        selector=cast(Any, SwappingSelector()),
+    )
+
+    with pytest.raises(PlanningError, match="was not admitted") as caught:
+        planner.plan(request)
+
+    assert replacement is not original
+    assert caught.value.record.code is PlanningErrorCode.PLAN_INVALID
+
+
 def test_allowlist_does_not_add_an_operator_discovery_did_not_return() -> None:
     draft = PlanDraft((PlanStep("average", "avg@3.0.0", AVG_ATTRIBUTES),))
     planner = PipelinePlanner(versioned_registry(), _FixedGenerator(draft))
@@ -324,10 +428,10 @@ def test_discovery_rejects_a_same_id_card_from_another_registry(
     monkeypatch.setattr(registry, "find", MethodType(substituted_find, registry))
     planner = PipelinePlanner(registry, RulePlanGenerator((_template(),)))
 
-    with pytest.raises(PlanningError, match="expected one discovered 'join'") as caught:
+    with pytest.raises(PlanningError, match="operator 'join@3.0.0' was not admitted") as caught:
         planner.plan(_request())
 
-    assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
+    assert caught.value.record.code is PlanningErrorCode.PLAN_INVALID
 
 
 def test_rule_template_rejects_a_forged_allowed_card_without_planner_discovery() -> None:
@@ -404,24 +508,22 @@ def test_direct_rule_template_accepts_copied_matching_metadata() -> None:
     assert tuple(step.operator_id for step in draft.steps) == V3_IDS
 
 
-def test_explicit_discovery_excludes_an_inactive_builtin_card() -> None:
+def test_explicit_request_rejects_a_retired_operator_id() -> None:
     registry = versioned_registry()
-    inactive_id = "query_breakdown@2.0.0"
-    inactive = registry.get_card(inactive_id)
-    assert inactive is not None and cast(Any, inactive).deprecated
+    retired_id = "query_breakdown@2.0.0"
+    generator = _FixedGenerator(PlanDraft((PlanStep("average", "avg@3.0.0", AVG_ATTRIBUTES),)))
     request = PlanningRequest(
-        goal="Inspect an inactive card",
+        goal="Inspect a retired card",
         discovery_queries=(DiscoveryQuery("query_breakdown"),),
-        allowed_operator_ids=(inactive_id, "avg@3.0.0"),
+        allowed_operator_ids=(retired_id, "avg@3.0.0"),
     )
 
-    discovery = cast(Any, PipelinePlanner(registry, cast(Any, None)))._discover(
-        request,
-        active_only=True,
-        admission="explicit-v2-v3",
-    )
+    with pytest.raises(PlanningError) as caught:
+        PipelinePlanner(registry, generator).plan(request)
 
-    assert discovery.operator_ids == ()
+    assert caught.value.record.code is PlanningErrorCode.INVALID_REQUEST
+    assert caught.value.record.stage is PlanningStage.VALIDATION
+    assert generator.calls == 0
 
 
 def test_explicit_compile_rechecks_registry_identity() -> None:
@@ -436,58 +538,9 @@ def test_explicit_compile_rechecks_registry_identity() -> None:
             request,
             draft,
             _cards(other, "avg@3.0.0"),
-            admission="explicit-v2-v3",
         )
 
     assert caught.value.record.code is PlanningErrorCode.PLAN_INVALID
-
-
-def test_direct_explicit_compile_rejects_an_inactive_builtin_card() -> None:
-    registry = versioned_registry()
-    inactive_id = "query_breakdown@2.0.0"
-    inactive = registry.get_card(inactive_id)
-    assert inactive is not None and cast(Any, inactive).deprecated
-    planner = PipelinePlanner(registry, cast(Any, None))
-
-    with pytest.raises(PlanningError, match="was not admitted") as caught:
-        cast(Any, planner)._compile(
-            _request(allowed=(inactive_id, "avg@3.0.0")),
-            PlanDraft((PlanStep("inactive", inactive_id),)),
-            _cards(registry, inactive_id),
-            admission="explicit-v2-v3",
-        )
-
-    assert caught.value.record.code is PlanningErrorCode.PLAN_INVALID
-    assert caught.value.record.stage is PlanningStage.COMPILATION
-
-
-def test_default_compile_policy_still_rejects_v3_for_refinement_callers() -> None:
-    registry = versioned_registry()
-    planner = PipelinePlanner(registry, cast(Any, None))
-    request = _request(allowed=("avg@3.0.0",))
-    draft = PlanDraft((PlanStep("average", "avg@3.0.0", AVG_ATTRIBUTES),))
-
-    with pytest.raises(PlanningError, match="planner requires @2.0.0") as caught:
-        cast(Any, planner)._compile(request, draft, _cards(registry, "avg@3.0.0"))
-
-    assert caught.value.record.code is PlanningErrorCode.PLAN_INVALID
-
-
-def test_refinement_keeps_its_v2_path_when_the_allowlist_also_contains_v3() -> None:
-    registry = versioned_registry()
-    planner = PipelinePlanner(registry, cast(Any, None))
-    source = "multipart_query@2.0.0"
-    child = "create_database@2.0.0"
-    request = PlanningRequest(
-        goal="Materialize a refinement alternative",
-        discovery_queries=(DiscoveryQuery("multipart_query"),),
-        allowed_operator_ids=(source, child, "avg@3.0.0"),
-    )
-
-    result = planner.plan_refinement(request, source, [[]], {})
-
-    assert tuple(step.operator_id for step in result.selected.steps) == (child,)
-    assert result.preflight.operator_ids == (child,)
 
 
 def test_scripted_openai_v3_plan_discloses_only_discovered_metadata_and_compiles() -> None:
@@ -551,35 +604,10 @@ def test_openai_v3_catalog_rejects_a_card_from_another_registry_before_call() ->
         client=client,
     )
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards") as caught:
+    with pytest.raises(PlanningError, match="requires supported built-in") as caught:
         generator.generate(_request(allowed=("avg@3.0.0",)), _cards(other, "avg@3.0.0"), None)
 
     assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
-    assert client.requests == []
-
-
-def test_direct_openai_catalog_excludes_an_inactive_builtin_before_call() -> None:
-    registry = versioned_registry()
-    inactive_id = "query_breakdown@2.0.0"
-    inactive = registry.get_card(inactive_id)
-    assert inactive is not None and cast(Any, inactive).deprecated
-    client = _RecordingClient(_response(inactive_id))
-    generator = OpenAIPlanGenerator(
-        "offline-scripted-test",
-        registry=registry,
-        allowed_operator_ids=(inactive_id,),
-        client=client,
-    )
-
-    with pytest.raises(PlanningError, match="no authorized operators") as caught:
-        generator.generate(
-            _request(allowed=(inactive_id,)),
-            _cards(registry, inactive_id),
-            None,
-        )
-
-    assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
-    assert caught.value.record.stage is PlanningStage.DISCOVERY
     assert client.requests == []
 
 
@@ -616,7 +644,7 @@ def test_direct_openai_rejects_a_later_nonexact_resolution(
         client=client,
     )
 
-    with pytest.raises(PlanningError, match="requires built-in v2 operator cards") as caught:
+    with pytest.raises(PlanningError, match="requires supported built-in") as caught:
         generator.generate(_request(allowed=("avg@3.0.0",)), discovery, None)
 
     assert caught.value.record.code is PlanningErrorCode.DISCOVERY_RESULT_INVALID
@@ -629,9 +657,9 @@ def _foreign_boundary_error(marker: str) -> PlanningError:
     return planning_error(
         PlanningStage.GENERATION,
         PlanningErrorCode.GENERATION_FAILED,
-        f"ATTEMPT03_SYNTHETIC_{marker}_MESSAGE",
+        f"FOREIGN_BOUNDARY_SYNTHETIC_{marker}_MESSAGE",
         category=ErrorCategory.FAILED,
-        suggestion=f"ATTEMPT03_SYNTHETIC_{marker}_SUGGESTION",
+        suggestion=f"FOREIGN_BOUNDARY_SYNTHETIC_{marker}_SUGGESTION",
     )
 
 
@@ -645,13 +673,12 @@ def _assert_sanitized_registry_error(
         ErrorCategory.RECOVERABLE,
         PlanningErrorCode.DISCOVERY_RESULT_INVALID,
         PlanningStage.DISCOVERY,
-        "OpenAI plan generator requires built-in v2 operator cards or explicitly "
-        "allowed built-in v3 cards",
+        "OpenAI plan generator requires supported built-in 2.0.0 or 3.0.0 operator cards",
         False,
-        "Pass one shared, unmodified versioned_registry() instance to the generator "
-        "and planner, or use a different plan generator.",
+        "Pass one shared, unmodified active_registry() or versioned_registry() instance "
+        "to the generator and planner, or use a different plan generator.",
     )
-    assert "ATTEMPT03_SYNTHETIC" not in str(error)
+    assert "FOREIGN_BOUNDARY_SYNTHETIC" not in str(error)
 
 
 def _boundary_generator(

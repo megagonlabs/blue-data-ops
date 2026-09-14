@@ -1,145 +1,128 @@
 from __future__ import annotations
 
-import importlib.metadata
 import os
+import re
 import subprocess
 import sys
+import tomllib
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+import pytest
 
 import blue_data_ops_mcp
+import blue_data_ops_mcp.registration as registration
+import blue_data_ops_mcp.schema as schema_module
 from blue_data_ops_mcp.registration import (
-    DEPRECATION_SENTENCE,
-    REFINE_DEPRECATION_SENTENCE,
-    REFINE_DESCRIPTION_PREFIX,
-    REFINE_SUFFIX,
+    ACTIVE_OPERATOR_IDS,
     V2_OPERATOR_IDS,
     freeze_deployment,
 )
 from blue_data_ops_mcp.server import create_server
 
 ROOT = Path(__file__).parents[1]
-DEPRECATED_PRIMARY_NAMES = (
-    "multipart_query",
-    "nl2query_router",
-    "plan_discover",
-    "query_breakdown",
+CORE_SRC = ROOT.parents[1] / "lib" / "src"
+TAG_DISCOVERY_FENCE = re.compile(
+    r"<!-- blue-data-ops-mcp-test: tag-discovery -->\n"
+    r"```python\n(?P<source>.*?)\n```",
+    re.DOTALL,
 )
 
 
 def test_distribution_metadata_and_public_surface() -> None:
-    metadata = importlib.metadata.metadata("blue-data-ops-mcp")
-    requirements = metadata.get_all("Requires-Dist") or []
-    assert metadata["Name"] == "blue-data-ops-mcp"
-    assert metadata["Version"] == "0.12.0"
-    assert metadata["Requires-Python"] == ">=3.11"
-    runtime = {requirement for requirement in requirements if "extra ==" not in requirement}
-    # 0.12.0 tracks core 2.10.0. The operator cards this adapter serves are still @2.0.0;
-    # only the core distribution version moved.
-    assert runtime == {
-        "blue-data-ops==2.10.0",
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["name"] == "blue-data-ops-mcp"
+    assert project["version"] == "0.13.0"
+    assert project["requires-python"] == ">=3.11"
+    assert set(project["dependencies"]) == {
+        "blue-data-ops==3.0.0",
         "mcp==1.27.2",
-        "pydantic<3,>=2.11",
+        "pydantic>=2.11,<3",
     }
-    assert not any(
-        forbidden in requirement.lower()
-        for forbidden in ("uvicorn", "anyio", "mcp[cli]", "registry-mcp")
-        for requirement in runtime
-    )
-    assert blue_data_ops_mcp.__all__ == ["V2_OPERATOR_IDS", "create_server", "serve"]
+    assert blue_data_ops_mcp.__all__ == [
+        "ACTIVE_OPERATOR_IDS",
+        "V2_OPERATOR_IDS",
+        "create_server",
+        "serve",
+    ]
+    assert blue_data_ops_mcp.ACTIVE_OPERATOR_IDS == ACTIVE_OPERATOR_IDS
     assert blue_data_ops_mcp.V2_OPERATOR_IDS == V2_OPERATOR_IDS
-    assert len(V2_OPERATOR_IDS) == 36
-    assert all(operator_id.endswith("@2.0.0") for operator_id in V2_OPERATOR_IDS)
+    assert len(ACTIVE_OPERATOR_IDS) == len(V2_OPERATOR_IDS) == 32
 
 
-def _readme() -> str:
-    return (ROOT / "README.md").read_text(encoding="utf-8")
+def test_active_ids_match_core_active_registry() -> None:
+    from blue_data_ops import operators as operators_module
+    from blue_data_ops.operators import OperatorRegistry
+
+    active_registry = cast(
+        Callable[[], OperatorRegistry], getattr(operators_module, "active_registry")
+    )
+    cards = active_registry().list_cards()
+    assert tuple(card.operator_id for card in cards) == ACTIVE_OPERATOR_IDS
 
 
-def test_readme_quotes_the_two_lifecycle_sentences_verbatim() -> None:
-    readme = _readme()
-
-    assert DEPRECATION_SENTENCE in readme
-    assert REFINE_DEPRECATION_SENTENCE in readme
-
-
-async def test_readme_describes_where_each_kind_carries_its_lifecycle_sentence() -> None:
-    """The two kinds place the sentence differently, so the README has to say which is which.
-
-    A deprecated primary opens with its sentence. A companion opens with its ordinary refinement
-    note and carries its sentence second, ahead of the invocation guidance and card description.
-    """
-
-    readme = _readme()
-    tools = {tool.name: tool for tool in await create_server().list_tools()}
-    companion_opening = f"{REFINE_DESCRIPTION_PREFIX}\n\n{REFINE_DEPRECATION_SENTENCE}\n\n"
-
-    for name in DEPRECATED_PRIMARY_NAMES:
-        primary = tools[name].description or ""
-        companion = tools[f"{name}{REFINE_SUFFIX}"].description or ""
-
-        assert primary.startswith(f"{DEPRECATION_SENTENCE}\n\n")
-        assert companion.startswith(companion_opening)
-        # second, not first: the companion sentence begins with the primary one, so a companion
-        # that opened with the lifecycle text would still satisfy a bare containment check
-        assert not companion.startswith(DEPRECATION_SENTENCE)
-        # invocation guidance and the card description still follow it
-        assert companion.removeprefix(companion_opening).strip()
-
-    assert REFINE_DESCRIPTION_PREFIX in readme
-    assert readme.index(REFINE_DESCRIPTION_PREFIX) < readme.index(REFINE_DEPRECATION_SENTENCE)
+def test_readme_states_current_pair_and_primary_only_surface() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    current = readme.split("## Migrating from", maxsplit=1)[0]
+    lowered = current.lower()
+    assert "blue-data-ops-mcp==0.13.0" in current
+    assert "blue-data-ops[ml,vector,llm]==3.0.0" in current
+    assert "ACTIVE_OPERATOR_IDS" in current
+    assert "V2_OPERATOR_IDS" in current
+    assert re.search(r"36.{0,120}32", current, flags=re.DOTALL)
+    assert re.search(r"32.{0,80}primary", lowered, flags=re.DOTALL)
+    assert re.search(r"(?:no|zero).{0,60}companions", lowered, flags=re.DOTALL)
+    assert "exact supported raw package card" in current
+    assert "retained `@2.0.0` card" in current
+    assert "active `@3.0.0` card" in current
+    assert "observed adapter behavior, not an ordinary-selection promise" in current
+    assert "`_meta.tags` is empty" in current
+    assert "does not grant ordinary or OpenAI planning authority" in current
+    assert "does not authorize a write" in current
+    assert "MCP has no server-side tag query" in current
+    assert "filter them client-side" in current
+    for axis in ("domain", "flow", "accepts", "produces", "capability", "requires"):
+        assert f"`{axis}-*`" in current
 
 
-async def test_readme_names_exactly_the_annotated_tools() -> None:
-    readme = _readme()
-    tools = await create_server().list_tools()
-    annotated = {tool.name for tool in tools if (tool.meta or {}).get("deprecated") is True}
+def test_readme_tag_discovery_fence_executes_with_a_firing_control() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    matches = list(TAG_DISCOVERY_FENCE.finditer(readme))
+    assert len(matches) == 1
+    source = matches[0].group("source")
+    exec(compile(source, "<mcp-tag-discovery-readme-fence>", "exec"), {})
 
-    assert len(tools) == 40
-    assert [tool.name for tool in tools] == [
-        operator_id.partition("@")[0] for operator_id in V2_OPERATOR_IDS
-    ] + [f"{name}{REFINE_SUFFIX}" for name in DEPRECATED_PRIMARY_NAMES]
-    assert len(annotated) == 8
-    assert annotated == {
-        "multipart_query",
-        "nl2query_router",
-        "plan_discover",
-        "query_breakdown",
-        "multipart_query__refine",
-        "nl2query_router__refine",
-        "plan_discover__refine",
-        "query_breakdown__refine",
-    }
-    # a retained tool carries no key at all, which `.get(...) is True` above cannot observe
-    for tool in tools:
-        if tool.name not in annotated:
-            assert "deprecated" not in (tool.meta or {})
-    assert "eight of its 40 bindings" in readme
-    assert "The other 32 tools are untouched." in readme
-    # the README tells readers to test for the key's presence, not for a false value
-    assert "`deprecated: false`" in readme
-    assert '"deprecated": false' not in readme
+    mutated = source.replace("flow-transform", "flow-combine", 1)
+    assert mutated != source
+    with pytest.raises(AssertionError):
+        exec(compile(mutated, "<mcp-tag-discovery-mutation>", "exec"), {})
 
 
-def test_readme_states_the_current_versions_and_the_exact_core_pin() -> None:
-    readme = _readme()
+def test_removed_refinement_surface_is_not_importable() -> None:
+    for module, names in (
+        (
+            registration,
+            (
+                "REFINE_SUFFIX",
+                "REFINE_DESCRIPTION_PREFIX",
+                "REFINE_DEPRECATION_SENTENCE",
+                "make_refine_handler",
+                "refine_payload",
+            ),
+        ),
+        (schema_module, ("RefineResult",)),
+    ):
+        for name in names:
+            assert not hasattr(module, name)
 
-    assert 'version("blue-data-ops-mcp") == "0.12.0"' in readme
-    assert "blue-data-ops-mcp 0.12.0" in readme
-    assert "blue-data-ops-mcp==0.12.0" in readme
-    assert "blue-data-ops[ml,vector,llm]==2.10.0" in readme
-    assert "`blue-data-ops==2.10.0`" in readme
-    # the 0.9.0 migration section and its install pair are history and stay as written
-    assert readme.count("blue-data-ops-mcp==0.9.0") == 1
-    assert readme.count("blue-data-ops[ml,vector,llm]==2.7.0") == 1
-    assert "## Migrating from 0.9.0" in readme
-    assert readme.index("## Migrating from 0.9.0") < readme.index("## Migrating from 0.8.0")
 
-
-def test_source_tree_has_no_blue_import() -> None:
+def test_source_tree_has_no_blue_or_refinement_runtime_import() -> None:
     source = "\n".join(path.read_text() for path in (ROOT / "src").rglob("*.py"))
     assert "from blue." not in source
     assert "import blue." not in source
+    assert "RefinableOperator" not in source
+    assert "_deprecation.expected" not in source
 
 
 def test_pipeline_executor_stays_outside_the_mcp_adapter() -> None:
@@ -183,7 +166,7 @@ def test_serve_selects_streamable_http_without_opening_listener() -> None:
     assert calls == [{"transport": "streamable-http"}]
 
 
-def test_every_default_binding_uses_the_exact_resolved_instance() -> None:
+def test_every_default_binding_uses_exact_resolved_instance() -> None:
     from blue_data_ops.operators import versioned_registry
 
     registry = versioned_registry()
@@ -192,23 +175,29 @@ def test_every_default_binding_uses_the_exact_resolved_instance() -> None:
         assert binding.operator is registry.resolve(binding.card.operator_id)
 
 
-async def test_every_tool_meta_reports_operator_version_2_0_0() -> None:
+async def test_every_tool_meta_reports_exact_selected_version() -> None:
     tools = await create_server().list_tools()
-    assert len(tools) == 40
-    for tool in tools:
-        assert (tool.meta or {})["version"] == "2.0.0"
+    assert len(tools) == 32
+    assert [(tool.meta or {})["operator_id"] for tool in tools] == list(ACTIVE_OPERATOR_IDS)
+    assert [(tool.meta or {})["version"] for tool in tools] == [
+        operator_id.partition("@")[2] for operator_id in ACTIVE_OPERATOR_IDS
+    ]
 
 
 def test_source_import_smoke_in_subprocess() -> None:
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).rstrip(
-        os.pathsep
-    )
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(ROOT / "src"), str(CORE_SRC), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
     completed = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import blue_data_ops_mcp; assert len(blue_data_ops_mcp.V2_OPERATOR_IDS) == 36",
+            (
+                "import blue_data_ops_mcp as m; "
+                "assert len(m.ACTIVE_OPERATOR_IDS) == 32; "
+                "assert len(m.V2_OPERATOR_IDS) == 32"
+            ),
         ],
         cwd=ROOT,
         env=env,

@@ -85,9 +85,9 @@ def test_pure_operator_reports_selected_registry_version(
         assert error.suggestion
 
 
-def test_v1_default_registry_remains_a_36_card_compatibility_catalog() -> None:
+def test_v1_default_registry_is_a_32_card_compatibility_catalog() -> None:
     cards = default_registry().list_cards()
 
-    assert len(cards) == 36
+    assert len(cards) == 32
     assert all(card.version == "1.0.0" for card in cards)
     assert all(card.operator_id.endswith("@1.0.0") for card in cards)

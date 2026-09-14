@@ -8,9 +8,8 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextvars import ContextVar
 from copy import deepcopy
 from math import isfinite
-from typing import TYPE_CHECKING, Any, ClassVar, ParamSpec, TypeVar, cast
+from typing import Any, ClassVar, ParamSpec, TypeVar, cast
 
-from blue_data_ops import _deprecation
 from blue_data_ops.operators._metadata import (
     definitions_from_specs,
     enrich_attribute_signature,
@@ -38,13 +37,6 @@ from blue_data_ops.utils.type_utils import string_to_python_type, validate_param
 # a second copy: _check_type is exactly the value-type validator.
 _string_to_python_type = string_to_python_type
 _check_type = validate_parameter_type
-
-if TYPE_CHECKING:
-    # Blue-compatible import path: `DeclarativeOperator` is defined in ``plan.refiner`` (it is a
-    # RefinableOperator) and re-exported here so callers can import it from the operators module,
-    # mirroring Blue. The real import is deferred to ``__getattr__`` to avoid the operator<->refiner
-    # import cycle at runtime. No implementation is duplicated or moved.
-    from blue_data_ops.plan.refiner import DeclarativeOperator as DeclarativeOperator
 
 _INVALID_TIMEOUT_SUGGESTION = "execution.timeout_seconds must be a finite number greater than zero"
 _MISSING_LLM_SUGGESTION = "Install blue-data-ops[llm] on Python 3.11 or later."
@@ -242,17 +234,6 @@ def default_operator_function(
     return []
 
 
-@_deprecation.entry(subject="Operator.refiner()")
-def default_operator_refiner(
-    input_data: DataBundle,
-    attributes: Attributes,
-    properties: Properties | None = None,
-) -> list[dict[str, Any]]:
-    """Return no alternatives for an operator without refinement logic."""
-    del input_data, attributes, properties
-    return []
-
-
 def default_attributes_validator(
     attributes: Attributes,
     properties: Properties | None = None,
@@ -327,10 +308,6 @@ class Operator(Tool, ABC):
     attributes: ClassVar[dict[str, AttributeSpec]] = {}
     PROPERTIES: ClassVar[dict[str, Any]] = {}
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        _deprecation.install(cls)
-
     def __init__(
         self,
         name: str | None = None,
@@ -339,11 +316,7 @@ class Operator(Tool, ABC):
         properties: Properties | None = None,
         validator: Callable[..., Any] | None = None,
         explainer: Callable[..., Any] | None = None,
-        refiner: Callable[..., Any] | None = None,
     ) -> None:
-        # An already-hooked callable is the package's own refiner, so it announces itself.
-        if refiner is not None and not _deprecation.is_wrapped(refiner):
-            _deprecation.warn_injected_refiner()
         class_name = type(self).name
         class_description = type(self).description
         resolved_name = class_name if name is None else name
@@ -353,10 +326,6 @@ class Operator(Tool, ABC):
         resolved_function = self.apply if function is None else function
         resolved_validator = self.validate if validator is None else validator
         resolved_explainer = self.explain if explainer is None else explainer
-        resolved_refiner = (
-            getattr(self, "refiner", default_operator_refiner) if refiner is None else refiner
-        )
-        object.__setattr__(self, "refiner", resolved_refiner)
         super().__init__(
             resolved_name,
             resolved_function,
@@ -391,7 +360,6 @@ class Operator(Tool, ABC):
                 "log_processing_stats": True,
                 "attributes": {},
                 "hyperparameters": {},
-                "refine": False,
             }
         )
         definitions, materialize_defaults = definitions_from_specs(type(self).attributes)
@@ -440,7 +408,6 @@ class Operator(Tool, ABC):
     ) -> DataBundle:
         """Transform input_data under attributes and return the operator output."""
 
-    @_deprecation.entry("validate")
     def validate(
         self,
         input_data: DataBundle,
@@ -471,7 +438,6 @@ class Operator(Tool, ABC):
         """Adapt the v1 single-output body to the v2 internal result."""
         return FunctionResult(self.apply(input_data, attributes, properties), {})
 
-    @_deprecation.entry("invoke")
     def invoke(
         self,
         input_data: DataBundle,
@@ -483,7 +449,6 @@ class Operator(Tool, ABC):
             return None
         return self.apply(input_data, attributes, properties)
 
-    @_deprecation.entry("run")
     def run(
         self,
         input_data: DataBundle,
@@ -502,7 +467,7 @@ class Operator(Tool, ABC):
         try:
             executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="blue-data-ops")
             future = executor.submit(
-                _deprecation.propagate(self._run_once),
+                self._run_once,
                 input_data,
                 attributes,
                 properties,
@@ -660,7 +625,6 @@ class Operator(Tool, ABC):
             return [[]], {}, _meta(error=error)
         return output_data, output_attributes, _meta(is_empty=is_empty)
 
-    @_deprecation.entry("explain")
     def explain(
         self,
         output: DataBundle,
@@ -790,13 +754,6 @@ class _VersionBindingMixin:
         object.__setattr__(self, "name", target.name)
         object.__setattr__(self, "description", target.description)
         object.__setattr__(self, "attributes", target.attributes)
-        # Closed here rather than read at call time, so an alias over an alias keeps the
-        # innermost target's lifecycle at any layer depth.
-        object.__setattr__(
-            self,
-            _deprecation.BOUND_REMOVED_TARGET,
-            _deprecation.effective_removed_target(target),
-        )
 
     @property
     def operator_id(self) -> str:
@@ -809,7 +766,6 @@ class _VersionBindingMixin:
         target = object.__getattribute__(self, "_target")
         return getattr(target, name)
 
-    @_deprecation.entry("apply")
     def apply(
         self,
         input_data: DataBundle,
@@ -825,7 +781,6 @@ class _VersionBindingMixin:
             properties,
         )
 
-    @_deprecation.entry("validate")
     def validate(
         self,
         input_data: DataBundle,
@@ -871,7 +826,6 @@ class _VersionBindingMixin:
             properties,
         )
 
-    @_deprecation.entry("invoke")
     def invoke(
         self,
         input_data: DataBundle,
@@ -887,7 +841,6 @@ class _VersionBindingMixin:
             properties,
         )
 
-    @_deprecation.entry("explain")
     def explain(
         self,
         output: DataBundle,
@@ -904,20 +857,8 @@ class _VersionBindingMixin:
         )
 
 
-_deprecation.register_version_binding_base(_VersionBindingMixin)
-
-
 class _VersionBoundOperator(  # pyright: ignore[reportUnusedClass]
     _VersionBindingMixin,
     Operator,
 ):
     """An operator registration bound to one ID without copying its implementation."""
-
-
-def __getattr__(name: str) -> Any:
-    """Blue-compatible operator import path for ``DeclarativeOperator`` (lazy, cycle-safe)."""
-    if name == "DeclarativeOperator":
-        from blue_data_ops.plan.refiner import DeclarativeOperator
-
-        return DeclarativeOperator
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

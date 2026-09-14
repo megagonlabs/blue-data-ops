@@ -1,12 +1,12 @@
 # Blue Data Operators MCP
 
-This package exposes Blue Data Operators as MCP tools over the v2 execution contract. The default server hosts 40 tools: the 36 `name@2.0.0` operators from `blue-data-ops==2.10.0`, followed by four `<name>__refine` companions for the operators that build plans.
+This package exposes Blue Data Operators as MCP tools over the structured execution contract. Version 0.13.0 serves 32 primary tools and no refinement companions by default. The exact operator selection is the same 32-ID projection returned by core `active_registry()`.
 
-Adapter `0.12.0` moves the exact core pin from `blue-data-ops==2.9.0` to `==2.10.0`. Core expands the outcome set available through explicit `@3.0.0` selection from three cards to 21. MCP still serves the same default catalog as `0.11.0`: 36 `@2.0.0` primary tools and four refinement companions. Eight of those 40 bindings are deprecated. Tool names, catalog order, `_meta`, arguments, result envelopes, error behavior, and transport are unchanged. Operator-skill metadata and resources are not added to MCP descriptions, metadata, arguments, or results.
+The adapter pins `blue-data-ops==3.0.0`. Tool names remain logical operator names such as `select` and `avg`. Each tool's `_meta` carries its exact mixed-version operator ID.
 
 ## Install
 
-For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. From the `blue-data-ops` repository root, install the sibling dependency, core, and adapter. The full default surface uses the core ML, vector, and LLM extras:
+For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. From the `blue-data-ops` repository root, install the sibling dependency, core, and adapter:
 
 ```bash
 python -m pip install ../blue-data/lib
@@ -18,23 +18,23 @@ If your artifact index is configured separately:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==2.10.0" \
-  "blue-data-ops-mcp==0.12.0"
+  "blue-data-ops[ml,vector,llm]==3.0.0" \
+  "blue-data-ops-mcp==0.13.0"
 ```
 
-`nl2llm`, `nl2sql`, `nl2bn`, the `semantic_*` operators, and `query_breakdown` resolve a provider client at call time. Supply the provider credential through its environment variable. The `openai.model` property selects the model (default `gpt-4o`); the default OpenAI client reads `OPENAI_API_KEY` for authentication.
+`nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators resolve a provider client when called. Supply credentials through the provider's environment variables. The `openai.model` property selects the model; its default is `gpt-4o`.
 
-After installation, read the adapter version from distribution metadata:
+Read the adapter version from distribution metadata:
 
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops-mcp") == "0.12.0"
+assert version("blue-data-ops-mcp") == "0.13.0"
 ```
 
 ## Embed or serve
 
-`create_server()` returns a configured `FastMCP` server. To initialize a client, list tools, and call `select` without opening a listener:
+`create_server()` returns a configured `FastMCP` server. This in-memory example lists and calls only `select@2.0.0`:
 
 ```python
 import asyncio
@@ -48,7 +48,7 @@ async def main() -> None:
     async with create_connected_server_and_client_session(server) as client:
         await client.initialize()
         listing = await client.list_tools()
-        print([tool.name for tool in listing.tools])
+        assert [tool.name for tool in listing.tools] == ["select"]
 
         result = await client.call_tool(
             "select",
@@ -63,13 +63,13 @@ async def main() -> None:
         )
         if result.isError:
             raise RuntimeError(result.content[0].text)
-        print(result.structuredContent["output_data"])
+        assert result.structuredContent["output_data"] == [[{"name": "b", "score": 9}]]
 
 
 asyncio.run(main())
 ```
 
-To expose the server over stateful streamable HTTP, run it directly. The defaults bind to `127.0.0.1:8000/mcp`:
+To expose the server over stateful streamable HTTP, run it directly. Defaults bind to `127.0.0.1:8000/mcp`:
 
 ```python
 from blue_data_ops_mcp import create_server
@@ -84,23 +84,34 @@ server.run(transport="streamable-http")
 python -c 'from blue_data_ops_mcp import serve; serve()'
 ```
 
-Pass `operator_ids` to either function to replace the default selection with an exact pinned subset. The list is a complete replacement, so an empty list serves nothing and a subset serves only what you name (plus a companion for each selected refinement operator):
+Pass `operator_ids` to either function to replace the default selection with an exact pinned subset. An empty tuple serves no tools. Without a caller-supplied registry, selections may contain supported retained v2/v3 built-ins. Every selected card must resolve exactly from the selected registry. Duplicate logical names fail instead of choosing one:
 
 ```python
 from blue_data_ops_mcp import serve
 
-serve(operator_ids=("select@2.0.0", "avg@2.0.0"))
+serve(operator_ids=("select@2.0.0", "avg@3.0.0"))
 ```
 
-Every selected id must resolve to a `2.0.0` card. The default catalog is the version-aware registry, which also carries the `1.0.0` operators; the adapter serves the `2.0.0` snapshot only and rejects any `1.0.0` (or other non-`2.0.0`) selection. The committed default list is available before startup:
+A caller may pass `registry=` and select caller-created `@2.0.0` cards that resolve exactly from that registry. A custom card may reuse a removed logical name such as `multipart_query`, but it cannot shadow any of the 32 supported built-in logical names. Custom v1 and v3 cards are rejected. For example, after registering `echo@2.0.0` in `caller_registry`:
 
 ```python
-from blue_data_ops_mcp import V2_OPERATOR_IDS
+from blue_data_ops_mcp import create_server
 
-print("\n".join(V2_OPERATOR_IDS))
+server = create_server(registry=caller_registry, operator_ids=("echo@2.0.0",))
 ```
 
-Both functions accept `host`, `port`, and `path` (defaults `127.0.0.1`, `8000`, `/mcp`). Review network exposure before changing the loopback host.
+An explicit `registry=` may also serve an exact supported raw package card: a retained `@2.0.0` card such as `default_registry(select="2.0.0")`, or an active `@3.0.0` card such as `default_registry(avg="3.0.0")`. This is observed adapter behavior, not an ordinary-selection promise. Raw cards have empty `tags` and `when_to_invoke`, so `_meta.tags` is empty and the tool description contains only the operator description. MCP accepts the card for explicit execution; acceptance does not grant ordinary or OpenAI planning authority and does not authorize a write. The caller and deployment host remain responsible for invocation authorization.
+
+`V2_OPERATOR_IDS` remains available for callers that imported the old constant. `V2_OPERATOR_IDS` changed from 36 IDs to 32 and contains the retained v2 exact IDs; it is a compatibility tuple, not the default mixed-version selection.
+
+```python
+from blue_data_ops_mcp import ACTIVE_OPERATOR_IDS, V2_OPERATOR_IDS
+
+assert len(ACTIVE_OPERATOR_IDS) == 32
+assert len(V2_OPERATOR_IDS) == 32
+```
+
+Both server functions accept `host`, `port`, and `path`, with defaults `127.0.0.1`, `8000`, and `/mcp`. Review network exposure before changing the loopback host.
 
 ## List and call tools
 
@@ -110,7 +121,7 @@ Start the server in one process:
 python -c 'from blue_data_ops_mcp import serve; serve()'
 ```
 
-Then initialize an MCP session, list its tools, and call one:
+Then initialize an MCP session and call a tool:
 
 ```python
 import asyncio
@@ -120,13 +131,15 @@ from mcp.client.streamable_http import streamable_http_client
 
 
 async def main() -> None:
-    async with streamable_http_client(
-        "http://127.0.0.1:8000/mcp"
-    ) as (read_stream, write_stream, _):
+    async with streamable_http_client("http://127.0.0.1:8000/mcp") as (
+        read_stream,
+        write_stream,
+        _,
+    ):
         async with ClientSession(read_stream, write_stream) as client:
             await client.initialize()
             listing = await client.list_tools()
-            print([tool.name for tool in listing.tools])
+            assert len(listing.tools) == 32
 
             result = await client.call_tool(
                 "select",
@@ -147,23 +160,47 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-With the default selection, `list_tools()` returns 40 stable definitions. A subset server started with `operator_ids=("select@2.0.0", "avg@2.0.0")` lists only `select` and `avg`. Selecting `multipart_query@2.0.0`, for example, also adds `multipart_query__refine`.
+### Discover tools by tags
+
+MCP has no server-side tag query. Call `list_tools()`, read the ordered tags from each tool's `_meta`, and filter them client-side. Built-in tag values are copied from the selected core operator cards; custom cards expose their caller-supplied tags verbatim. The six built-in axes describe the primary subject (`domain-*`), pipeline role (`flow-*`), consumed input (`accepts-*`), results or effects (`produces-*`), actions (`capability-*`), and operator-specific runtime requirements (`requires-*`). The example derives the available values, then performs exact AND matching with `issubset()`. The client owns any normalization or other matching rules.
+
+<!-- blue-data-ops-mcp-test: tag-discovery -->
+```python
+import asyncio
+
+from blue_data_ops_mcp import create_server
+
+
+async def main() -> None:
+    tools = await create_server().list_tools()
+    available_tags = sorted({tag for tool in tools for tag in (tool.meta or {}).get("tags", [])})
+    assert "capability-metadata-search" in available_tags
+
+    wanted = {"domain-vector", "flow-transform"}
+    matches = [
+        tool.name for tool in tools if wanted.issubset(set((tool.meta or {}).get("tags", [])))
+    ]
+    assert matches == ["vector_embed", "vector_search"]
+
+
+asyncio.run(main())
+```
 
 ## Tool contract
 
-Each primary tool is named for its operator. The description is the operator's `when_to_invoke` guidance followed by its card description; a companion is named `<operator>__refine` and prefixes a short refinement note. A deprecated primary opens with a lifecycle sentence; a companion carries one just after its refinement note. Both are described under [Deprecated tools](#deprecated-tools). MCP `_meta` carries the pinned `operator_id`, its version, and the operator's ordered discovery tags.
+Each tool is named for its logical operator. Its description combines the card's `when_to_invoke` guidance and description. MCP `_meta` carries the exact `operator_id`, version, and ordered discovery tags.
 
 Every tool accepts the same open arguments:
 
 - required `input_data`: a list of record groups, where each group is a list of record objects;
 - optional `attributes`: an open object of operator arguments, defaulting to a fresh empty object;
-- optional `properties`: an open object or `null` of execution settings (for example `execution.timeout_seconds`).
+- optional `properties`: an open object or `null` of execution settings, such as `execution.timeout_seconds`.
 
-Attribute values are open at the wire. Known attributes carry descriptions, and optional attributes that materialize a default publish it; the seven attributes the core leaves unmaterialized, and every required attribute, publish no default. Business validation belongs to the canonical `run()` and `refine()` methods, not the MCP boundary. An operator-invalid attribute reaches canonical validation and comes back as a recoverable error record, not a silent empty result.
+Known attributes carry descriptions. Optional attributes that materialize a default publish it; required attributes and unmaterialized optional values publish no default. Business validation belongs to canonical `run()`. An invalid attribute reaches operator validation and returns a recoverable error record.
 
 ### Structured results
 
-Tools publish structured output. For the call above, `result.structuredContent` is exactly:
+Tools publish structured output. A successful `select` call returns:
 
 ```json
 {
@@ -173,127 +210,33 @@ Tools publish structured output. For the call above, `result.structuredContent` 
 }
 ```
 
-A zero-plan companion result is exactly:
+`exec_meta.errors` contains records with `category`, `code`, `operator_id`, `stage`, `message`, `retryable`, and `suggestion`. Read `structuredContent` as authoritative; `json.loads(result.content[0].text)` is the same object.
 
-```json
-{
-  "plans": [],
-  "exec_meta": {"is_empty": true, "errors": [], "logs": [], "traces": {}}
-}
-```
-
-When plans are present, each item is one `DataPipeline.to_dict()` record. `exec_meta.errors` is a list of error records, each carrying `category`, `code`, `operator_id`, `stage`, `message`, `retryable`, and `suggestion`. Read `structuredContent` as authoritative and decode it once; `json.loads(result.content[0].text)` is the same object.
-
-A call that passes the MCP container schema but fails operator validation remains a successful MCP tool result (`isError` is false). For example, calling `select` without its required attributes returns:
-
-```json
-{
-  "output_data": [[]],
-  "output_attributes": {},
-  "exec_meta": {
-    "is_empty": false,
-    "errors": [{
-      "category": "RECOVERABLE",
-      "code": "INVALID_INPUT",
-      "operator_id": "select@2.0.0",
-      "stage": "VALIDATE",
-      "message": "input validation failed",
-      "retryable": false,
-      "suggestion": "supply a supported operand and a nonnegative eps value"
-    }],
-    "logs": [],
-    "traces": {}
-  }
-}
-```
-
-Values are serialized with `default=str` for leaves JSON does not represent natively. `NaN` and `Infinity` are rejected.
+A call that passes the MCP container schema but fails operator validation is still a successful MCP result. Calling `select` without its required attributes returns an `INVALID_INPUT` record at the `VALIDATE` stage. Values are encoded with `default=str` for non-JSON leaves, while `NaN` and `Infinity` are rejected.
 
 ### How outcomes surface
 
-- A canonical recoverable, failed, timeout, or successful-empty outcome is a successful tool result (`isError` false). The details live in `exec_meta`. A successful-empty result is `output_data` `[[]]` with `is_empty` true; a contained error is a record in `exec_meta.errors`.
-- An unknown tool name, an argument-shape error (missing or malformed `input_data`, `attributes`, or `properties`), or a projection or encoding failure is a tool error (`isError` true) with no operator error record added.
-- Malformed JSON-RPC and transport failures follow the MCP SDK's own behavior.
+- A recoverable, failed, timed-out, or successful-empty operator outcome has `isError` false. Details live in `exec_meta`.
+- An unknown tool, malformed top-level arguments, or a projection or encoding failure has `isError` true and adds no operator error record.
+- Malformed JSON-RPC and transport failures follow the MCP SDK.
 
-The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.12.0`; each tool's operator version is in its `_meta`.
+The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version. The distribution version is `blue-data-ops-mcp 0.13.0`; each tool's operator version is in `_meta`.
 
-## Deprecated tools
+## Migrating from 0.12.0
 
-Core 2.8.0 deprecates the four plan-producing operators and the refinement seam; 3.0.0 removes them. This adapter signals that on eight of its 40 bindings: the `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` primaries, and all four `__refine` companions. The other 32 tools are untouched.
+Version 0.13.0 moves the exact core pin from `blue-data-ops==2.10.0` to `==3.0.0`. The default catalog changes from 36 v2 primaries plus four refinement companions to the 32 mixed-version primaries in `ACTIVE_OPERATOR_IDS`.
 
-Each annotated tool carries `deprecated: true` in its `_meta` and states its lifecycle in one sentence, but the two kinds place that sentence differently. A deprecated primary begins with:
+The removed package tools are `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown`. The four `__refine` companions are also removed. They no longer resolve from a package registry, and there is no companion result envelope in 0.13.0. A caller-created v2 card that reuses one of these names runs the caller's implementation; it does not restore the removed package binding.
 
+If a deployment still needs those package bindings, automatic refinement, or declarative plan expansion, keep a compatible core 2.x/MCP 0.x pair, such as core 2.10.0 with MCP 0.12.0. MCP 0.13.0 has no replacement companion path.
+
+Update both distributions together:
+
+```bash
+python -m pip install --index-url "$PIP_INDEX_URL" \
+  "blue-data-ops[ml,vector,llm]==3.0.0" \
+  "blue-data-ops-mcp==0.13.0"
 ```
-Deprecated in blue-data-ops 2.8.0; removed in 3.0.0.
-```
-
-A companion still begins with its ordinary refinement note (`Build candidate data-pipeline plans.`) and carries this sentence next, ahead of the invocation guidance and card description:
-
-```
-Deprecated in blue-data-ops 2.8.0; removed in 3.0.0. The refinement seam is deprecated for every operator.
-```
-
-The companion sentence says "every operator" because the seam is deprecated independently of any operator's own lifecycle. A companion over a retained operator would be annotated even though its primary is not.
-
-A retained tool carries no `deprecated` key at all rather than `deprecated: false`, so test for the key's presence.
-
-Descriptions and `_meta` are the two channels this adapter can publish on, and what a client does with them is up to that client. Some surface a tool description to the model or the user, some show `_meta`, and some show neither. The annotation is metadata a caller can read, not a notice every caller will see.
-
-Nothing is removed in 0.10.0. `list_tools()` still returns the same 40 definitions in the same order, and every one of them still runs. When the adapter moves to core 3.0.0 the catalog drops to 32 tools, losing these four primaries and all four companions.
-
-## Refinement companions and plans
-
-All eight tools in this section are deprecated; see [Deprecated tools](#deprecated-tools). Their behavior is unchanged.
-
-The four refinement operators (`multipart_query`, `nl2query_router`, `plan_discover`, `query_breakdown`) each expose two tools. Every primary runs its function body through `run()`. The `multipart_query`, `nl2query_router`, and `plan_discover` primary bodies return a successful-empty result. The `query_breakdown` primary calls the configured LLM provider. All four `__refine` companions run normalized `refine()` and return serialized candidate plans.
-
-Pass one of these mappings as the `arguments` to `client.call_tool()`:
-
-```python
-multipart_arguments = {
-    "input_data": [[{
-        "description": "find orders",
-        "sql": "select * from orders",
-        "table": "orders",
-        "columns": [{"name": "total", "type": "float"}],
-        "dependency": [],
-        "generality": 0,
-    }]],
-    "attributes": {},
-}
-
-router_arguments = {
-    "input_data": [[{
-        "name": "warehouse",
-        "type": "source",
-        "scope": "/source/warehouse",
-        "properties": {
-            "connection": {"protocol": "sqlite"},
-            "owner": "warehouse",
-        },
-    }]],
-    "attributes": {
-        "search_query": "find orders",
-        "columns": [{"name": "total"}],
-        "execute_query": False,
-        "protocol": "sqlite",
-    },
-}
-
-discover_arguments = {
-    "input_data": [[]],
-    "attributes": {"task": "select", "data": "rows", "approximate": True},
-}
-
-breakdown_arguments = {
-    "input_data": [[]],
-    "attributes": {"query": "compare monthly order totals"},
-}
-```
-
-Use these with `multipart_query__refine`, `nl2query_router__refine`, `plan_discover__refine`, and `query_breakdown__refine`, respectively. The router reads source records from the first input group. `query_breakdown__refine` calls the configured LLM provider; the other three shapes above are credential-free.
-
-An MCP refinement result is a serialized plan, not an execution. `DataPipeline` records the operators, their pinned ids, and their edges; it has no execution method. A caller with the core `blue-data-ops` package installed can load a chosen materialized plan with `DataPipeline.from_dict()` and execute it with `PipelineExecutor` and a registry that resolves its pinned ids. The MCP server itself does not run returned plans.
 
 ## Migrating from 0.11.0
 

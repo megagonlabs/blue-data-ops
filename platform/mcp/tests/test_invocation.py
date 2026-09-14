@@ -1,52 +1,29 @@
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
-import logging
 import threading
-import warnings
-from collections.abc import Callable, Generator
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 import pytest
-from blue_data_ops import BlueDataOpsDeprecationWarning
-from blue_data_ops.operators import (
-    AttributeSpec,
-    ExecMeta,
-    Operator,
-    OperatorRegistry,
-    PlanDiscoverOperator,
-    ProjectOperator,
-    SelectOperator,
-    versioned_registry,
-)
-from blue_data_ops.operators import query_breakdown_operator as qb_module
-from blue_data_ops.plan import RefinableOperator
-from blue_data_ops.plan import pipeline as pipeline_module
-from blue_data_ops.plan.types import PlanRecord
+from blue_data_ops.operators import AttributeSpec, ExecMeta, Operator, OperatorRegistry
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from blue_data_ops_mcp.registration import make_refine_handler, refine_payload, run_payload
+from blue_data_ops_mcp.registration import run_payload
 from blue_data_ops_mcp.server import create_server
 
 VALID_INPUT: list[list[dict[str, Any]]] = [[{"id": 1, "score": 8}, {"id": 2, "score": 2}]]
 GT5: dict[str, Any] = {"operand_key": "score", "operand": ">", "operand_val": 5}
-
 EMPTY_CASES: list[tuple[list[list[dict[str, Any]]], dict[str, Any]]] = [
     ([[{"score": 8}]], {"operand_key": "score", "operand": ">", "operand_val": 99}),
     ([[]], GT5),
     ([[], []], GT5),
 ]
 BAD_ARGUMENTS: list[dict[str, Any]] = [
-    {},  # input_data omitted
-    {"input_data": [{"not": "a group"}]},  # not list[list[dict]]
-    {"input_data": [[]], "properties": []},  # properties is not an object/null
+    {},
+    {"input_data": [{"not": "a group"}]},
+    {"input_data": [[]], "properties": []},
 ]
-
-
-# Helpers
 
 
 async def _call(server: FastMCP[Any], name: str, arguments: dict[str, Any]) -> Any:
@@ -70,108 +47,62 @@ def _first_error(result: Any) -> dict[str, Any]:
     return errors[0]
 
 
-def _id_sequence(prefix: str = "wire") -> Callable[[], str]:
-    current = 0
+async def test_success_direct_and_in_memory_protocol_agree() -> None:
+    from blue_data_ops.operators import versioned_registry
 
-    def next_id() -> str:
-        nonlocal current
-        current += 1
-        return f"{prefix}-{current:04d}"
-
-    return next_id
-
-
-def _cte(table: str, dependency: list[str] | None = None) -> dict[str, Any]:
-    return {
-        "description": f"find {table}",
-        "sql": f"select * from {table}",
-        "table": table,
-        "columns": [{"name": "value", "type": "str"}],
-        "dependency": [] if dependency is None else dependency,
-        "generality": 0,
-    }
-
-
-def _source(name: str, protocol: str = "sqlite") -> dict[str, Any]:
-    return {
-        "name": name,
-        "type": "source",
-        "scope": f"/source/{name}",
-        "properties": {"connection": {"protocol": protocol}, "owner": name},
-    }
-
-
-class RecordingClient:
-    def __init__(self, result: Any = None, error: BaseException | None = None) -> None:
-        self.result: Any = [] if result is None else result
-        self.error = error
-        self.calls: list[Any] = []
-
-    def execute_api_call(
-        self,
-        input: Any,  # noqa: A002
-        properties: dict[str, Any] | None = None,
-        additional_data: dict[str, Any] | None = None,
-    ) -> Any:
-        self.calls.append(input)
-        if self.error is not None:
-            raise self.error
-        return self.result
-
-
-def _resolver(client: RecordingClient) -> Callable[[Any], RecordingClient]:
-    def resolve(properties: Any) -> RecordingClient:
-        del properties
-        return client
-
-    return resolve
-
-
-@contextlib.contextmanager
-def _promoted() -> Generator[None, None, None]:
-    """Turn the package's own deprecation warnings into errors for the duration."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings("error", category=BlueDataOpsDeprecationWarning)
-        yield
-
-
-def _package_warnings(caught: list[warnings.WarningMessage]) -> list[warnings.WarningMessage]:
-    return [entry for entry in caught if isinstance(entry.message, BlueDataOpsDeprecationWarning)]
-
-
-# Run families
-
-
-async def test_run_success_direct_and_wire_agree() -> None:
-    result = await _call(create_server(), "select", {"input_data": VALID_INPUT, "attributes": GT5})
-    direct = versioned_registry().resolve("select@2.0.0").run(VALID_INPUT, dict(GT5))
+    registry = versioned_registry()
+    operator = registry.resolve("select@2.0.0")
+    direct = run_payload(operator.run(VALID_INPUT, dict(GT5)))
+    result = await _call(
+        create_server(registry=registry, operator_ids=("select@2.0.0",)),
+        "select",
+        {"input_data": VALID_INPUT, "attributes": GT5},
+    )
     assert result.isError is False
-    assert result.structuredContent == run_payload(direct)
-    assert json.loads(result.content[0].text) == result.structuredContent
-    assert result.structuredContent["output_data"] == [[{"id": 1, "score": 8}]]
-    assert result.structuredContent["exec_meta"]["is_empty"] is False
+    assert result.structuredContent == direct
+    assert json.loads(result.content[0].text) == direct
+    assert direct["output_data"] == [[{"id": 1, "score": 8}]]
+    assert direct["exec_meta"]["is_empty"] is False
 
 
-@pytest.mark.parametrize("input_data,attributes", EMPTY_CASES)
-async def test_run_successful_empty_is_canonical(
+@pytest.mark.parametrize(
+    "input_data,attributes",
+    EMPTY_CASES,
+)
+async def test_successful_empty_direct_and_protocol_agree(
     input_data: list[list[dict[str, Any]]],
     attributes: dict[str, Any],
 ) -> None:
+    from blue_data_ops.operators import versioned_registry
+
+    registry = versioned_registry()
+    direct = run_payload(registry.resolve("select@2.0.0").run(input_data, dict(attributes)))
     result = await _call(
-        create_server(), "select", {"input_data": input_data, "attributes": attributes}
+        create_server(registry=registry, operator_ids=("select@2.0.0",)),
+        "select",
+        {"input_data": input_data, "attributes": attributes},
     )
     assert result.isError is False
-    assert result.structuredContent["output_data"] == [[]]
-    assert result.structuredContent["output_attributes"] == {}
-    assert result.structuredContent["exec_meta"]["is_empty"] is True
-    assert _errors(result) == []
+    assert result.structuredContent == direct
+    assert direct["output_data"] == [[]]
+    assert direct["output_attributes"] == {}
+    assert direct["exec_meta"]["is_empty"] is True
+    assert direct["exec_meta"]["errors"] == []
 
 
-async def test_run_recoverable_invalid_attributes() -> None:
-    # `select` without its required operands passes the open MCP container but fails canonical
-    # validation — a recoverable record, not a silent empty result, and no body call.
-    result = await _call(create_server(), "select", {"input_data": [[{"score": 8}]]})
+async def test_validation_failure_direct_and_protocol_agree() -> None:
+    from blue_data_ops.operators import versioned_registry
+
+    registry = versioned_registry()
+    operator = registry.resolve("select@2.0.0")
+    direct = run_payload(operator.run([[{"score": 8}]], {}))
+    result = await _call(
+        create_server(registry=registry, operator_ids=("select@2.0.0",)),
+        "select",
+        {"input_data": [[{"score": 8}]]},
+    )
     assert result.isError is False
+    assert result.structuredContent == direct
     error = _first_error(result)
     assert (error["category"], error["code"], error["stage"]) == (
         "RECOVERABLE",
@@ -179,28 +110,57 @@ async def test_run_recoverable_invalid_attributes() -> None:
         "VALIDATE",
     )
     assert error["operator_id"] == "select@2.0.0"
-    assert error["retryable"] is False
-    assert isinstance(error["suggestion"], str) and error["suggestion"]
 
 
-async def test_run_failed_is_contained_and_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
-    leak_marker = "opaque-provider-detail-xyz"
-    client = RecordingClient(error=RuntimeError(leak_marker))
-    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
+class RaisingOperator(Operator):
+    name: ClassVar[str] = "raising"
+    description: ClassVar[str] = "Raise an opaque execution failure."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del input_data, attributes, properties
+        raise RuntimeError("opaque-provider-detail-xyz")
+
+
+async def test_execution_failure_direct_and_protocol_agree_and_are_redacted() -> None:
+    registry = OperatorRegistry()
+    registry.register(RaisingOperator(), "2.0.0")
+    operator = registry.resolve("raising@2.0.0")
+    direct = run_payload(operator.run([[]], {}))
     result = await _call(
-        create_server(), "query_breakdown", {"input_data": [[]], "attributes": {"query": "q"}}
+        create_server(registry=registry, operator_ids=("raising@2.0.0",)),
+        "raising",
+        {"input_data": [[]]},
     )
     assert result.isError is False
+    assert result.structuredContent == direct
     error = _first_error(result)
     assert (error["category"], error["code"], error["stage"]) == (
         "FAILED",
         "EXECUTION_FAILED",
         "EXECUTE",
     )
-    assert error["operator_id"] == "query_breakdown@2.0.0"
-    assert leak_marker not in json.dumps(result.structuredContent)
-    assert leak_marker not in result.content[0].text
-    assert len(client.calls) == 1  # one body call, no retry
+    assert error["operator_id"] == "raising@2.0.0"
+    assert "opaque-provider-detail-xyz" not in json.dumps(result.structuredContent)
+    assert "opaque-provider-detail-xyz" not in result.content[0].text
+
+
+async def test_default_mixed_selection_dispatches_v3_implementation() -> None:
+    result = await _call(
+        create_server(),
+        "avg",
+        {"input_data": [[{"value": 2}, {"value": 4}]], "attributes": {"avg_key": "value"}},
+    )
+    assert result.isError is False
+    assert result.structuredContent is not None
+    assert result.structuredContent["exec_meta"]["errors"] == []
+    [tool] = [tool for tool in await create_server().list_tools() if tool.name == "avg"]
+    assert (tool.meta or {})["operator_id"] == "avg@3.0.0"
 
 
 class BlockingOperator(Operator):
@@ -222,7 +182,7 @@ class BlockingOperator(Operator):
         return [[{"done": True}]]
 
 
-async def test_run_timeout_is_contained_and_worker_discarded() -> None:
+async def test_timeout_is_contained_and_worker_discarded() -> None:
     operator = BlockingOperator()
     try:
         result = await _call(
@@ -242,453 +202,15 @@ async def test_run_timeout_is_contained_and_worker_discarded() -> None:
         operator.release.set()
 
 
-# Refinement families
-
-
-async def test_refine_multipart_direct_and_wire_agree(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    input_data = [[_cte("orders")]]
-    # The direct oracle must be the registry-selected 2.0.0 operator so its child pins match the
-    # wire (a selected v2 refinement emits @2.0.0 children; an unbound one keeps declared @1.0.0).
-    selected = versioned_registry().resolve("multipart_query@2.0.0")
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    direct = cast(RefinableOperator, selected).refine(input_data, {})
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    result = await _call(
-        create_server(), "multipart_query__refine", {"input_data": input_data, "attributes": {}}
-    )
-    assert result.isError is False
-    assert result.structuredContent == refine_payload(direct)
-    assert len(result.structuredContent["plans"]) == 1
-    assert json.loads(result.content[0].text) == result.structuredContent
-
-
-async def test_refine_router_serializes_plan() -> None:
-    attributes = {
-        "search_query": "find rows",
-        "columns": [{"name": "value"}],
-        "execute_query": False,
-        "protocol": "sqlite",
-    }
-    result = await _call(
-        create_server(),
-        "nl2query_router__refine",
-        {"input_data": [[_source("s")]], "attributes": attributes},
-    )
-    assert result.isError is False
-    plans = result.structuredContent["plans"]
-    assert len(plans) == 1
-    assert "nodes" in plans[0] and "entities" in plans[0]
-
-
-async def test_refine_query_breakdown_serializes_plan(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = RecordingClient([[_cte("answer")]])
-    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
-    result = await _call(
-        create_server(),
-        "query_breakdown__refine",
-        {"input_data": [[]], "attributes": {"query": "q"}},
-    )
-    assert result.isError is False
-    assert len(result.structuredContent["plans"]) == 1
-
-
-def _plan_discover_server() -> FastMCP[Any]:
-    children = OperatorRegistry()
-    for operator, tags in ((ProjectOperator(), ("starter",)), (SelectOperator(), ("starter",))):
-        children.register(operator, "1.0.0", tags=tags)
-        children.register(operator, "2.0.0", tags=tags)
-    registry = OperatorRegistry()
-    registry.register(PlanDiscoverOperator(children), "2.0.0")
-    return create_server(registry=registry, operator_ids=("plan_discover@2.0.0",))
-
-
-async def test_refine_plan_discover_serializes_plans(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    result = await _call(
-        _plan_discover_server(),
-        "plan_discover__refine",
-        {
-            "input_data": [[]],
-            "attributes": {"task": "starter", "data": "rows", "approximate": True},
-        },
-    )
-    assert result.isError is False
-    plans = result.structuredContent["plans"]
-    assert len(plans) == 2
-    assert all("nodes" in plan for plan in plans)
-
-
-async def test_refine_zero_plan_is_successful_empty() -> None:
-    result = await _call(
-        create_server(), "multipart_query__refine", {"input_data": [], "attributes": {}}
-    )
-    assert result.isError is False
-    assert result.structuredContent["plans"] == []
-    assert result.structuredContent["exec_meta"]["is_empty"] is True
-    assert _errors(result) == []
-
-
-async def test_refine_invalid_input_is_recoverable() -> None:
-    result = await _call(
-        create_server(),
-        "multipart_query__refine",
-        {"input_data": [[]], "attributes": {"plans": "bad"}},
-    )
-    assert result.isError is False
-    error = _first_error(result)
-    assert (error["category"], error["code"], error["stage"]) == (
-        "RECOVERABLE",
-        "INVALID_INPUT",
-        "VALIDATE",
-    )
-
-
-async def test_refine_raising_refiner_is_contained(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = RecordingClient(error=RuntimeError("opaque-refiner-payload"))
-    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
-    result = await _call(
-        create_server(),
-        "query_breakdown__refine",
-        {"input_data": [[]], "attributes": {"query": "q"}},
-    )
-    assert result.isError is False
-    error = _first_error(result)
-    assert (error["category"], error["code"], error["stage"]) == (
-        "FAILED",
-        "REFINEMENT_FAILED",
-        "REFINE",
-    )
-    assert "opaque-refiner-payload" not in result.content[0].text
-
-
-class MalformedRefiner(RefinableOperator):
-    name: ClassVar[str] = "malformed_refiner"
-    description: ClassVar[str] = "Return a non-record refinement result."
-    attributes: ClassVar[dict[str, AttributeSpec]] = {}
-
-    def apply(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[list[dict[str, Any]]]:
-        del input_data, attributes, properties
-        return [[]]
-
-    def refiner(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[PlanRecord]:
-        del input_data, attributes, properties
-        return cast(list[PlanRecord], [123])
-
-
-async def test_refine_malformed_result_is_normalize_error() -> None:
-    result = await _call(
-        _single_server(MalformedRefiner()),
-        "malformed_refiner__refine",
-        {"input_data": [[]], "attributes": {}},
-    )
-    assert result.isError is False
-    error = _first_error(result)
-    assert (error["category"], error["code"], error["stage"]) == (
-        "FAILED",
-        "REFINEMENT_RESULT_INVALID",
-        "NORMALIZE",
-    )
-
-
-class BlockingRefiner(RefinableOperator):
-    name: ClassVar[str] = "blocking_refiner"
-    description: ClassVar[str] = "Block inside the refiner until released."
-    attributes: ClassVar[dict[str, AttributeSpec]] = {}
-
-    def __init__(self) -> None:
-        self.release = threading.Event()
-
-    def apply(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[list[dict[str, Any]]]:
-        del input_data, attributes, properties
-        return [[]]
-
-    def refiner(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[PlanRecord]:
-        del input_data, attributes, properties
-        self.release.wait(timeout=5)
-        return []
-
-
-async def test_refine_timeout_is_contained() -> None:
-    operator = BlockingRefiner()
-    try:
-        result = await _call(
-            _single_server(operator),
-            "blocking_refiner__refine",
-            {"input_data": [[]], "properties": {"execution.timeout_seconds": 0.2}},
-        )
-        assert result.isError is False
-        error = _first_error(result)
-        assert (error["category"], error["code"], error["stage"]) == (
-            "TIMEOUT",
-            "OPERATOR_TIMEOUT",
-            "REFINE",
-        )
-    finally:
-        operator.release.set()
-
-
-# Lifecycle warnings
-
-
-class CallerNotice(DeprecationWarning):
-    """A caller-owned category. The adapter gates its own emitter, not this one."""
-
-
-class WarningRefiner(RefinableOperator):
-    name: ClassVar[str] = "warning_refiner"
-    description: ClassVar[str] = "Raise the caller's own warning from the refiner."
-    attributes: ClassVar[dict[str, AttributeSpec]] = {}
-
-    def apply(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[list[dict[str, Any]]]:
-        del input_data, attributes, properties
-        return [[]]
-
-    def refiner(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[PlanRecord]:
-        del input_data, attributes, properties
-        warnings.warn("caller-owned notice", CallerNotice, stacklevel=2)
-        return []
-
-
-async def test_deprecated_primary_answers_identically_under_promotion(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = RecordingClient([[_cte("answer")]])
-    monkeypatch.setattr(qb_module, "resolve_llm_client", _resolver(client))
-    arguments: dict[str, Any] = {"input_data": [[]], "attributes": {"query": "q"}}
-    ordinary = await _call(create_server(), "query_breakdown", arguments)
-    with _promoted():
-        promoted = await _call(create_server(), "query_breakdown", arguments)
-    assert promoted.isError is False
-    assert promoted.structuredContent == ordinary.structuredContent
-    assert json.loads(promoted.content[0].text) == promoted.structuredContent
-    assert promoted.structuredContent["output_data"] == [[_cte("answer")]]
-    assert _errors(promoted) == []
-    assert len(client.calls) == 2  # one body call per invocation, promoted or not
-
-
-async def test_deprecated_companion_answers_identically_under_promotion(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    input_data = [[_cte("orders")]]
-    arguments: dict[str, Any] = {"input_data": input_data, "attributes": {}}
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    ordinary = await _call(create_server(), "multipart_query__refine", arguments)
-    monkeypatch.setattr(pipeline_module, "_new_id", _id_sequence())
-    with _promoted():
-        promoted = await _call(create_server(), "multipart_query__refine", arguments)
-    assert promoted.isError is False
-    assert promoted.structuredContent == ordinary.structuredContent
-    assert json.loads(promoted.content[0].text) == promoted.structuredContent
-    assert len(promoted.structuredContent["plans"]) == 1
-    assert _errors(promoted) == []
-
-
-async def test_six_concurrent_companion_calls_succeed_under_promotion() -> None:
-    arguments: dict[str, Any] = {"input_data": [[_cte("orders")]], "attributes": {}}
-    results: list[Any]
-    with _promoted():
-        async with create_connected_server_and_client_session(create_server()) as client:
-            results = list(
-                await asyncio.gather(
-                    *(client.call_tool("multipart_query__refine", arguments) for _ in range(6))
-                )
-            )
-    assert [result.isError for result in results] == [False] * 6
-    assert [len(result.structuredContent["plans"]) for result in results] == [1] * 6
-    assert [_errors(result) for result in results] == [[]] * 6
-
-
-class _HeldRefine:
-    """A direct call made while a real refine handler is parked inside its own warning scope.
-
-    Cleanup releases the handler before anything else and then settles both tasks under bounded
-    waits, so a direct call that fails or is cancelled leaves nothing running and still reaches
-    the caller as itself. `held_done` and `left_running` are how things stood at that point.
-    """
-
-    def __init__(self) -> None:
-        self.operator = cast(
-            RefinableOperator, versioned_registry().resolve("multipart_query@2.0.0")
-        )
-        self.input_data = [[_cte("orders")]]
-        self.held_done = False
-        self.left_running = 0
-
-    def refine_directly(self) -> None:
-        self.operator.refine(self.input_data, {})
-
-    async def observe(
-        self, monkeypatch: pytest.MonkeyPatch, direct_call: Callable[[], None]
-    ) -> tuple[int, Any]:
-        dispatched = asyncio.Event()
-        release = asyncio.Event()
-        to_thread = asyncio.to_thread
-
-        async def held_to_thread(function: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
-            dispatched.set()
-            await asyncio.wait_for(release.wait(), timeout=5)
-            return await to_thread(function, *args, **kwargs)
-
-        monkeypatch.setattr(asyncio, "to_thread", held_to_thread)
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-
-            async def counted_call() -> int:
-                before = len(_package_warnings(list(caught)))
-                direct_call()
-                return len(_package_warnings(list(caught))) - before
-
-            held = asyncio.create_task(make_refine_handler(self.operator)(self.input_data, {}))
-            caller: asyncio.Task[int] | None = None
-            try:
-                await asyncio.wait_for(dispatched.wait(), timeout=5)
-                caller = asyncio.create_task(counted_call())
-                visible = await asyncio.wait_for(caller, timeout=5)
-            finally:
-                release.set()
-                started: list[asyncio.Task[Any]] = [held]
-                if caller is not None:
-                    started.append(caller)
-                # collect both outcomes rather than re-raising one, so whatever the direct call
-                # did is still what leaves this method
-                _, running = await asyncio.wait(started, timeout=5)
-                self.left_running = len(running)
-                self.held_done = held.done()
-
-        assert self.left_running == 0
-        return visible, held.result()
-
-
-async def test_one_handlers_scope_does_not_reach_another_callers_warnings(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # The second task calls while the handler is parked inside its own scope. An adapter that
-    # suppressed its own warning by editing the process-wide filters would take this caller's too.
-    overlap = _HeldRefine()
-    visible, refinement = await overlap.observe(monkeypatch, overlap.refine_directly)
-    assert visible == 1  # the other task saw its own call warn, once
-    assert len(refinement.plans) == 1  # and the held handler still answered normally
-    assert refinement.exec_meta.errors == []
-
-
-@pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
-async def test_a_broken_direct_call_still_settles_the_held_handler(
-    failure: type[BaseException],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    overlap = _HeldRefine()
-
-    def fail() -> None:
-        raise failure("injected caller failure")
-
-    with pytest.raises(failure) as raised:
-        await overlap.observe(monkeypatch, fail)
-    assert raised.value.args == ("injected caller failure",)  # the caller's own outcome, unchanged
-    assert overlap.held_done  # and the handler had already finished when it left
-    assert overlap.left_running == 0
-
-
-async def test_a_caller_warning_stays_visible_inside_the_adapter_scope() -> None:
-    # Observed at the handler, which is where the scope lives. The MCP server records every
-    # warning raised while it processes a message and logs it, so a wire-level call cannot show
-    # this directly; the next test covers what the wire does report.
-    registry = OperatorRegistry()
-    registry.register(WarningRefiner(), "2.0.0")
-    operator = cast(RefinableOperator, registry.resolve("warning_refiner@2.0.0"))
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        result = await make_refine_handler(operator)([[]], {})
-    assert result.plans == []
-    assert result.exec_meta.errors == []
-    assert [str(entry.message) for entry in caught if isinstance(entry.message, CallerNotice)] == [
-        "caller-owned notice"
-    ]
-    # the seam warning the package raised for this same call did not escape
-    assert _package_warnings(list(caught)) == []
-
-
-async def test_the_server_reports_the_caller_warning_and_no_package_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    with caplog.at_level(logging.INFO, logger="mcp.server.lowlevel.server"):
-        result = await _call(
-            _single_server(WarningRefiner()), "warning_refiner__refine", {"input_data": [[]]}
-        )
-    assert result.isError is False
-    assert result.structuredContent["plans"] == []
-    assert _errors(result) == []
-    reported = [record.getMessage() for record in caplog.records]
-    assert "Warning: CallerNotice: caller-owned notice" in reported
-    assert not any("BlueDataOpsDeprecationWarning" in message for message in reported)
-
-
-async def test_the_adapter_scope_is_released_when_the_handler_returns() -> None:
-    operator = cast(RefinableOperator, versioned_registry().resolve("multipart_query@2.0.0"))
-    handler = make_refine_handler(operator)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        await handler([[_cte("orders")]], {})
-        during = len(_package_warnings(list(caught)))
-        operator.refine([[_cte("orders")]], {})
-        after = len(_package_warnings(list(caught)))
-    assert during == 0  # the scope covered the handler's own dispatch
-    assert after == 1  # and ordinary Python use warns again once the handler returns
-
-
-# Dispatch boundary
-
-
 class RunOnlySpy(Operator):
     name: ClassVar[str] = "run_only_spy"
-    description: ClassVar[str] = "A primary that dispatches only through run()."
+    description: ClassVar[str] = "Dispatch only through run()."
     attributes: ClassVar[dict[str, AttributeSpec]] = {}
 
     def __init__(self) -> None:
         self.run_calls = 0
 
-    def apply(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[list[dict[str, Any]]]:
+    def apply(self, *args: Any, **kwargs: Any) -> Any:
         raise AssertionError("apply must not be called by the adapter")
 
     def invoke(self, *args: Any, **kwargs: Any) -> Any:
@@ -708,36 +230,6 @@ class RunOnlySpy(Operator):
         return [[{"ok": True}]], {}, ExecMeta(is_empty=False, errors=[], logs=[], traces={})
 
 
-class RefineOnlySpy(RefinableOperator):
-    name: ClassVar[str] = "refine_only_spy"
-    description: ClassVar[str] = "A companion that dispatches only through refine()."
-    attributes: ClassVar[dict[str, AttributeSpec]] = {}
-
-    def __init__(self) -> None:
-        self.refine_calls = 0
-
-    def apply(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> list[list[dict[str, Any]]]:
-        return [[]]
-
-    def refiner(self, *args: Any, **kwargs: Any) -> list[PlanRecord]:
-        raise AssertionError("raw refiner must not be called by the adapter")
-
-    def refine(
-        self,
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any],
-        properties: dict[str, Any] | None = None,
-    ) -> tuple[list[Any], ExecMeta]:
-        del input_data, attributes, properties
-        self.refine_calls += 1
-        return [], ExecMeta(is_empty=True, errors=[], logs=[], traces={})
-
-
 async def test_primary_dispatches_only_to_run_once() -> None:
     operator = RunOnlySpy()
     result = await _call(_single_server(operator), "run_only_spy", {"input_data": [[]]})
@@ -746,20 +238,9 @@ async def test_primary_dispatches_only_to_run_once() -> None:
     assert result.structuredContent["output_data"] == [[{"ok": True}]]
 
 
-async def test_companion_dispatches_only_to_refine_once() -> None:
-    operator = RefineOnlySpy()
-    result = await _call(_single_server(operator), "refine_only_spy__refine", {"input_data": [[]]})
-    assert result.isError is False
-    assert operator.refine_calls == 1
-    assert result.structuredContent["plans"] == []
-
-
-# Argument errors
-
-
 class NoCallOperator(Operator):
     name: ClassVar[str] = "no_call"
-    description: ClassVar[str] = "Fail loudly if any canonical call begins."
+    description: ClassVar[str] = "Fail if any canonical call begins."
     attributes: ClassVar[dict[str, AttributeSpec]] = {}
 
     def apply(self, *args: Any, **kwargs: Any) -> Any:
@@ -775,14 +256,10 @@ async def test_argument_shape_errors_are_tool_errors(arguments: dict[str, Any]) 
     assert result.isError is True
 
 
-# Encoding errors
-
-
 class EncodingOperator(Operator):
     name: ClassVar[str] = "encoding"
     description: ClassVar[str] = "Return a chosen leaf in the canonical output."
     attributes: ClassVar[dict[str, AttributeSpec]] = {}
-
     leaf: ClassVar[Any] = None
 
     def apply(
@@ -805,7 +282,7 @@ async def test_non_finite_floats_are_tool_errors(leaf: float) -> None:
     EncodingOperator.leaf = leaf
     result = await _call(_single_server(EncodingOperator()), "encoding", {"input_data": [[]]})
     assert result.isError is True
-    assert result.structuredContent is None  # a tool error, not a synthetic operator record
+    assert result.structuredContent is None
 
 
 async def test_python_only_leaf_follows_default_str() -> None:

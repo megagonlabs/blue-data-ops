@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import importlib
 import inspect
 
+import pytest
+
+import blue_data_ops.operators as operators_surface
+import blue_data_ops.operators.operator as operator_module
 import blue_data_ops.plan as plan_surface
-from blue_data_ops.operators import Operator
 from blue_data_ops.plan import (
     DataContextProvider,
     DataContextSnapshot,
@@ -13,7 +17,6 @@ from blue_data_ops.plan import (
     NodeType,
     PipelinePlanner,
     PlanGenerator,
-    RefinableOperator,
     RegistryDataContextProvider,
     Status,
 )
@@ -100,8 +103,9 @@ def test_generators_rules_and_planner_share_one_call_shape() -> None:
     assert [limits[name].default for name in list(limits)[2:]] == [32, 64, 512, 512, 131_072]
 
 
-def test_plan_surface_exposes_the_v1_refiner_contract() -> None:
-    assert issubclass(RefinableOperator, Operator)
+def test_plan_surface_removes_refinement_and_retains_pipeline_construction() -> None:
+    assert not hasattr(plan_surface, "RefinableOperator")
+    assert not hasattr(plan_surface, "DeclarativeOperator")
     assert list(inspect.signature(DataPipeline).parameters) == [
         "id",
         "label",
@@ -116,3 +120,26 @@ def test_plan_surface_exposes_the_v1_refiner_contract() -> None:
         "auto_sync",
         "sync",
     ]
+
+
+def test_removed_refinement_symbols_stay_absent_from_public_imports() -> None:
+    for module in (operators_surface, operator_module, plan_surface):
+        assert not hasattr(module, "DeclarativeOperator")
+    assert not hasattr(PipelinePlanner, "plan_refinement")
+
+    for statement in (
+        "from blue_data_ops.operators import DeclarativeOperator",
+        "from blue_data_ops.operators.operator import DeclarativeOperator",
+        "from blue_data_ops.plan import DeclarativeOperator",
+    ):
+        with pytest.raises(ImportError):
+            exec(statement, {})
+
+
+def test_removed_parse_scope_imports_stay_absent() -> None:
+    assert not hasattr(operators_surface, "parse_scope")
+    assert not hasattr(operator_module, "parse_scope")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("blue_data_ops.operators.nl2query_router_operator")
+    with pytest.raises(ImportError):
+        exec("from blue_data_ops.operators import parse_scope", {})

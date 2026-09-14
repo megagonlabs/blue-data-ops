@@ -25,7 +25,6 @@
     "max@3.0.0": "max/3.0.0/manifest.json",
     "min@2.0.0": "min/2.0.0/manifest.json",
     "min@3.0.0": "min/3.0.0/manifest.json",
-    "multipart_query@2.0.0": "multipart_query/2.0.0/manifest.json",
     "nl2bn@2.0.0": "nl2bn/2.0.0/manifest.json",
     "nl2bn@3.0.0": "nl2bn/3.0.0/manifest.json",
     "nl2llm@2.0.0": "nl2llm/2.0.0/manifest.json",

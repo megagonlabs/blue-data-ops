@@ -410,7 +410,7 @@ def test_preflight_rejects_invalid_or_replayed_plans(
         PipelineExecutor(versioned_registry()).execute(pipeline, [[{"total": 200}]])
 
 
-def test_preflight_rejects_refinable_operator_nodes() -> None:
+def test_preflight_rejects_retired_operator_ids() -> None:
     pipeline = DataPipeline()
     source = pipeline.define_input()
     action = pipeline.define_operator(
@@ -423,8 +423,8 @@ def test_preflight_rejects_refinable_operator_nodes() -> None:
     pipeline.connect_nodes(source, action)
     pipeline.connect_nodes(action, output)
 
-    with pytest.raises(PipelineError, match="materialized non-refinable"):
-        PipelineExecutor(versioned_registry()).execute(pipeline, [[]])
+    with pytest.raises(PipelineError, match="cannot resolve 'query_breakdown@2.0.0'"):
+        PipelineExecutor(versioned_registry()).preflight(pipeline)
 
 
 def test_preflight_resolves_every_id_before_any_body_runs() -> None:

@@ -28,4 +28,4 @@ Only first-group records with a list-valued vector and non-null label train the 
 
 NumPy and the selected scikit-learn class load only after a supported non-empty path is reached. Missing modules therefore propagate from raw `apply()` and `invoke()`; `run()` returns `[[]]` with a generic `EXECUTION_FAILED` error. Model construction, fitting, and prediction failures are caught: raw calls return the original input, while `run()` reports an execution failure because `_execute()` raises before the compatibility catch in `apply()`.
 
-`output_attributes` is `{}`. `explain()` uses shared statistics. There is no provider disclosure or persistent side effect. The default raw `refiner()` returns `[]`; no structured `refine()` method exists.
+`output_attributes` is `{}`. `explain()` uses shared statistics. There is no provider disclosure or persistent side effect.

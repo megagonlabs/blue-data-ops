@@ -4,9 +4,8 @@ import asyncio
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
-from blue_data_ops import _deprecation
 from blue_data_ops.operators import (
     ErrorRecord,
     ExecMeta,
@@ -16,14 +15,14 @@ from blue_data_ops.operators import (
     ResolveError,
     versioned_registry,
 )
-from blue_data_ops.plan import RefinableOperator
+from blue_data_ops.operators.registry import is_builtin_card
 from mcp.server.fastmcp import FastMCP
 
-from blue_data_ops_mcp.schema import RefineResult, RunResult, handler_signature
+from blue_data_ops_mcp.schema import RunResult, handler_signature
 
-# The adapter-committed v2 selection: exactly the 36 name-sorted `name@2.0.0` ids. The default
-# deployment freezes this tuple against a superset-tolerant registry; it is never derived from
-# `list_cards()`.
+# The adapter-committed selections are explicit policy, not a semver maximum or registry query.
+# Both tuples are ordered by logical name. V2_OPERATOR_IDS preserves the retained historical-v2
+# selection; ACTIVE_OPERATOR_IDS is the ordinary 3.0 deployment default.
 V2_OPERATOR_IDS: tuple[str, ...] = (
     "argmax@2.0.0",
     "argmin@2.0.0",
@@ -40,15 +39,11 @@ V2_OPERATOR_IDS: tuple[str, ...] = (
     "join@2.0.0",
     "max@2.0.0",
     "min@2.0.0",
-    "multipart_query@2.0.0",
     "nl2bn@2.0.0",
     "nl2llm@2.0.0",
-    "nl2query_router@2.0.0",
     "nl2sql@2.0.0",
     "normalize_text@2.0.0",
-    "plan_discover@2.0.0",
     "project@2.0.0",
-    "query_breakdown@2.0.0",
     "segment_text@2.0.0",
     "select@2.0.0",
     "semantic_extract@2.0.0",
@@ -63,20 +58,53 @@ V2_OPERATOR_IDS: tuple[str, ...] = (
     "vector_similarity@2.0.0",
 )
 
-_SELECTED_VERSION = "2.0.0"
-REFINE_SUFFIX = "__refine"
-REFINE_DESCRIPTION_PREFIX = "Build candidate data-pipeline plans."
-DEPRECATION_SENTENCE = "Deprecated in blue-data-ops 2.8.0; removed in 3.0.0."
-REFINE_DEPRECATION_SENTENCE = (
-    f"{DEPRECATION_SENTENCE} The refinement seam is deprecated for every operator."
+ACTIVE_OPERATOR_IDS: tuple[str, ...] = (
+    "argmax@2.0.0",
+    "argmin@2.0.0",
+    "avg@3.0.0",
+    "classify@3.0.0",
+    "cluster@3.0.0",
+    "create_database@2.0.0",
+    "create_table@2.0.0",
+    "data_discover@2.0.0",
+    "delete@2.0.0",
+    "insert@3.0.0",
+    "insert_table@3.0.0",
+    "intersect@3.0.0",
+    "join@3.0.0",
+    "max@3.0.0",
+    "min@3.0.0",
+    "nl2bn@3.0.0",
+    "nl2llm@3.0.0",
+    "nl2sql@3.0.0",
+    "normalize_text@2.0.0",
+    "project@3.0.0",
+    "segment_text@2.0.0",
+    "select@2.0.0",
+    "semantic_extract@3.0.0",
+    "semantic_filter@3.0.0",
+    "semantic_join@3.0.0",
+    "semantic_project@3.0.0",
+    "semantic_transform@3.0.0",
+    "sum@2.0.0",
+    "union@2.0.0",
+    "vector_embed@3.0.0",
+    "vector_search@3.0.0",
+    "vector_similarity@3.0.0",
 )
+
+_SUPPORTED_BUILTIN_IDS = frozenset((*V2_OPERATOR_IDS, *ACTIVE_OPERATOR_IDS))
+_SUPPORTED_BUILTIN_NAMES = frozenset(
+    operator_id.partition("@")[0] for operator_id in _SUPPORTED_BUILTIN_IDS
+)
+_SUPPORTED_VERSIONS = frozenset({"2.0.0", "3.0.0"})
+DEPRECATION_SENTENCE = "This operator is marked deprecated by its registry metadata."
 
 
 @dataclass(frozen=True)
 class OperatorBinding:
     card: OperatorCard
     operator: Operator
-    kind: Literal["primary", "refine"]
 
 
 DeploymentSnapshot = tuple[OperatorBinding, ...]
@@ -86,62 +114,62 @@ def freeze_deployment(
     registry: OperatorRegistry | None = None,
     operator_ids: Iterable[str] | None = None,
 ) -> DeploymentSnapshot:
-    """Freeze one v2 deployment: validate the selection, then bind primaries and companions.
+    """Validate and freeze one exact primary-only deployment.
 
-    The registry defaults to the superset-tolerant `versioned_registry()`; the selection defaults
-    to the adapter-committed `V2_OPERATOR_IDS`. An explicit `operator_ids` is a complete replacement
-    and may be empty or a subset. Each requested id is held through validation and binding so the
-    card the registry returns for it can never be swapped onto a different selection: the returned
-    card's `operator_id` must equal the requested id, that card must be `2.0.0`, and the resolved
-    operator, the card, and the requested id must all agree. Duplicate ids, duplicate logical names,
-    malformed or missing ids, non-`2.0.0` selections, returned-card substitutions, and binding
-    mismatches are rejected before any tool is bound. Registry supersets are accepted — the
-    inventory is never compared with the selection.
+    The backing registry may be a superset, but only selected cards become tools. Package-owned
+    selections must be same-registry built-ins with the expected implementation class. Explicit
+    caller registrations retain the v2 path; custom v3 and v1 cards are outside this contract.
     """
-    active_registry = registry if registry is not None else versioned_registry()
+    deployment_registry = registry if registry is not None else versioned_registry()
 
-    selected_ids = V2_OPERATOR_IDS if operator_ids is None else tuple(operator_ids)
+    selected_ids = ACTIVE_OPERATOR_IDS if operator_ids is None else tuple(operator_ids)
     if len(set(selected_ids)) != len(selected_ids):
         raise ValueError("deployment selection contains a repeated operator id")
 
-    # Keep each requested id bound to the card the registry returns for it, so validation and
-    # sorting can never swap the returned card onto a different selection. `get_card` must answer
-    # with a card whose `operator_id` is exactly the requested id; any other card (even another
-    # valid 2.0.0 one) is a substitution and is rejected before the card is trusted for its version.
-    selected: list[tuple[str, OperatorCard]] = []
+    selected: list[tuple[str, OperatorCard, Operator]] = []
+    reference_registry: OperatorRegistry | None = None
     for requested_id in selected_ids:
-        active_registry.resolve(requested_id)
-        card = active_registry.get_card(requested_id)
+        card = deployment_registry.get_card(requested_id)
         if card is None:
             raise ResolveError(f"no operator card registered as {requested_id!r}")
         if card.operator_id != requested_id:
             raise ValueError(
                 f"registry returned card {card.operator_id!r} for requested id {requested_id!r}"
             )
-        if card.version != _SELECTED_VERSION:
+        requested_name, separator, requested_version = requested_id.partition("@")
+        if not separator or card.name != requested_name or card.version != requested_version:
+            raise ValueError(f"requested/card identity mismatch for {requested_id!r}")
+        if card.version not in _SUPPORTED_VERSIONS:
             raise ValueError(
-                f"the v2 adapter selects {_SELECTED_VERSION} only, got {requested_id!r}"
+                f"the MCP adapter supports exact v2/v3 selections only, got {requested_id!r}"
             )
-        selected.append((requested_id, card))
+        operator = deployment_registry.resolve(requested_id)
+        if operator.operator_id != requested_id or operator.name != card.name:
+            raise ValueError(f"operator/card mismatch for {requested_id!r}")
 
-    names = [card.name for _, card in selected]
+        if requested_id in _SUPPORTED_BUILTIN_IDS:
+            if not is_builtin_card(deployment_registry, card):
+                raise ValueError(f"built-in provenance mismatch for {requested_id!r}")
+            if reference_registry is None:
+                reference_registry = versioned_registry()
+            expected = reference_registry.resolve(requested_id)
+            if type(operator) is not type(expected):
+                raise ValueError(f"resolved implementation mismatch for {requested_id!r}")
+        elif is_builtin_card(deployment_registry, card) or card.name in _SUPPORTED_BUILTIN_NAMES:
+            raise ValueError(f"unsupported built-in selection {requested_id!r}")
+        elif card.version != "2.0.0":
+            raise ValueError(f"custom operators are supported at 2.0.0 only, got {requested_id!r}")
+
+        selected.append((requested_id, card, operator))
+
+    names = [card.name for _, card, _ in selected]
     if len(set(names)) != len(names):
         raise ValueError("deployment selection contains multiple versions of one tool name")
 
-    primaries: list[OperatorBinding] = []
-    companions: list[OperatorBinding] = []
-    for requested_id, card in sorted(selected, key=lambda item: item[1].name):
-        operator = active_registry.resolve(requested_id)
-        if (
-            operator.operator_id != requested_id
-            or card.operator_id != requested_id
-            or operator.name != card.name
-        ):
-            raise ValueError(f"operator/card mismatch for {requested_id!r}")
-        primaries.append(OperatorBinding(card=card, operator=operator, kind="primary"))
-        if isinstance(operator, RefinableOperator):
-            companions.append(OperatorBinding(card=card, operator=operator, kind="refine"))
-    return tuple(primaries) + tuple(companions)
+    return tuple(
+        OperatorBinding(card=card, operator=operator)
+        for _, card, operator in sorted(selected, key=lambda item: item[1].name)
+    )
 
 
 def _wire_json(payload: dict[str, Any]) -> dict[str, Any]:
@@ -189,17 +217,6 @@ def run_payload(
     )
 
 
-def refine_payload(result: tuple[list[Any], ExecMeta]) -> dict[str, Any]:
-    """Project a normalized `refine()` result into the wire object (post-conversion)."""
-    plans, exec_meta = result
-    return _wire_json(
-        {
-            "plans": [plan.to_dict() for plan in plans],
-            "exec_meta": _exec_meta_payload(exec_meta),
-        }
-    )
-
-
 def make_run_handler(operator: Operator) -> Any:
     async def handler(
         input_data: list[list[dict[str, Any]]],
@@ -207,13 +224,9 @@ def make_run_handler(operator: Operator) -> Any:
         properties: dict[str, Any] | None = None,
     ) -> RunResult:
         call_attributes: dict[str, Any] = {} if attributes is None else attributes
-        # A deprecated operator's own warning is expected here, so promoting the category must
-        # not change the wire envelope. The scope is task-local rather than process-global, and
-        # gates only the package emitter: a caller-supplied operator's warnings still escape.
-        with _deprecation.expected():
-            payload = await asyncio.to_thread(
-                lambda: run_payload(operator.run(input_data, call_attributes, properties))
-            )
+        payload = await asyncio.to_thread(
+            lambda: run_payload(operator.run(input_data, call_attributes, properties))
+        )
         return RunResult.model_validate(payload)
 
     handler.__name__ = operator.name
@@ -221,41 +234,10 @@ def make_run_handler(operator: Operator) -> Any:
     return handler
 
 
-def make_refine_handler(operator: RefinableOperator) -> Any:
-    async def handler(
-        input_data: list[list[dict[str, Any]]],
-        attributes: dict[str, Any] | None = None,
-        properties: dict[str, Any] | None = None,
-    ) -> RefineResult:
-        call_attributes: dict[str, Any] = {} if attributes is None else attributes
-        # The refinement seam warns for every operator, so the same task-local scope applies.
-        with _deprecation.expected():
-            payload = await asyncio.to_thread(
-                lambda: refine_payload(operator.refine(input_data, call_attributes, properties))
-            )
-        return RefineResult.model_validate(payload)
-
-    handler.__name__ = f"{operator.name}{REFINE_SUFFIX}"
-    setattr(handler, "__signature__", handler_signature(operator, RefineResult))
-    return handler
-
-
-def _annotated(binding: OperatorBinding) -> bool:
-    """Whether this binding carries the lifecycle notice.
-
-    Read the card's flag and the binding's kind, never the operator's name or runtime type: the
-    refinement seam is deprecated for every operator, so a companion over a retained card is
-    annotated while its own primary is not.
-    """
-    return binding.card.deprecated or binding.kind == "refine"
-
-
 def _compose_description(binding: OperatorBinding) -> str:
     card = binding.card
     parts: list[str] = []
-    if binding.kind == "refine":
-        parts += [REFINE_DESCRIPTION_PREFIX, REFINE_DEPRECATION_SENTENCE]
-    elif card.deprecated:
+    if card.deprecated:
         parts.append(DEPRECATION_SENTENCE)
     if card.when_to_invoke.strip():
         parts.append(card.when_to_invoke)
@@ -270,7 +252,7 @@ def _meta(binding: OperatorBinding) -> dict[str, Any]:
         "version": card.version,
         "tags": list(card.tags),
     }
-    if _annotated(binding):
+    if card.deprecated:
         meta["deprecated"] = True
     return meta
 
@@ -278,21 +260,10 @@ def _meta(binding: OperatorBinding) -> dict[str, Any]:
 def register_snapshot(server: FastMCP[Any], snapshot: DeploymentSnapshot) -> None:
     for binding in snapshot:
         card = binding.card
-        if binding.kind == "primary":
-            server.add_tool(
-                make_run_handler(binding.operator),
-                name=card.name,
-                description=_compose_description(binding),
-                meta=_meta(binding),
-                structured_output=True,
-            )
-        else:
-            companion = binding.operator
-            assert isinstance(companion, RefinableOperator)
-            server.add_tool(
-                make_refine_handler(companion),
-                name=f"{card.name}{REFINE_SUFFIX}",
-                description=_compose_description(binding),
-                meta=_meta(binding),
-                structured_output=True,
-            )
+        server.add_tool(
+            make_run_handler(binding.operator),
+            name=card.name,
+            description=_compose_description(binding),
+            meta=_meta(binding),
+            structured_output=True,
+        )

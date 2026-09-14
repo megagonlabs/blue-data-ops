@@ -20,7 +20,7 @@ from blue_data_ops.operator_skills import (
     OperatorSkillLoader,
     OperatorSkillLoadError,
 )
-from blue_data_ops.operators import OperatorRegistry, versioned_registry
+from blue_data_ops.operators import OperatorRegistry, active_registry, versioned_registry
 from blue_data_ops.operators.types import AttributeSpec
 
 from ._conformance_support import (
@@ -580,13 +580,13 @@ def _synthetic_census() -> EffectiveReadCensus:
 
 def test_expected_membership_matches_the_exact_version_inventory() -> None:
     assert_skill_package_inventory(CATALOG.package_ids, versioned_registry())
-    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 54
+    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 53
 
 
-def test_historical_package_membership_is_derived_from_runtime_refinability() -> None:
+def test_historical_package_membership_matches_all_retained_v2_cards() -> None:
     expected = expected_v2_skill_package_ids(versioned_registry())
-    assert len(expected) == 33
-    assert "multipart_query@2.0.0" in expected
+    assert len(expected) == 32
+    assert "multipart_query@2.0.0" not in expected
     assert all(operator_id.endswith("@2.0.0") for operator_id in expected)
     assert tuple(operator_id for operator_id in CATALOG.package_ids if operator_id in expected) == (
         expected
@@ -597,14 +597,25 @@ def test_historical_package_membership_is_derived_from_runtime_refinability() ->
     assert set(EXPECTED_PACKAGE_IDS) - set(expected) == set(ADDED_SKILL_PACKAGE_IDS)
 
 
+def test_every_active_card_has_one_exact_skill_package() -> None:
+    registry = active_registry()
+    active_ids = tuple(card.operator_id for card in registry.list_cards())
+    loader = OperatorSkillLoader(registry)
+
+    assert len(active_ids) == 32
+    assert loader.available_operator_ids() == active_ids
+    assert all(
+        loader.load(operator_id, level=3).card is registry.get_card(operator_id)
+        for operator_id in active_ids
+    )
+
+
 def test_synthetic_inventory_accepts_exactly_the_expected_packages() -> None:
     registry = versioned_registry()
     assert_skill_package_inventory(expected_skill_package_ids(registry), registry)
 
 
-@pytest.mark.parametrize(
-    "missing_id", ("avg@2.0.0", "multipart_query@2.0.0", *ADDED_SKILL_PACKAGE_IDS)
-)
+@pytest.mark.parametrize("missing_id", ("avg@2.0.0", "select@2.0.0", *ADDED_SKILL_PACKAGE_IDS))
 def test_synthetic_inventory_rejects_missing_old_or_new_packages(missing_id: str) -> None:
     registry = versioned_registry()
     actual = tuple(oid for oid in expected_skill_package_ids(registry) if oid != missing_id)
@@ -626,7 +637,7 @@ def test_synthetic_inventory_rejects_extra_or_replacement_packages(
         )
     )
     if replace_id is not None:
-        assert len(actual) == len(expected) == 54
+        assert len(actual) == len(expected) == 53
     with pytest.raises(AssertionError, match="skill package inventory differs"):
         assert_skill_package_inventory(actual, registry)
 

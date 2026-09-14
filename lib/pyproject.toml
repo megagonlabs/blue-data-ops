@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops"
-version = "2.10.0"
+version = "3.0.0"
 description = "Blue Data Operators — self-contained operator library"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -87,7 +87,7 @@ venvPath = "."
 venv = ".venv"
 # tests/stubs holds deterministic fakes for optional heavy deps (litellm,
 # sentence-transformers); pyright resolves them for analysis, pytest via conftest.
-extraPaths = ["tests/stubs"]
+extraPaths = ["src", "tests/stubs"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

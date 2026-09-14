@@ -2,7 +2,7 @@
   "format": "blue-data-ops/operator-skill@1",
   "operator_id": "cluster@2.0.0",
   "resources": {
-    "guide": {"path": "Operator.md", "sha256": "889ad8be04b5cb3373db778263500d30b60c7e56a44b4848db24df185a003127"},
+    "guide": {"path": "Operator.md", "sha256": "dd95ce50465317f342783f8381b8df1688e4f948367af7d8c9b7c23c8e726cc2"},
     "examples": {"path": "examples.md", "sha256": "fa6f06264eefba913ef9bbe29d3282f1252025d2da2cc7bbf50f068d8793b137"}
   }
 }

@@ -1,9 +1,7 @@
 """Behavior, SQL-boundary, and SQLite integration tests for `insert_table`."""
 
-# blue-data ships no py.typed; this file exercises the private SQL protocol
-# (_db_connect/_db_disconnect) — that protocol IS the boundary under test:
-# pyright: reportMissingTypeStubs=false
-# pyright: reportPrivateUsage=false
+# blue-data ships no py.typed; the narrow ignores below cover only its imports and
+# the private SQL protocol that this integration test exercises.
 
 from __future__ import annotations
 
@@ -14,8 +12,12 @@ import pytest
 
 blue_data = pytest.importorskip("blue_data")
 
-from blue_data.registry.data_registry import DataRegistry  # noqa: E402
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # noqa: E402
+from blue_data.registry.data_registry import (  # noqa: E402  # pyright: ignore[reportMissingTypeStubs]
+    DataRegistry,
+)
+from blue_data.source.sql.sqlite.sqlite_sql_source import (  # noqa: E402  # pyright: ignore[reportMissingTypeStubs]
+    SQLiteDBSource,
+)
 
 from blue_data_ops.data import RegistrySeam  # noqa: E402
 from blue_data_ops.operators.insert_table_operator import InsertTableOperator  # noqa: E402
@@ -219,17 +221,17 @@ def test_sqlite_end_to_end(op: InsertTableOperator, tmp_path: Path) -> None:
     )
     seam.register_source(source)
 
-    setup = source._db_connect("db")
+    setup = source._db_connect("db")  # pyright: ignore[reportPrivateUsage]
     setup.cursor().execute('CREATE TABLE "t" ("a" INTEGER, "b" TEXT)')
     setup.commit()
-    source._db_disconnect(setup)
+    source._db_disconnect(setup)  # pyright: ignore[reportPrivateUsage]
 
     out = op.apply([list(ROWS)], dict(MINIMAL), {"data_registry": seam})
     assert out == [ROWS]
 
-    check = source._db_connect("db")
+    check = source._db_connect("db")  # pyright: ignore[reportPrivateUsage]
     stored = check.cursor().execute('SELECT "a", "b" FROM "t" ORDER BY "a"').fetchall()
-    source._db_disconnect(check)
+    source._db_disconnect(check)  # pyright: ignore[reportPrivateUsage]
     assert stored == [(1, "x"), (2, "y"), (3, "z")]
 
 

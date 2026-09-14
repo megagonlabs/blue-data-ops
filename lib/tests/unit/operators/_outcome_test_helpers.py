@@ -1,7 +1,7 @@
 """Boundary doubles and assertions for whole-catalog outcome tests.
 
 The doubles replace the LLM client, data registry, returned SQL source, and plan-id
-generator. Operator bodies and refiners remain active.
+generator. The retained operator bodies still execute.
 """
 
 from __future__ import annotations
