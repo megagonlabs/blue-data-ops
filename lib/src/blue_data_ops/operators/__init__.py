@@ -45,6 +45,7 @@ from blue_data_ops.operators.semantic_filter_operator import SemanticFilterOpera
 from blue_data_ops.operators.semantic_join_operator import SemanticJoinOperator
 from blue_data_ops.operators.semantic_project_operator import SemanticProjectOperator
 from blue_data_ops.operators.semantic_transform_operator import SemanticTransformOperator
+from blue_data_ops.operators.sklearn_estimator import SklearnEstimator
 from blue_data_ops.operators.sum_operator import SumOperator
 from blue_data_ops.operators.types import (
     ABSENT,
@@ -124,6 +125,7 @@ __all__ = [
     "SemanticProjectOperator",
     "SemanticTransformOperator",
     "SegmentTextOperator",
+    "SklearnEstimator",
     "SumOperator",
     "UnionOperator",
     "ValidationResult",
