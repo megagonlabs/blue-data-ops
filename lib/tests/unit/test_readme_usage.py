@@ -119,7 +119,7 @@ def test_readme_select_example() -> None:
 def test_root_readme_has_a_complete_source_install_and_mcp_route() -> None:
     root_readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     lib_readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
-    examples_readme = (LIB_ROOT / "examples/README.md").read_text(encoding="utf-8")
+    examples_readme = (PROJECT_ROOT / "examples/README.md").read_text(encoding="utf-8")
     mcp_readme = (PROJECT_ROOT / "platform/mcp/README.md").read_text(encoding="utf-8")
     assert "python -m venv blue-data-ops/lib/.venv" in root_readme
     assert "source blue-data-ops/lib/.venv/bin/activate" in root_readme
@@ -182,7 +182,7 @@ def test_readme_defines_the_tag_axes_and_filter_contract() -> None:
 def test_wheel_metadata_readme_does_not_link_to_sdist_only_files() -> None:
     readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
     sdist_only_link = re.compile(
-        r"\]\((?:COMPATIBILITY\.md(?:#[^)]+)?|OPERATORS\.md(?:#[^)]+)?|examples/[^)]+)\)"
+        r"\]\((?:COMPATIBILITY\.md(?:#[^)]+)?|OPERATORS\.md(?:#[^)]+)?|(?:\.\./)?examples/[^)]+)\)"
     )
 
     assert sdist_only_link.search(readme) is None

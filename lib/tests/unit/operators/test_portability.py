@@ -295,7 +295,7 @@ def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
     required_directories = (
         core_src,
         core_tests,
-        lib_root / "examples",
+        lib_root.parent / "examples",
         lib_root / "scripts",
         mcp_src,
         mcp_tests,
@@ -318,7 +318,7 @@ def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
     for root in (
         core_src,
         core_tests,
-        lib_root / "examples",
+        lib_root.parent / "examples",
         lib_root / "scripts",
         mcp_src,
         mcp_tests,
@@ -364,7 +364,7 @@ def _minimal_release_tree(root: Path) -> Path:
     for directory in (
         lib_root / "src" / "blue_data_ops",
         lib_root / "tests",
-        lib_root / "examples",
+        root / "examples",
         lib_root / "scripts",
         mcp_root / "src" / "blue_data_ops_mcp",
         mcp_root / "tests",
@@ -396,8 +396,8 @@ def _minimal_release_tree(root: Path) -> Path:
         ),
         ("lib/OPERATORS.md", "see decision " + "D" + "39\n"),
         ("lib/MANIFEST.in", "# see decision " + "D" + "39\n"),
-        ("lib/examples/example.py", "# see decision " + "D" + "39\n"),
-        ("lib/examples/coverage.json", '{"schema_version": "' + "k" + '3-review"}\n'),
+        ("examples/example.py", "# see decision " + "D" + "39\n"),
+        ("examples/coverage.json", '{"schema_version": "' + "k" + '3-review"}\n'),
         ("lib/scripts/check.py", "# see decision " + "D" + "39\n"),
         ("platform/mcp/README.md", "see decision " + "D" + "39\n"),
         ("platform/mcp/pyproject.toml", "# see decision " + "D" + "39\n"),

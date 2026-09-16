@@ -14,31 +14,44 @@ from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import OperatorCard, active_registry, versioned_registry
 
 LIB_ROOT = Path(__file__).resolve().parents[2]
-EXAMPLES = LIB_ROOT / "examples"
+REPO_ROOT = LIB_ROOT.parent
+EXAMPLES = REPO_ROOT / "examples"
 OFFLINE_EXAMPLES = (
-    "core_quickstart.py",
-    "sqlite_quickstart.py",
-    "ml_quickstart.py",
-    "vector_quickstart.py",
-    "embedding_planner.py",
-    "operator_skill_discovery.py",
-    "operator_skill_integrations.py",
-    "operator_outcomes.py",
+    "quickstart/core_quickstart.py",
+    "quickstart/sqlite_quickstart.py",
+    "quickstart/ml_quickstart.py",
+    "quickstart/vector_quickstart.py",
+    "integration-demos/embedding_planner.py",
+    "feature-demos/operator_skill_discovery.py",
+    "feature-demos/operator_skill_integrations.py",
+    "feature-demos/operator_outcomes.py",
 )
 OPTIONAL_EXAMPLES = (
-    "nl2llm.py",
-    "nl2sql_sqlite.py",
-    "semantic_filter.py",
+    "feature-demos/nl2llm.py",
+    "feature-demos/nl2sql_sqlite.py",
+    "feature-demos/semantic_filter.py",
 )
-SKILL_DISCOVERY_EXAMPLE = "operator_skill_discovery.py"
+SKILL_DISCOVERY_EXAMPLE = "feature-demos/operator_skill_discovery.py"
 SKILL_INELIGIBLE_OPERATOR_ID = "avg@1.0.0"
+
+
+def _runnable_example_paths() -> set[str]:
+    """Example paths relative to ``EXAMPLES``, skipping the underscore-prefixed shared helpers."""
+
+    return {
+        path.relative_to(EXAMPLES).as_posix()
+        for path in EXAMPLES.rglob("*.py")
+        if not path.name.startswith("_")
+    }
 
 
 def _run_example(name: str) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     source_path = str(LIB_ROOT / "src")
+    # The SQLite examples import ``_sqlite_demo`` from the examples root, not from their own
+    # category directory, so that root has to be importable as well.
     env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (source_path, env.get("PYTHONPATH", "")) if part
+        part for part in (source_path, str(EXAMPLES), env.get("PYTHONPATH", "")) if part
     )
     return subprocess.run(
         [sys.executable, str(EXAMPLES / name)],
@@ -127,17 +140,17 @@ def test_optional_example_is_valid_python(name: str) -> None:
 
 def test_the_offline_partition_covers_every_offline_example() -> None:
     assert len(OFFLINE_EXAMPLES) == len(set(OFFLINE_EXAMPLES))
-    runnable = {path.name for path in EXAMPLES.glob("*.py") if not path.name.startswith("_")}
+    runnable = _runnable_example_paths()
     assert set(OFFLINE_EXAMPLES) == runnable - set(OPTIONAL_EXAMPLES)
     assert set(OFFLINE_EXAMPLES) == {
-        "core_quickstart.py",
-        "sqlite_quickstart.py",
-        "ml_quickstart.py",
-        "vector_quickstart.py",
-        "embedding_planner.py",
-        "operator_skill_discovery.py",
-        "operator_skill_integrations.py",
-        "operator_outcomes.py",
+        "quickstart/core_quickstart.py",
+        "quickstart/sqlite_quickstart.py",
+        "quickstart/ml_quickstart.py",
+        "quickstart/vector_quickstart.py",
+        "integration-demos/embedding_planner.py",
+        "feature-demos/operator_skill_discovery.py",
+        "feature-demos/operator_skill_integrations.py",
+        "feature-demos/operator_outcomes.py",
     }
 
 
@@ -206,10 +219,7 @@ def test_the_skill_discovery_example_expands_only_the_eligible_card() -> None:
 def test_example_map_covers_public_tag_families() -> None:
     coverage = json.loads((EXAMPLES / "coverage.json").read_text(encoding="utf-8"))
     mapped_examples = set(coverage["examples"])
-    runnable_examples = {
-        path.name for path in EXAMPLES.glob("*.py") if not path.name.startswith("_")
-    }
-    assert mapped_examples == runnable_examples
+    assert mapped_examples == _runnable_example_paths()
     history_cards, class_ids = _registry_view()
     active_cards = {card.operator_id: card for card in active_registry().list_cards()}
     claimed_ids: set[str] = set()

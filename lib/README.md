@@ -51,14 +51,14 @@ assert version("blue-data-ops") == "3.0.0"
 
 ## Usage
 
-Run the credential-free examples from the directory containing this README. In a source checkout, that directory is `blue-data-ops/lib`; in an extracted source distribution, it is the extraction root.
+The credential-free examples live in the repository's top-level `examples/` directory, one level above the directory containing this README. Run them from the repository root:
 
 ```bash
-python examples/core_quickstart.py
-python examples/sqlite_quickstart.py
+python examples/quickstart/core_quickstart.py
+PYTHONPATH=examples python examples/quickstart/sqlite_quickstart.py
 ```
 
-`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. Source checkouts and source distributions include `examples/README.md` for the ML, vector, planner, and live-provider examples and the generated `OPERATORS.md` reference for the 33 active exact IDs. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.0.0` source distribution from the same artifact index.
+`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. It imports a helper module kept at the examples root, which is what the `PYTHONPATH` prefix is for. `examples/README.md` covers the ML, vector, planner, and live-provider examples. The examples tree is part of the source checkout only; no distribution carries it. The generated `OPERATORS.md` reference for the 33 active exact IDs does ship: in a source checkout it sits beside this README, and in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.0.0` source distribution from the same artifact index.
 
 ### Registry roles
 
@@ -117,11 +117,11 @@ A successful empty result is `[[]]` with `is_empty=True` and no errors. Mixed mu
 
 Set a wrapper deadline with `properties={"execution.timeout_seconds": <finite-positive-number>}`. The wrapper never retries. The legacy `properties["timeout"]` field remains observable but does not set the deadline.
 
-The three-argument `validate(input_data, attributes, properties)` checks the live attribute schema and returns `False` for invalid values. `explain()` describes a completed transform. `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes. Operators also retain the Blue Tool/Operator signature and parameter metadata surface.
+The three-argument `validate(input_data, attributes, properties)` checks the live attribute schema and returns `False` for invalid values. `explain(output, input_data, attributes)` describes a completed transform, taking the output first. `attributes`, `is_required(name)`, and `default_of(name)` expose the declared attributes. Operators also retain the Blue Tool/Operator signature and parameter metadata surface.
 
 ### Registry-backed data operations
 
-`create_database`, `create_table`, `insert_table`, and `data_discover` need a `blue-data` registry. The source-checkout and source-distribution file `examples/sqlite_quickstart.py` contains a complete setup. Its central call is:
+`create_database`, `create_table`, `insert_table`, and `data_discover` need a `blue-data` registry. The source-checkout file `examples/quickstart/sqlite_quickstart.py` contains a complete setup. Its central call is:
 
 ```python
 from tempfile import TemporaryDirectory
@@ -186,7 +186,7 @@ output, _, meta = operator.run(
 assert meta.errors == []
 ```
 
-Install `[llm]` and configure the provider credential before running it. The source-checkout and source-distribution file `examples/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
+Install `[llm]` and configure the provider credential before running it. The source-checkout file `examples/feature-demos/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
 
 ### Discovery
 
@@ -439,7 +439,6 @@ lib/
 ├── COMPATIBILITY.md             # compatibility and migration boundaries
 ├── MANIFEST.in                  # source-distribution resources
 ├── OPERATORS.md                 # generated 33-operator reference
-├── examples/                    # runnable local and provider-backed examples
 ├── pyproject.toml
 ├── scripts/                     # reference generator and install checks
 ├── src/blue_data_ops/

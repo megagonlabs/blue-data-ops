@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "reference_only_axes": ["capability"],
+  "examples": {
+    "quickstart/core_quickstart.py": ["select@2.0.0", "avg@3.0.0", "union@2.0.0", "normalize_text@2.0.0"],
+    "quickstart/sqlite_quickstart.py": ["create_database@2.0.0", "insert_table@3.0.0", "data_discover@2.0.0"],
+    "quickstart/ml_quickstart.py": ["classify@3.0.0"],
+    "quickstart/vector_quickstart.py": ["vector_similarity@3.0.0"],
+    "feature-demos/operator_skill_discovery.py": [],
+    "feature-demos/operator_skill_integrations.py": [],
+    "feature-demos/operator_outcomes.py": ["insert_table@3.0.0", "avg@3.0.0"],
+    "feature-demos/nl2llm.py": ["nl2llm@3.0.0"],
+    "feature-demos/nl2sql_sqlite.py": ["nl2sql@3.0.0"],
+    "feature-demos/semantic_filter.py": ["semantic_filter@3.0.0"],
+    "integration-demos/embedding_planner.py": ["select@2.0.0", "avg@3.0.0", "argmax@2.0.0"]
+  }
+}

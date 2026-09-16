@@ -1,0 +1,8 @@
+# Repository-root lint configuration.
+#
+# lib/pyproject.toml owns the rule set; this file only widens the scope to the
+# trees that sit outside it, chiefly examples/. Without `src`, ruff stops
+# treating blue_data_ops as first-party from here and reports import-order
+# findings against files that are correct.
+extend = "lib/pyproject.toml"
+src = ["lib/src"]

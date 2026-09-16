@@ -1,0 +1,245 @@
+# blue-data-ops — Software Stack
+
+What the repository is built on: the language floor, the two publishable distributions, every declared dependency, and the tooling that gates a change.
+The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md).
+
+---
+
+## Language and runtime
+
+| Concern | Choice |
+|---|---|
+| Language | Python |
+| Minimum version | 3.11 |
+| Typing | annotations throughout, `from __future__ import annotations` in every module that declares one, `py.typed` shipped by both distributions |
+| Package manager | pip |
+| Project config | `pyproject.toml`, one per distribution |
+| Build backend | `setuptools.build_meta` |
+
+The 3.11 floor is what the Python-version-dependent behavior in the package is written against, and it is declared in `requires-python`, in the Ruff `target-version`, and in the Pyright `pythonVersion` for both distributions.
+
+---
+
+## Two distributions
+
+The repository publishes two packages from one source tree.
+
+| Package | Version | Path | Requires |
+|---|---|---|---|
+| `blue-data-ops` | `3.0.0` | `lib/` | Python >= 3.11 |
+| `blue-data-ops-mcp` | `0.13.0` | `platform/mcp/` | Python >= 3.11, `blue-data-ops==3.0.0` |
+
+### The core carries no server dependency
+
+This is the invariant the split exists to hold: `blue-data-ops` declares five runtime dependencies, and none of them is a server, a protocol library, or a transport.
+
+```python
+# lib/pyproject.toml
+dependencies = [
+    "blue-data>=0.1.0",
+    "pydantic>=2",
+    "jsonmerge==1.9.2",
+    "jsonpath-ng",
+    "tenacity",
+]
+```
+
+`mcp` appears in `platform/mcp/pyproject.toml` and nowhere else.
+No module under `lib/src/blue_data_ops/` imports it, and no module under `lib/src/` imports a web framework, an ASGI server, or a socket library.
+A process that installs the core and calls a handful of aggregates pulls in nothing it will not use.
+
+The adapter's pin on the core is exact rather than a range.
+That is the point of it: one environment holds one verified core-and-adapter pair, so an adapter cannot be run against a core whose result envelope it was not checked against.
+A documentation-only release does not move either version.
+
+### What each distribution ships
+
+| Distribution | Wheel contents | Extra source-distribution contents |
+|---|---|---|
+| `blue-data-ops` | `blue_data_ops/` including `py.typed`, `plan/_schemas/*.json`, and the `operator_skills/` JSON and Markdown resources | `COMPATIBILITY.md`, `OPERATORS.md`, `scripts/*.py`, and three test fixtures named in `MANIFEST.in` |
+| `blue-data-ops-mcp` | `blue_data_ops_mcp/` including `py.typed` | — |
+
+The operator resource packages are declared as package data, so a wheel install can still load a skill.
+The generated operator reference and the compatibility document are source-distribution files; a wheel exposes `lib/README.md` through distribution metadata and does not install the other top-level files.
+
+---
+
+## Core dependencies
+
+Five, and each one is declared for a reason the code can be checked against.
+
+| Package | Constraint | Why it is a runtime dependency |
+|---|---|---|
+| `blue-data` | `>=0.1.0` | the data registry the four registry-backed operators plus `nl2sql` and `nl2bn` read through. Imported eagerly, in `data/` only |
+| `pydantic` | `>=2` | the lax attribute-type validation that `utils.validate_parameter_type` and `create_pydantic_model` are built on |
+| `jsonmerge` | `==1.9.2` | backs the Blue-compatible `merge_json`, pinned exactly because the merge behavior is the compatibility contract |
+| `jsonpath-ng` | unpinned | imported directly by `llm/templating` and `utils/json_utils`, so it is declared directly rather than relied on transitively through `blue-data` |
+| `tenacity` | unpinned | `llm/client` imports it at module import time for its retry decorator, which puts it below the `llm` extra |
+
+`tenacity` also appears in the `llm` extra.
+That duplication is deliberate: the extra names the full set an LLM-backed call needs, and the core declaration is what makes the module importable at all.
+
+### blue-data usage
+
+`data/registry_seam.py` and `data/provider.py` are the only two modules in the package that import `blue_data`.
+
+| Imported name | Module | Role |
+|---|---|---|
+| `DataRegistry` | `blue_data.registry.data_registry` | the registry the seam wraps and the default provider constructs |
+| `DataSource` | `blue_data.source.source` | the type `RegistrySeam.register_source()` accepts |
+
+The seam calls a fixed set of registry methods and nothing else: `create_source_database`, `create_source_database_collection_entity`, `set_source_database_description`, `set_source_database_collection_entity_description`, `set_record_data`, `get_record`, `get_source_properties`, `list_collection_entities`, `list_entity_attributes`, `connect_source`, `register_source`, `execute_query`, `get_data_source_schema`, `search_records`, `search_records_hierarchical`, and `build_index`.
+
+`blue-data` ships no `py.typed`, so its imports are the package's one untyped-library boundary.
+The seam holds a single `Any`-typed delegate attribute and crosses that boundary once, which is why unknown member types stop in `data/` rather than spreading into every caller.
+
+Concrete sources — SQLite, in-memory JSON, and the rest — come from `blue-data` and are the caller's choice.
+This package neither imports nor recommends one.
+
+---
+
+## Optional extras
+
+Every extra except `tenacity` is a lazy import; `llm/client.py` imports `tenacity` at module import time, which is why it is a core dependency rather than only an `llm` one.
+The module that needs a heavy dependency imports it inside the function that uses it, so installing the core without the extra keeps `import blue_data_ops` working and turns a missing dependency into an error record at call time.
+
+| Extra | Packages | Operators and features it enables |
+|---|---|---|
+| `ml` | `numpy`, `scikit-learn` | `classify`, `cluster`, `sklearn_estimator` |
+| `vector` | `numpy`, `sentence-transformers` | `vector_embed`, `vector_search`, `vector_similarity` |
+| `llm` | `litellm>=1.98,<2`, `tenacity`, `diskcache`, `jinja2` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
+| `openai` | `openai>=2.54,<3` | `OpenAIPlanGenerator` |
+| `dev` | `ml` and `openai`, plus `tenacity`, `diskcache` and `jinja2` from `llm`, and the test, lint, type-check and build tools. It does not pull `litellm` or `sentence-transformers`, so add `llm` or `vector` to exercise those operators | working on the package |
+
+Two notes on the boundaries.
+
+`sentence-transformers` is needed only when text has to be embedded.
+`vector_similarity` accepts an omitted `fields` attribute when both inputs already carry embeddings, and that path needs NumPy and nothing more.
+
+The `openai` extra is bounded to the 2.x Responses API surface the plan generator was written against.
+It is a planner-only seam: nothing else in the package imports the SDK, and the LLM-backed operators go through LiteLLM instead.
+
+### Provider libraries
+
+| Package | Constraint | Imported from | Import site |
+|---|---|---|---|
+| `litellm` | `>=1.98,<2` | `llm/client.py` | inside `_call_provider`, `_acall_provider`, and the cost helpers |
+| `diskcache` | unpinned | `llm/client.py` | inside `_cache_lookup`, only when `llm.cache` is set |
+| `jinja2` | unpinned | `llm/templating.py` | inside `safe_substitute` |
+| `numpy` | unpinned | the ML and vector operators, `semantic_join`, and their outcome variants | inside the executing method, via `importlib.import_module` |
+| `scikit-learn` | unpinned | `classify`, `cluster`, `sklearn_estimator` | inside the executing method, via `importlib.import_module` |
+| `sentence-transformers` | unpinned | the vector operators, `semantic_join`, and their outcome variants | inside the model loader, via `importlib.import_module` |
+| `openai` | `>=2.54,<3` | `plan/openai_generator.py` | inside `_resolve_client`, only when no client was injected |
+
+LiteLLM is the provider abstraction for operator-level calls, which keeps those operators provider-agnostic and injectable through `properties["llm_client"]`.
+The model is chosen per call through properties, defaulting to `openai.model: gpt-4o`.
+Credentials are read by the provider library from its own environment variables; this package neither reads nor stores one.
+
+---
+
+## MCP adapter stack
+
+| Concern | Choice |
+|---|---|
+| Protocol library | `mcp`, pinned `==1.27.2` |
+| Server class | `mcp.server.fastmcp.FastMCP` |
+| Transport | streamable HTTP, stateful, default `127.0.0.1:8000/mcp` |
+| Result modelling | `pydantic`, pinned `>=2.11,<3` |
+| Core pin | `blue-data-ops==3.0.0` |
+
+The adapter's own Pydantic floor is higher than the core's because it declares response models with `ConfigDict(extra="forbid")` and a JSON-schema annotation on the attributes parameter.
+`RunResult`, `ExecMetaModel`, and `ErrorRecordModel` are the three models, and together they are the wire contract.
+
+`create_server()` and `serve()` both accept `host`, `port`, and `path`.
+The loopback default is a deliberate starting point rather than a recommendation to change: exposing the server beyond loopback is a decision the deployment makes with its own review.
+
+---
+
+## Tooling
+
+| Concern | Tool | Config |
+|---|---|---|
+| Lint and import order | Ruff (`E`, `F`, `I`, `UP`), line length 100 | `lib/pyproject.toml`, `platform/mcp/pyproject.toml` |
+| Type check | Pyright, strict | the same two files |
+| Tests | pytest, `asyncio_mode = "auto"`, coverage on `src` | the same two files |
+| Build | `setuptools>=68` + `wheel`, `python -m build` | the same two files |
+| Lint scope outside the packages | Ruff, from the repository root | `ruff.toml`, which adds no rules: it extends `lib/pyproject.toml` and sets `src = ["lib/src"]` |
+
+Ruff supplies both the linter and the formatter, so a single `line-length = 100` setting governs each.
+Pyright runs in strict mode over `src`, with `tests/stubs` on its extra path in the core so the deterministic fakes for LiteLLM and sentence-transformers resolve during analysis.
+
+Two sets of per-file Ruff exceptions exist, both narrow and both carrying their reason in the config file.
+Three modules keep their established `str, Enum` public error representation.
+Eight operator modules are exempt from the line-length rule because their prompt templates are protocol text whose exact bytes affect provider requests.
+
+There is no CI configuration in the repository, and no `.github/` directory.
+The gates above are run locally, and [11-testing-strategy.md](11-testing-strategy.md) records which ones a given change needs.
+
+### Development tools
+
+| Package | Role | Declared in |
+|---|---|---|
+| `pytest` | test runner | both `dev` extras |
+| `pytest-asyncio` | async test support, with `asyncio_mode = "auto"` | both `dev` extras |
+| `pytest-cov` | coverage over `src` | both `dev` extras |
+| `pytest-recording` | HTTP cassette support, declared for recorded provider work; the tracked suites record nothing today | core `dev` extra |
+| `ruff` | lint and import order | both `dev` extras |
+| `pyright` | strict type checking | both `dev` extras |
+| `build` | wheel and source distribution | both `dev` extras |
+| `twine` | distribution checks | both `dev` extras |
+
+---
+
+## Testing
+
+| Concern | Choice |
+|---|---|
+| Runner | pytest |
+| Core scope | `lib/tests/unit/`, mirroring the source packages |
+| Adapter scope | `platform/mcp/tests/` |
+| Coverage | `--cov=src --cov-report=term-missing`, configured in both `pyproject.toml` files |
+| Offline guarantee | test doubles and stub modules, no live provider in the default run |
+
+`lib/tests/doubles/` holds in-memory doubles for the data seam: `RegistrySeamDouble` records every call so an operator suite can assert its boundary interactions without a database, and `SQLSourceDouble` stands in for the connect-cursor-commit protocol that `insert_table` drives.
+`lib/tests/stubs/` holds deterministic fakes for `litellm` and `sentence_transformers`, resolved by Pyright through `extraPaths` and by pytest through `conftest.py`.
+`lib/tests/installed/` holds checks that run against built distributions rather than the source tree.
+
+`lib/tests/unit/test_examples.py` is the runnability gate for the example scripts: it executes the eight offline examples in a subprocess and syntax-checks the three provider-backed ones.
+`test_readme_usage.py` and `test_operator_reference.py` keep the shipped READMEs and the generated reference consistent with the code.
+
+---
+
+## Scripts
+
+`lib/scripts/` holds two development tools, invoked with `python` rather than installed as commands.
+
+| Script | Role |
+|---|---|
+| `generate_operator_reference.py` | regenerates `lib/OPERATORS.md` from the active registry and the sealed outcome evidence. `OPERATORS.md` is never hand-edited |
+| `check_real_llm_install.py` | confirms LiteLLM resolves to a real installation rather than the test stub, and fails on a Python version below 3.11 |
+
+---
+
+## Summary
+
+| Package | Constraint | Source | Role |
+|---|---|---|---|
+| `blue-data` | `>=0.1.0` | internal | data registry and sources; the one eager external dependency |
+| `pydantic` | `>=2` (core), `>=2.11,<3` (adapter) | PyPI | attribute-type validation; MCP result models |
+| `jsonmerge` | `==1.9.2` | PyPI | Blue-compatible JSON object merge |
+| `jsonpath-ng` | unpinned | PyPI | JSONPath query and set, LLM output extraction |
+| `tenacity` | unpinned | PyPI | retry for provider calls; imported at module import time |
+| `mcp` | `==1.27.2` | PyPI | MCP server SDK — `platform/mcp/` only |
+| `numpy` | unpinned | PyPI | `ml` and `vector` extras |
+| `scikit-learn` | unpinned | PyPI | `ml` extra |
+| `sentence-transformers` | unpinned | PyPI | `vector` extra, embedding generation only |
+| `litellm` | `>=1.98,<2` | PyPI | `llm` extra, provider dispatch for LLM-backed operators |
+| `diskcache` | unpinned | PyPI | `llm` extra, opt-in response cache |
+| `jinja2` | unpinned | PyPI | `llm` extra, template substitution |
+| `openai` | `>=2.54,<3` | PyPI | `openai` extra, plan generation only |
+| `setuptools` | `>=68` | PyPI | build backend |
+| `wheel` | unpinned | PyPI | build requirement |
+| `pytest`, `pytest-asyncio`, `pytest-cov` | unpinned | PyPI | test stack |
+| `pytest-recording` | unpinned | PyPI | cassette support in the core `dev` extra; no cassettes are tracked |
+| `ruff`, `pyright` | unpinned | PyPI | lint, import order, strict type checking |
+| `build`, `twine` | unpinned | PyPI | distribution build and checks |
