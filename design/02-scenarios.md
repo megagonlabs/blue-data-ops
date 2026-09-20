@@ -570,7 +570,7 @@ asyncio.run(main())
 ```
 
 Passing `operator_ids` replaces the default selection with an exact pinned subset, which is how a deployment narrows what an agent can reach.
-[`../platform/mcp/README.md`](../platform/mcp/README.md) is the source of truth for the adapter.
+[`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is the source of truth for the adapter.
 
 ---
 

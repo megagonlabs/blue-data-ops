@@ -418,7 +418,7 @@ The default is no synchronization at all, which is what keeps this package free 
 
 ## `plan/pipeline.py` — the portable graph
 
-Six classes in a single inheritance chain, each adding one layer: a live record, a graph, entities, a plan, and a data pipeline.
+Seven classes over a shared `Base`: `Node`, `Entity`, and `DAG` each extend it directly, and `EntityDAG` → `Plan` → `DataPipeline` layer on top of `DAG`.
 
 | Class | Adds |
 |---|---|
@@ -714,9 +714,18 @@ The client's own properties are merged under the call's, so a per-call value win
 |---|---|
 | `_ACCEPTED_LLM_KEYS` | `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel`, `rate_limit` |
 | `_CONTROL_KEYS` | `cache`, `cache_dir`, `max_parallel`, `rate_limit` — consumed by the client, never forwarded |
-| `_RESERVED_FIELDS` | `api`, `service_url` — stripped after every merge, so an override cannot forward them |
+| `_RESERVED_FIELDS` | `api`, `service_url` — dispatch-only operator defaults, stripped after every merge rather than refused |
+| `_GENERATION_FIELDS` | the closed set a prefixed property may set, `_SIGNATURE_GENERATION_FIELDS` and `_KWARGS_GENERATION_FIELDS` together — anything outside it raises `reserved_field` rather than being forwarded |
+| `_SUBSTITUTED_RESPONSE_FIELDS` | `mock_response`, `mock_timeout` — LiteLLM returns these verbatim without calling anyone |
 
+Three codes come out of assembling the call kwargs.
 An unknown `llm.*` key raises `LLMError` with code `bad_override`, and a missing model raises `LLMError` with code `no_model`.
+A prefixed property namespace admits the generation parameters of the provider call and nothing else.
+Any other field — one that chooses the provider, the endpoint, the project, tenant or region, one that supplies a credential, or one that substitutes the provider's answer — raises `LLMError` with code `reserved_field`, before the cache key is built, so nothing a caller sent under one of those names is written to disk either.
+`model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`.
+A bare model name selects a provider too, so the check is on the outcome — what the provider library would actually dispatch to — as well as on the spelling.
+A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.
+The two refusals share a code and carry different messages: one says the endpoint and the key come from the environment the deployment runs in, the other says a result carries what the provider answered rather than what the caller sent.
 Caching is off unless `llm.cache` is set, keyed per `cache_dir` so a per-call override selects its own isolated cache, with the canonically serialized call kwargs as the key.
 Rate limiting holds a minimum interval under a lock.
 The provider call carries a `tenacity` retry: `LLMError` only, three attempts, exponential backoff, re-raising the last.

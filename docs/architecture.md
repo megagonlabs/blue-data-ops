@@ -11,10 +11,10 @@ For the names and signatures behind every box below, see [api-reference.md](api-
 The repository holds two tiers.
 
 - **`lib/`** is the core library, distributed as `blue-data-ops`. Everything the system can do lives here.
-- **`platform/`** holds deployable adapters over `lib/`. Today that is one MCP server, distributed separately as `blue-data-ops-mcp`.
+- **`platform/`** holds deployable adapters over `lib/`. Today that is an MCP server and a command line, distributed separately as `blue-data-ops-mcp` and `blue-data-ops-cli`.
 
 An adapter never adds behavior.
-It projects the same operator call the Python caller makes, which is why the two interfaces cannot drift in what an operator does.
+It projects the same operator call the Python caller makes, which is why the interfaces cannot drift in what an operator does.
 
 ### The core library
 
@@ -97,15 +97,17 @@ The dependency direction is one-way in both cases, which is what lets a caller u
 | Component | Distribution | Transport | Status |
 |---|---|---|---|
 | Python library | `blue-data-ops` from `lib/` | in-process import | Implemented |
-| MCP server | `blue-data-ops-mcp` from `platform/mcp/` | streamable HTTP, loopback by default | Implemented |
+| MCP server | `blue-data-ops-mcp` from `platform/ops-mcp/` | streamable HTTP, loopback by default | Implemented |
+| CLI | `blue-data-ops-cli` from `platform/ops-cli/` | the `blue-ops` command, in process | Implemented |
 | REST API | none | none | Not built. See [api.md](api.md) |
-| CLI | none | none | Not built. Neither `pyproject.toml` declares `[project.scripts]` |
 
-The MCP adapter pins core exactly, at `blue-data-ops==3.0.0`.
-One environment therefore holds one matched pair, which is how a tool's advertised operator version stays true.
-It serves 33 primary tools, one per active operator, and holds no state between calls beyond the frozen deployment snapshot it built at startup.
+Both interface distributions pin core exactly, at `blue-data-ops==3.1.0`.
+One environment therefore holds one matched set, which is how a tool's advertised operator version stays true.
+The adapter serves 33 primary tools, one per active operator, each named `ops_` plus the operator's name, and holds no state between calls beyond the frozen deployment snapshot it built at startup.
+The command holds its state on disk instead, under `~/.blue-ops`: profiles, the selected catalog, and stored pipelines.
 
-The absence of a CLI is a standing architecture decision rather than a gap: the library is consumed programmatically or through MCP, and a third entry point would be a third place for the operator contract to drift.
+Neither interface holds operator behavior.
+That is the architecture decision the split exists for: the library is the contract, and an interface is a projection of `run()` that a caller reaches over a different boundary.
 
 ---
 

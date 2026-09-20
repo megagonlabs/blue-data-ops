@@ -62,7 +62,7 @@ MARKED_FENCE = re.compile(
 
 def _marked_readme_fences() -> dict[str, str]:
     fences: dict[str, str] = {}
-    for path in (LIB_ROOT / "README.md", PROJECT_ROOT / "platform/mcp/README.md"):
+    for path in (LIB_ROOT / "README.md", PROJECT_ROOT / "platform/ops-mcp/README.md"):
         text = path.read_text(encoding="utf-8")
         marker_count = text.count("<!-- blue-data-ops-test:")
         matches = list(MARKED_FENCE.finditer(text))
@@ -120,7 +120,7 @@ def test_root_readme_has_a_complete_source_install_and_mcp_route() -> None:
     root_readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     lib_readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
     examples_readme = (PROJECT_ROOT / "examples/README.md").read_text(encoding="utf-8")
-    mcp_readme = (PROJECT_ROOT / "platform/mcp/README.md").read_text(encoding="utf-8")
+    mcp_readme = (PROJECT_ROOT / "platform/ops-mcp/README.md").read_text(encoding="utf-8")
     assert "python -m venv blue-data-ops/lib/.venv" in root_readme
     assert "source blue-data-ops/lib/.venv/bin/activate" in root_readme
     assert "python3 -m venv blue-data-ops/lib/.venv" in lib_readme
@@ -134,7 +134,7 @@ def test_root_readme_has_a_complete_source_install_and_mcp_route() -> None:
     assert 'python -m pip install -e "./blue-data-ops/lib[dev]"' in root_readme
     assert "cd blue-data-ops/lib" in root_readme
     assert "python -m pytest" in root_readme
-    assert "platform/mcp/README.md" in root_readme
+    assert "platform/ops-mcp/README.md" in root_readme
     assert "lib/README.md#discovery" in root_readme
     assert "lib/OPERATORS.md#tag-taxonomy" in root_readme
     assert "python -m pip install ../blue-data/lib" in mcp_readme
@@ -187,7 +187,7 @@ def test_wheel_metadata_readme_does_not_link_to_sdist_only_files() -> None:
 
     assert sdist_only_link.search(readme) is None
     assert "A wheel exposes this README through distribution metadata" in readme
-    assert "download and extract the matching `blue-data-ops==3.0.0` source distribution" in readme
+    assert "download and extract the matching `blue-data-ops==3.1.0` source distribution" in readme
     assert "The supported migration boundary is stated above" in readme
 
 
@@ -221,7 +221,7 @@ def test_readme_embedding_discovery_example() -> None:
 
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((LIB_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert metadata["project"]["version"] == "3.0.0"
+    assert metadata["project"]["version"] == "3.1.0"
     assert metadata["project"]["requires-python"] == ">=3.11"
     assert metadata["tool"]["ruff"]["target-version"] == "py311"
     assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"
@@ -502,15 +502,15 @@ def test_readme_operator_skill_history_example_uses_the_average_cards() -> None:
 def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
     lib_readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
     compatibility = (LIB_ROOT / "COMPATIBILITY.md").read_text(encoding="utf-8")
-    mcp_readme = (PROJECT_ROOT / "platform/mcp/README.md").read_text(encoding="utf-8")
+    mcp_readme = (PROJECT_ROOT / "platform/ops-mcp/README.md").read_text(encoding="utf-8")
     registry_integrity_boundary = (
         "The private in-memory tables that distinguish reviewed built-ins from raw cards are "
         "integrity controls for ordinary planner admission. They are not a tamper-proof isolation "
         "boundary against arbitrary same-process code that mutates private registry state."
     )
 
-    assert "blue-data-ops 3.0.0" in lib_readme
-    assert 'version("blue-data-ops") == "3.0.0"' in lib_readme
+    assert "blue-data-ops 3.1.0" in lib_readme
+    assert 'version("blue-data-ops") == "3.1.0"' in lib_readme
     assert "non-drop-in" in compatibility
     assert "DeclarativeOperator" in compatibility
     assert "`BlueDataOpsDeprecationWarning` remains importable" in compatibility
@@ -521,8 +521,8 @@ def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
     assert "raw override card is not automatically planning-authorized" in lib_readme
     assert "caller-created v2 cards" in lib_readme
     assert registry_integrity_boundary in lib_readme
-    assert 'version("blue-data-ops-mcp") == "0.13.0"' in mcp_readme
-    assert "blue-data-ops==3.0.0" in mcp_readme
+    assert 'version("blue-data-ops-mcp") == "1.0.0"' in mcp_readme
+    assert "blue-data-ops==3.1.0" in mcp_readme
     assert "33 primary tools and no refinement companions" in mcp_readme
     assert "select caller-created `@2.0.0` cards" in mcp_readme
     assert "exact supported raw package card" in mcp_readme

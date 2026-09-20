@@ -1,0 +1,68 @@
+{
+  "BLUE_DATA_OPS_CATALOG": {
+    "default": "active",
+    "prompt": "Catalog view commands read when none is selected: active or history",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_OPS_TIMEOUT": {
+    "default": null,
+    "prompt": "Seconds one operator run may take",
+    "required": false,
+    "cast": "float"
+  },
+  "BLUE_DATA_OPS_PLANNER": {
+    "default": "rule",
+    "prompt": "Plan generator: rule or openai",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_OPS_PLANNER_MODEL": {
+    "default": "gpt-4o",
+    "prompt": "Model the provider-backed planner calls",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_OPS_PLANNER_TIMEOUT": {
+    "default": 60.0,
+    "prompt": "Seconds to wait for one planning call",
+    "required": false,
+    "cast": "float"
+  },
+  "BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS": {
+    "default": 4096,
+    "prompt": "Output allowance for one planning call",
+    "required": false,
+    "cast": "int"
+  },
+  "BLUE_DATA_REGISTRY_STORE": {
+    "default": "memory",
+    "prompt": "Data-registry backend: memory, file, or redis",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_REGISTRY_FILE": {
+    "default": null,
+    "prompt": "Where the file backend keeps the registry",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_REGISTRY_REDIS_URL": {
+    "default": null,
+    "prompt": "URL of the redis backend",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_REGISTRY_REDIS_NAMESPACE": {
+    "default": null,
+    "prompt": "Key namespace within the redis backend",
+    "required": false,
+    "cast": "str"
+  },
+  "BLUE_DATA_SOURCES_CONFIG": {
+    "default": null,
+    "prompt": "JSON file of data sources pre-loaded into the registry",
+    "required": false,
+    "cast": "file"
+  }
+}

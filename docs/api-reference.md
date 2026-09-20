@@ -393,7 +393,14 @@ The default lifetime is one client per invocation rather than a module-level sin
 Built-in operators call `resolve_llm_client` without a provider, so inside an operator call the reachable seam is `properties["llm_client"]`.
 Accepted `llm.*` override keys are `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`; an unknown one raises `LLMError` with code `bad_override`.
 The last four are consumed by the client and never forwarded to the provider.
-Supply credentials through the provider's own environment variables, never through a committed property file.
+A prefixed namespace admits the generation parameters and nothing else.
+A property outside that set — `api_key`, `api_base`, `base_url`, `custom_llm_provider`, the Vertex and Bedrock selectors, and every other routing or identity field — raises `LLMError` with code `reserved_field`, as does one that would substitute the provider's answer, `mock_response` or `mock_timeout`.
+`model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`.
+A bare model name selects a provider too, so the check is on the outcome — what the provider library would actually dispatch to — as well as on the spelling.
+A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.
+A third code, `bad_provider`, is deployment misconfiguration rather than a caller error: it names `BLUE_DATA_LLM_PROVIDER` and the value it was given when that value is not a provider the library serves, so the misconfiguration is reported where it was made rather than deep inside the provider call.
+Both refusals happen before the cache key is built.
+Supply credentials through the provider's own environment variables, which is now the only route; never through a property, and never through a committed property file.
 
 ---
 
@@ -429,9 +436,10 @@ The Blue-compatible helpers the operator surface depends on.
 
 ## Not part of the public API
 
-Two interfaces named in the interface spec are not built.
-There is no console entry point in either distribution, so there is no CLI and no `docs/cli.md`.
+One interface named in the interface spec is not built.
 There is no `platform/api/`, so there is no REST API; [api.md](api.md) is the placeholder for it.
+
+The `blue-ops` command is a separate distribution with its own reference, [cli.md](cli.md); nothing on this page is reachable through it except by running an operator.
 
 Module members prefixed with an underscore, and the outcome operator classes behind the `@3.0.0` cards, are internal.
 Reach them through a registry, not by importing them.

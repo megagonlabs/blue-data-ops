@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "source_instrument": {
-    "instrument_id": "blue-data-ops-core-3.0-active-reference",
-    "document_sha256": "bfa4bb0bdb4cd2e061b9da03cc238b76b30a692dbeea1decca1baa707d71687b",
-    "seal_sha256": "b83b239c69ec7c470be71533f5665cb323a51e5f359fe944628feb09212fde62"
+    "instrument_id": "blue-data-ops-core-3.9-active-reference",
+    "document_sha256": "6e3948b973daaaec2c075c47de14cdf37e30bfd810d2e550ab2eab1109f34217",
+    "seal_sha256": "7cc8eeeca1e3c5e80acb3464194371ad4071e88369c462d85f7e2b9ce6ffd2c6"
   },
   "conversion": {
     "row_order": "ASCII lexical order by logical operator name; exactly one row per active exact ID.",
@@ -409,7 +409,7 @@
       "version": "2.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/data_discover_operator.py",
-        "sha256": "36c6e5b4a11d2795ab2de2a4bc57940a3ec9ddc87efb189fba7d0e7b17cb8771",
+        "sha256": "d1649e9a53b50bcdcf8525c82e0c51bc688b95b94c6ce719aaccfed8a6f6d132",
         "symbol": "DataDiscoverOperator",
         "module": "blue_data_ops.operators.data_discover_operator"
       },
@@ -1646,5 +1646,5 @@
       ]
     }
   ],
-  "projection_seal_sha256": "51e1cb7bcaff81ee85fbe5f346300b859e96cfd8cc731ef24c9c29949f7d805b"
+  "projection_seal_sha256": "ddb9538db426602ece191717a70991e920494adf0cd82ba33f034e9523f48a1c"
 }

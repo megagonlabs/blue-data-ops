@@ -6,13 +6,13 @@ The conventions a change to this repository is expected to follow, and which of 
 
 | Concern | Tool | Config |
 |---|---|---|
-| Formatting | `ruff format` | `[tool.ruff]` in [`lib/pyproject.toml`](../lib/pyproject.toml) and [`platform/mcp/pyproject.toml`](../platform/mcp/pyproject.toml) |
-| Linting and import order | `ruff check` | `[tool.ruff.lint]` in the same two files |
-| Type checking | `pyright` in strict mode | `[tool.pyright]` in the same two files |
+| Formatting | `ruff format` | `[tool.ruff]` in [`lib/pyproject.toml`](../lib/pyproject.toml), [`platform/ops-mcp/pyproject.toml`](../platform/ops-mcp/pyproject.toml), and [`platform/ops-cli/pyproject.toml`](../platform/ops-cli/pyproject.toml) |
+| Linting and import order | `ruff check` | `[tool.ruff.lint]` in the same three files |
+| Type checking | `pyright` in strict mode | `[tool.pyright]` in the same three files |
 | Lint scope outside the packages | `ruff check` from the repository root | [`ruff.toml`](../ruff.toml) |
 
 Each package configures its own rule set. The root [`ruff.toml`](../ruff.toml) adds no rules: it extends `lib/pyproject.toml` and sets `src` so that trees outside a package, chiefly `examples/`, are linted under the same configuration and `blue_data_ops` still resolves as first-party.
-Test and build configuration lives in the two `pyproject.toml` files and is covered in [11-testing-strategy.md](11-testing-strategy.md) and [12-deployment-ops.md](12-deployment-ops.md).
+Test and build configuration lives in those three `pyproject.toml` files and is covered in [11-testing-strategy.md](11-testing-strategy.md) and [12-deployment-ops.md](12-deployment-ops.md).
 [05-software-stack.md](05-software-stack.md) lists these same tools as part of the stack inventory, alongside where each is declared; this page owns what they enforce.
 
 ### `pyproject.toml` configuration
@@ -38,7 +38,7 @@ extraPaths = ["src", "tests/stubs"]
 The four selected rule families are pycodestyle (`E`), pyflakes (`F`), isort (`I`), and pyupgrade (`UP`).
 `ruff format` has no section of its own — it reads `line-length` from `[tool.ruff]`, and everything else is the formatter's default.
 `extraPaths` lets Pyright resolve the deterministic stubs that stand in for the optional heavy dependencies; [11-testing-strategy.md](11-testing-strategy.md) owns how pytest reaches the same modules.
-[`platform/mcp/pyproject.toml`](../platform/mcp/pyproject.toml) repeats the same settings without `extraPaths`, because the adapter has no stubs.
+[`platform/ops-mcp/pyproject.toml`](../platform/ops-mcp/pyproject.toml) and [`platform/ops-cli/pyproject.toml`](../platform/ops-cli/pyproject.toml) repeat the same settings; neither carries the core's stub path, and both put `../../lib/src` on `extraPaths` so the checker sees the library's real types instead of treating every import from it as unknown.
 
 `venvPath = "."` and `venv = ".venv"` point Pyright at a `.venv` beside the `pyproject.toml` it is reading, so run it from the package directory whose environment has that package's dependencies installed.
 
@@ -54,7 +54,7 @@ Only `lib/pyproject.toml` carries any, and each one states its reason in the fil
 ### What runs, and when
 
 Nothing runs these automatically.
-The repository has no CI configuration and no `.github/` directory, so `ruff format`, `ruff check`, `pyright`, and `pytest` are run by hand from `lib/` and from `platform/mcp/` before a change is committed:
+The repository has no CI configuration and no `.github/` directory, so `ruff format`, `ruff check`, `pyright`, and `pytest` are run by hand from `lib/`, from `platform/ops-mcp/`, and from `platform/ops-cli/` before a change is committed:
 
 ```bash
 cd lib
@@ -72,10 +72,10 @@ The Python floor is 3.11, and each package states it three times: `requires-pyth
 For the core package a test keeps the three honest — `lib/tests/unit/test_readme_usage.py` reads all of them out of `lib/pyproject.toml` and asserts them, so a floor bump that updates only one fails the suite.
 
 Pyright strict is the real standard here, and it is stricter than a convention: every parameter and every return is annotated, private functions included, and an unannotated signature is an error rather than a style note.
-Both distributions ship a `py.typed` marker, so a consumer gets those annotations.
+Every distribution ships a `py.typed` marker, so a consumer gets those annotations.
 
 Every module that declares an annotation opens with `from __future__ import annotations` as its first statement.
-The three modules without it are `__init__.py` re-export shims that declare nothing of their own.
+The three modules without it are two `__init__.py` re-export shims and `plan/_schemas/__init__.py`, a packaged-resource marker — none of which declares an annotation of its own.
 
 The `UP` rules enforce current syntax, so use `X | None` rather than `Optional[X]` and builtin generics rather than their `typing` equivalents:
 
@@ -137,7 +137,7 @@ Lint suppressions follow the same shape and add the reason: `# noqa: UP006 - Blu
 | Keys in the `properties` mapping | a dotted lowercase namespace | `execution.timeout_seconds`, `openai.model` |
 | Test modules | `test_<subject>.py`; shared test helpers take the `_` prefix | `test_registry.py`, `_semantic_test_helpers.py` |
 
-Double-underscore name mangling appears nowhere in either package.
+Double-underscore name mangling appears nowhere in any of the three packages.
 A single `_` marks everything private, at every level, and a module with a leading underscore is an implementation detail that the package `__init__` does not re-export.
 
 The reverse does not hold: a name without an underscore is not automatically public.
@@ -149,12 +149,13 @@ When in doubt, check the `__init__.py`.
 ## Imports
 
 - Absolute imports only inside the source packages.
-  There are no relative imports under `lib/src/` or `platform/mcp/src/`.
+  There are no relative imports under `lib/src/`, `platform/ops-mcp/src/`, or `platform/ops-cli/src/`.
   Test modules do use them, for sibling helpers within one test directory.
 - `from __future__ import annotations` first, then stdlib, third-party, and first-party groups separated by blank lines.
   Ruff's `I` rules enforce the grouping and the ordering inside each group.
 - No wildcard imports anywhere.
-- `__all__` on every package `__init__.py`, and on the individual modules whose export list is the point rather than an implementation detail.
+- `__all__` on every package `__init__.py` that exports a name, and on the individual modules whose export list is the point rather than an implementation detail.
+  `plan/_schemas/__init__.py` is a packaged-resource marker with nothing to export and carries none.
 
 ```python
 from __future__ import annotations
@@ -167,7 +168,7 @@ from blue_data_ops.operators.types import Attributes, AttributeSpec, DataBundle,
 ```
 
 Which group a name falls into depends on which package is importing it.
-Inside `lib/`, `blue_data_ops` is first-party; inside `platform/mcp/`, it is an installed dependency and sorts with `mcp` and `pydantic`, while `blue_data_ops_mcp` is the first-party group.
+Inside `lib/`, `blue_data_ops` is first-party; inside `platform/ops-mcp/` it is an installed dependency and sorts with `mcp` and `pydantic`, while `blue_data_ops_mcp` is the first-party group, and `platform/ops-cli/` does the same with `click` and `rich`.
 
 An optional heavy dependency is never imported at module scope.
 `numpy`, `scikit-learn`, `sentence-transformers`, `litellm`, and the OpenAI SDK are reached through `importlib.import_module` inside the function that first needs one, which is why the package imports cleanly with no extra installed and why a missing extra becomes an error record rather than an `ImportError` at import time.
@@ -182,7 +183,7 @@ Classes carry them most often, functions carry them when the name alone leaves t
 The mood follows what the thing is.
 A function or a method reads as an instruction to the code — "Return one live attribute definition, if present." — while an exception class or a record type reads as a description of a state: "A pinned operator reference could not be resolved (recoverable)."
 
-There are no `Args:`, `Returns:`, or `Raises:` sections in either package.
+There are no `Args:`, `Returns:`, or `Raises:` sections in any of the three packages.
 The signature carries the types and strict type checking keeps it complete, so a parameter list in prose would only be a second copy that can drift.
 A docstring grows a second paragraph when it has to state something the signature cannot: an invariant, a lifetime, or a boundary the reader would otherwise have to discover.
 

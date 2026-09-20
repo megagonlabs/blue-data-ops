@@ -216,7 +216,12 @@ A real client reports `cost` only for exactly one priced attempt, so an injected
 
 The default client is LiteLLM-backed and accepts a closed set of `llm.*` overrides: `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`.
 An unrecognized `llm.*` key raises `LLMError` with code `bad_override` rather than being forwarded to the provider.
-Credentials come from the provider's own environment variables; never put a key in a property dict you commit.
+A key outside the generation set — one that would choose the provider, the endpoint, the project, tenant or region, or supply a credential — raises `LLMError` with code `reserved_field`, and so does `mock_response` or `mock_timeout`, which would replace the provider's answer with the caller's own text.
+`model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`.
+A bare model name selects a provider too, so the check is on the outcome — what the provider library would actually dispatch to — as well as on the spelling.
+A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.
+A third code, `bad_provider`, is deployment misconfiguration rather than a caller error: it names `BLUE_DATA_LLM_PROVIDER` and the value it was given when that value is not a provider the library serves, so the misconfiguration is reported where it was made rather than deep inside the provider call.
+Credentials come from the provider's own environment variables, which is the only route there is; never put a key in a property dict, committed or not.
 
 Plan generation has a separate seam.
 `PipelinePlanner` takes any object satisfying the `PlanGenerator` protocol, so replacing `OpenAIPlanGenerator` means writing one `generate` method — see [api-reference.md](api-reference.md).

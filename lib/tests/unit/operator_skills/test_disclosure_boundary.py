@@ -24,7 +24,7 @@ def _package_root(module: object) -> Path:
 
 CORE_SOURCE = _package_root(blue_data_ops)
 SKILL_SOURCE = _package_root(operator_skills)
-SOURCE_MCP = PACKAGE_ROOT.parent / "platform" / "mcp" / "src" / "blue_data_ops_mcp"
+SOURCE_MCP = PACKAGE_ROOT.parent / "platform" / "ops-mcp" / "src" / "blue_data_ops_mcp"
 MCP_SOURCE = (
     SOURCE_MCP
     if SOURCE_MCP.is_dir()

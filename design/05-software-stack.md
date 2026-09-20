@@ -1,6 +1,6 @@
 # blue-data-ops — Software Stack
 
-What the repository is built on: the language floor, the two publishable distributions, every declared dependency, and the tooling that gates a change.
+What the repository is built on: the language floor, the three publishable distributions, every declared dependency, and the tooling that gates a change.
 The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md).
 
 ---
@@ -11,23 +11,30 @@ The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md
 |---|---|
 | Language | Python |
 | Minimum version | 3.11 |
-| Typing | annotations throughout, `from __future__ import annotations` in every module that declares one, `py.typed` shipped by both distributions |
+| Typing | annotations throughout, `from __future__ import annotations` in every module that declares one, a `py.typed` marker in all three distributions |
 | Package manager | pip |
 | Project config | `pyproject.toml`, one per distribution |
 | Build backend | `setuptools.build_meta` |
 
-The 3.11 floor is what the Python-version-dependent behavior in the package is written against, and it is declared in `requires-python`, in the Ruff `target-version`, and in the Pyright `pythonVersion` for both distributions.
+The 3.11 floor is what the Python-version-dependent behavior in the package is written against, and it is declared in `requires-python`, in the Ruff `target-version`, and in the Pyright `pythonVersion` for all three distributions.
+
+The rest of the Blue Data family floors at 3.10, and this repository does not.
+The reason is verification rather than syntax.
+`lib/scripts/check_real_llm_install.py` refuses a run below 3.11 outright, the suites are collected on one interpreter, and no gate in this repository has ever been run on 3.10 — so `>=3.10` would be a claim about an interpreter nothing here tests.
+Lowering the floor is therefore not a metadata edit: it is a second supported interpreter, which means a 3.10 run of the core, adapter, and CLI suites, and a decision about what a failure on it blocks.
+Until that run exists the declared floor stays at what is actually verified.
 
 ---
 
-## Two distributions
+## Three distributions
 
-The repository publishes two packages from one source tree.
+The repository publishes three packages from one source tree.
 
 | Package | Version | Path | Requires |
 |---|---|---|---|
-| `blue-data-ops` | `3.0.0` | `lib/` | Python >= 3.11 |
-| `blue-data-ops-mcp` | `0.13.0` | `platform/mcp/` | Python >= 3.11, `blue-data-ops==3.0.0` |
+| `blue-data-ops` | `3.1.0` | `lib/` | Python >= 3.11 |
+| `blue-data-ops-mcp` | `1.0.0` | `platform/ops-mcp/` | Python >= 3.11, `blue-data-ops==3.1.0` |
+| `blue-data-ops-cli` | `1.0.0` | `platform/ops-cli/` | Python >= 3.11, `blue-data-ops[ml,vector,llm]==3.1.0` |
 
 ### The core carries no server dependency
 
@@ -44,20 +51,21 @@ dependencies = [
 ]
 ```
 
-`mcp` appears in `platform/mcp/pyproject.toml` and nowhere else.
-No module under `lib/src/blue_data_ops/` imports it, and no module under `lib/src/` imports a web framework, an ASGI server, or a socket library.
+`mcp` appears in `platform/ops-mcp/pyproject.toml` and nowhere else, and `click` and `rich` appear in `platform/ops-cli/pyproject.toml` and nowhere else.
+No module under `lib/src/blue_data_ops/` imports any of them, and no module under `lib/src/` imports a web framework, an ASGI server, an argument parser, or a socket library.
 A process that installs the core and calls a handful of aggregates pulls in nothing it will not use.
 
-The adapter's pin on the core is exact rather than a range.
-That is the point of it: one environment holds one verified core-and-adapter pair, so an adapter cannot be run against a core whose result envelope it was not checked against.
-A documentation-only release does not move either version.
+Each interface distribution's pin on the core is exact rather than a range.
+That is the point of it: one environment holds one verified core-and-interface pair, so an adapter or a command cannot be run against a core whose result envelope it was not checked against.
+A documentation-only release does not move any version.
 
 ### What each distribution ships
 
 | Distribution | Wheel contents | Extra source-distribution contents |
 |---|---|---|
-| `blue-data-ops` | `blue_data_ops/` including `py.typed`, `plan/_schemas/*.json`, and the `operator_skills/` JSON and Markdown resources | `COMPATIBILITY.md`, `OPERATORS.md`, `scripts/*.py`, and three test fixtures named in `MANIFEST.in` |
+| `blue-data-ops` | `blue_data_ops/` including `py.typed`, `plan/_schemas/*.json`, and the `operator_skills/` JSON and Markdown resources | `COMPATIBILITY.md`, `OPERATORS.md`, `scripts/*.py`, `scripts/*.sh`, and three test fixtures named in `MANIFEST.in` |
 | `blue-data-ops-mcp` | `blue_data_ops_mcp/` including `py.typed` | — |
+| `blue-data-ops-cli` | `blue_data_ops_cli/` including `py.typed` and `profile_spec.json` | — |
 
 The operator resource packages are declared as package data, so a wheel install can still load a skill.
 The generated operator reference and the compatibility document are source-distribution files; a wheel exposes `lib/README.md` through distribution metadata and does not install the other top-level files.
@@ -145,7 +153,7 @@ Credentials are read by the provider library from its own environment variables;
 | Server class | `mcp.server.fastmcp.FastMCP` |
 | Transport | streamable HTTP, stateful, default `127.0.0.1:8000/mcp` |
 | Result modelling | `pydantic`, pinned `>=2.11,<3` |
-| Core pin | `blue-data-ops==3.0.0` |
+| Core pin | `blue-data-ops==3.1.0` |
 
 The adapter's own Pydantic floor is higher than the core's because it declares response models with `ConfigDict(extra="forbid")` and a JSON-schema annotation on the attributes parameter.
 `RunResult`, `ExecMetaModel`, and `ErrorRecordModel` are the three models, and together they are the wire contract.
@@ -159,11 +167,13 @@ The loopback default is a deliberate starting point rather than a recommendation
 
 | Concern | Tool | Config |
 |---|---|---|
-| Lint and import order | Ruff (`E`, `F`, `I`, `UP`), line length 100 | `lib/pyproject.toml`, `platform/mcp/pyproject.toml` |
-| Type check | Pyright, strict | the same two files |
-| Tests | pytest, `asyncio_mode = "auto"`, coverage on `src` | the same two files |
-| Build | `setuptools>=68` + `wheel`, `python -m build` | the same two files |
+| Lint and import order | Ruff (`E`, `F`, `I`, `UP`), line length 100 | `lib/pyproject.toml`, `platform/ops-mcp/pyproject.toml`, `platform/ops-cli/pyproject.toml` |
+| Type check | Pyright, strict | the same three files |
+| Tests | pytest, `asyncio_mode = "auto"`, coverage on `src` | the same three files |
+| Build | `setuptools>=68` + `wheel`, `python -m build` | the same three files |
 | Lint scope outside the packages | Ruff, from the repository root | `ruff.toml`, which adds no rules: it extends `lib/pyproject.toml` and sets `src = ["lib/src"]` |
+| License | BSD 3-Clause with an attribution and NOTICE requirement | `LICENSE` at the repository root, one copy for all three distributions. No `pyproject.toml` declares it; see the note below |
+| Release notes | one entry per released version | `CHANGELOG.md` at the repository root |
 
 Ruff supplies both the linter and the formatter, so a single `line-length = 100` setting governs each.
 Pyright runs in strict mode over `src`, with `tests/stubs` on its extra path in the core so the deterministic fakes for LiteLLM and sentence-transformers resolve during analysis.
@@ -179,14 +189,14 @@ The gates above are run locally, and [11-testing-strategy.md](11-testing-strateg
 
 | Package | Role | Declared in |
 |---|---|---|
-| `pytest` | test runner | both `dev` extras |
-| `pytest-asyncio` | async test support, with `asyncio_mode = "auto"` | both `dev` extras |
-| `pytest-cov` | coverage over `src` | both `dev` extras |
+| `pytest` | test runner | every `dev` extra |
+| `pytest-asyncio` | async test support, with `asyncio_mode = "auto"` | every `dev` extra |
+| `pytest-cov` | coverage over `src` | every `dev` extra |
 | `pytest-recording` | HTTP cassette support, declared for recorded provider work; the tracked suites record nothing today | core `dev` extra |
-| `ruff` | lint and import order | both `dev` extras |
-| `pyright` | strict type checking | both `dev` extras |
-| `build` | wheel and source distribution | both `dev` extras |
-| `twine` | distribution checks | both `dev` extras |
+| `ruff` | lint and import order | every `dev` extra |
+| `pyright` | strict type checking | every `dev` extra |
+| `build` | wheel and source distribution | every `dev` extra |
+| `twine` | distribution checks | every `dev` extra |
 
 ---
 
@@ -196,7 +206,8 @@ The gates above are run locally, and [11-testing-strategy.md](11-testing-strateg
 |---|---|
 | Runner | pytest |
 | Core scope | `lib/tests/unit/`, mirroring the source packages |
-| Adapter scope | `platform/mcp/tests/` |
+| Adapter scope | `platform/ops-mcp/tests/` |
+| CLI scope | `platform/ops-cli/tests/unit/` |
 | Coverage | `--cov=src --cov-report=term-missing`, configured in both `pyproject.toml` files |
 | Offline guarantee | test doubles and stub modules, no live provider in the default run |
 
@@ -211,7 +222,16 @@ The gates above are run locally, and [11-testing-strategy.md](11-testing-strateg
 
 ## Scripts
 
-`lib/scripts/` holds two development tools, invoked with `python` rather than installed as commands.
+Each distribution carries `build.sh`, `install.sh`, and `publish.sh` under its own `scripts/` directory, which is the family's convention.
+They wrap `python -m build`, `pip install -e`, and `twine upload`; none of them is installed as a command, and none is a deployment tool.
+
+| Script | Role |
+|---|---|
+| `build.sh` | `python -m build` from that package's root |
+| `install.sh` | an editable install of that package and whatever it needs first — the library's resolves `blue-data` from its checkout, and the two service scripts install the library ahead of themselves |
+| `publish.sh` | `twine upload dist/*` from that package's root |
+
+`lib/scripts/` also holds two Python development tools, invoked with `python`.
 
 | Script | Role |
 |---|---|
@@ -229,7 +249,9 @@ The gates above are run locally, and [11-testing-strategy.md](11-testing-strateg
 | `jsonmerge` | `==1.9.2` | PyPI | Blue-compatible JSON object merge |
 | `jsonpath-ng` | unpinned | PyPI | JSONPath query and set, LLM output extraction |
 | `tenacity` | unpinned | PyPI | retry for provider calls; imported at module import time |
-| `mcp` | `==1.27.2` | PyPI | MCP server SDK — `platform/mcp/` only |
+| `mcp` | `==1.27.2` | PyPI | MCP server SDK — `platform/ops-mcp/` only |
+| `click` | `>=8.0` | PyPI | command parsing — `platform/ops-cli/` only |
+| `rich` | `>=13.0` | PyPI | table and console rendering — `platform/ops-cli/` only |
 | `numpy` | unpinned | PyPI | `ml` and `vector` extras |
 | `scikit-learn` | unpinned | PyPI | `ml` extra |
 | `sentence-transformers` | unpinned | PyPI | `vector` extra, embedding generation only |

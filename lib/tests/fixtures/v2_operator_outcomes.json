@@ -829,7 +829,7 @@
       "name": "data_discover",
       "operator_id": "data_discover@2.0.0",
       "source_file": "src/blue_data_ops/operators/data_discover_operator.py",
-      "source_sha256": "36c6e5b4a11d2795ab2de2a4bc57940a3ec9ddc87efb189fba7d0e7b17cb8771"
+      "source_sha256": "d1649e9a53b50bcdcf8525c82e0c51bc688b95b94c6ce719aaccfed8a6f6d132"
     },
     {
       "cases": {
@@ -3862,7 +3862,7 @@
     "timeout": "TIMEOUT / OPERATOR_TIMEOUT; body runs once; late result discarded"
   },
   "source_manifest": {
-    "aggregate_sha256": "0d35397397d59639627f7a4a955cf9bf5a03ebfb9cfbb341964a83a4f81d6581",
+    "aggregate_sha256": "519b8403b84ab4a642d930a6b9b9b4d84bd7884c269b62410d1c6835079cc11c",
     "files": {
       "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
       "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
@@ -3871,7 +3871,7 @@
       "cluster": "2ac4fdbbf672da3cdc0b50bce4f3ad712a877609dd5f493ba2a02d43a650babf",
       "create_database": "ce5eb3429058756222d6cd93b7d26e80ff4a904898ab2375b22ddfed71d12277",
       "create_table": "13a3fb1922b4d882212df5b274c757bb2a4159414405cee12ef766efe5e17a4c",
-      "data_discover": "36c6e5b4a11d2795ab2de2a4bc57940a3ec9ddc87efb189fba7d0e7b17cb8771",
+      "data_discover": "d1649e9a53b50bcdcf8525c82e0c51bc688b95b94c6ce719aaccfed8a6f6d132",
       "delete": "ab33f67a6e072192556a493d6e8570735c28417e74b3590b666621c0bc64cd02",
       "insert": "5b77700cb7a1d56b7e57fd38e73f833da89ab382e17753a6f2e2383b001e7e32",
       "insert_table": "8737a51c3055df4d8d5f55bc5f7e45d767393506c403a3fcc09814b40696db84",

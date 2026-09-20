@@ -1,7 +1,7 @@
 # Quick Start
 
 Install `blue-data-ops` from a source checkout, then run an operator, a two-step pipeline, and the planner.
-No credentials, nothing to download beyond the two packages.
+No credentials, nothing to download beyond the two checkouts.
 For the wheel path, the optional extras, and the provider-backed operators, see [installation.md](installation.md).
 
 ## 1. Put the two checkouts under one parent directory
@@ -143,3 +143,4 @@ print(run.execution.output_data)                                   # [[{'average
 - [guide.md](guide.md) — the same ground task by task, plus registry-backed tables, operator resources, and migration from 2.x
 - [../examples/README.md](../examples/README.md) — whole programs you can run as they are, with the offline ones executed by the test suite
 - [mcp.md](mcp.md) — serve the same operators as MCP tools
+- [cli.md](cli.md) — run the same operators from a shell

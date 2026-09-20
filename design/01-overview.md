@@ -22,6 +22,7 @@ It installs as an ordinary Python library, resolves operators by exact version, 
 - Ships 54 operator resource packages keyed by exact operator ID, each file digest-checked against its manifest before its text is returned.
 - Keeps 87 historical cards resolvable — 33 at `@1.0.0`, 33 at `@2.0.0`, and 21 at `@3.0.0` — so migration code can reach the exact behavior it was written against.
 - Exposes the same 33 active operators as MCP tools from a separate distribution, over the structured result envelope.
+- Reaches the same operators, catalogs, and pipelines from a shell through the `blue-ops` command in a third distribution.
 - Reaches `blue-data` through a single facade in a single package directory, so that dependency has one place to change.
 
 The generated per-operator reference is [`../lib/OPERATORS.md`](../lib/OPERATORS.md).
@@ -52,5 +53,5 @@ The planner admits the reviewed active selection by default and an explicit allo
 A generator can be wrong, or hostile, without being able to introduce an operator the caller never allowed.
 
 Interfaces stay outside the core.
-There is no console entry point and no HTTP server in `blue-data-ops`; the MCP adapter is a second distribution with its own version and its own exact pin on the core.
+The core distribution `blue-data-ops` declares no console entry point and no HTTP server; the MCP adapter and the `blue-ops` command are separate distributions, each with its own version and its own exact pin on the core.
 That keeps the library installable in a process that wants a handful of aggregates and nothing else.

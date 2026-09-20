@@ -19,14 +19,14 @@ EVIDENCE_PATH = LIB_ROOT / "tests" / "fixtures" / "v3_active_operator_reference.
 SUPPLEMENTAL_EVIDENCE_PATH = (
     LIB_ROOT / "tests" / "fixtures" / "sklearn_estimator_active_reference.json"
 )
-ACCEPTED_PROJECTION_SHA256 = "0739dcc5e269294d77e729388bfb1d94d2c0ce8afc6854191792438dfc99a7a6"
+ACCEPTED_PROJECTION_SHA256 = "f4fdbee820c8b3573b18ceaac00ec181ef1084d2aa8f091e705a86c583e8e885"
 SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256 = (
     "1e1d54841c50d78aa0e6bb4570565ed9a1f38e185abb3b7aa8abff63150453c0"
 )
 SOURCE_INSTRUMENT = {
-    "instrument_id": "blue-data-ops-core-3.0-active-reference",
-    "document_sha256": "bfa4bb0bdb4cd2e061b9da03cc238b76b30a692dbeea1decca1baa707d71687b",
-    "seal_sha256": "b83b239c69ec7c470be71533f5665cb323a51e5f359fe944628feb09212fde62",
+    "instrument_id": "blue-data-ops-core-3.9-active-reference",
+    "document_sha256": "6e3948b973daaaec2c075c47de14cdf37e30bfd810d2e550ab2eab1109f34217",
+    "seal_sha256": "7cc8eeeca1e3c5e80acb3464194371ad4071e88369c462d85f7e2b9ce6ffd2c6",
 }
 SUPPLEMENTAL_SOURCE_INSTRUMENT = {
     "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence",

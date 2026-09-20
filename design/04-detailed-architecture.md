@@ -5,13 +5,13 @@ The class and function inventory is [06-library.md](06-library.md); the data sha
 
 ## External Interfaces
 
-Both implemented interfaces end at the same place: `Operator.run()` on an instance resolved from a registry.
+Every implemented interface ends at the same place: `Operator.run()` on an instance resolved from a registry.
 
 | Interface | Technology | Primary use | Status |
 |---|---|---|---|
 | Python Library | native Python API | embedding operators, pipelines, and planning in a Python process | Implemented |
 | MCP Server | MCP over streamable HTTP, `FastMCP` | LLM agent tool use | Implemented, separate distribution |
-| CLI | — | — | **Not built.** No `[project.scripts]` in either distribution |
+| CLI | `blue-ops`, Click over the library | running and inspecting operators, catalogs, and pipelines from a shell | Implemented, separate distribution |
 | REST API | — | — | **Not built.** No `platform/api/`, no HTTP framework in any dependency set |
 
 ### Python Library
@@ -339,7 +339,7 @@ Row counts are per-batch, and a batch whose cursor does not report one drops the
 2. `execute_api_call(input, properties, additional_data)` merges the client's own properties under the call's.
 3. Templating builds the request message. The service prefix — from `service_prefix`, or the client's own name — selects which properties become request fields. An `input_template` is substituted, an `input_json` shell is filled at the configured context path, and the result lands under `input_field`.
 4. Substitution merges the property, parameter, and additional-data sources and raises a `TypeError` on a duplicate key rather than giving one source implicit precedence.
-5. Call kwargs are assembled. Only the documented `llm.*` override keys are accepted, and an unknown one is an `LLMError` with code `bad_override`. The four control keys are consumed here and never forwarded. Two transport-resolution fields are stripped after every merge, so an override cannot smuggle them through. A missing model is an `LLMError` with code `no_model`.
+5. Call kwargs are assembled. Only the documented `llm.*` override keys are accepted, and an unknown one is an `LLMError` with code `bad_override`. The four control keys are consumed here and never forwarded. Two dispatch-only fields, `api` and `service_url`, are stripped after every merge, because they are operator defaults rather than caller intent. A field on any namespace that would set a provider endpoint or a credential, or that would substitute the provider's answer, is refused with code `reserved_field` before the cache key is built. A missing model is an `LLMError` with code `no_model`.
 6. With caching enabled, the cache key is the canonically serialized kwargs. A hit records usage with zero tokens and zero cost and returns immediately. The cache is keyed per directory, so a per-call `cache_dir` override selects its own isolated cache.
 7. Rate limiting sleeps under a lock to hold the configured minimum interval between calls.
 8. The provider call runs through LiteLLM under `tenacity`, retrying an `LLMError` up to three attempts with exponential backoff and re-raising the last one.

@@ -1,0 +1,2 @@
+rows before insert: 10
+registry match: orders

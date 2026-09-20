@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blue-data-ops-cli"
+version = "1.0.0"
+description = "Command line interface for Blue Data Operators"
+readme = "README.md"
+# The core floor, not the family's. Lowering it is a verification obligation on an
+# interpreter this repository does not test; see design/05-software-stack.md.
+requires-python = ">=3.11"
+# The core pin is exact and names the core release this adapter was verified against,
+# the same rule platform/ops-mcp follows. The three extras are the ones the active
+# operators need to load: ml, vector and llm.
+dependencies = [
+    "blue-data-ops[ml,vector,llm]==3.1.0",
+    "click>=8.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+# Only the provider-backed planner needs the OpenAI SDK, so it stays an extra. Without
+# it the library reports GENERATOR_DEPENDENCY_MISSING, which this CLI publishes as
+# ERROR: CONFIG naming the extra.
+openai = ["blue-data-ops[openai]==3.1.0"]
+dev = [
+    "build",
+    "pyright",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "twine",
+]
+
+[project.scripts]
+blue-ops = "blue_data_ops_cli.commands:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+blue_data_ops_cli = ["py.typed", "profile_spec.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+# The same two roots pytest puts on the path below, so the checker sees the library's
+# real types instead of treating every import from it as Unknown.
+extraPaths = ["src", "../../lib/src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# The library root is named explicitly rather than left to an install: this package is
+# tested against the tree beside it, and a "." entry here would put the package
+# directory itself on the path ahead of src/.
+pythonpath = ["src", "../../lib/src"]
+testpaths = ["tests/unit"]
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src"]

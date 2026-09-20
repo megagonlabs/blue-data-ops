@@ -449,7 +449,7 @@ Helpers outside that surface are deliberately absent.
 ## MCP server
 
 `blue-data-ops-mcp` exposes the same 33 operators as MCP tools over the structured execution contract, with no refinement companions.
-Tool names stay logical — `select`, `avg` — and each tool's `_meta` carries its exact operator id.
+Each tool is named `ops_` plus its logical operator name — `ops_select`, `ops_avg` — and each tool's `_meta` carries its exact operator id, unprefixed.
 
 ```python
 import asyncio
@@ -463,16 +463,28 @@ async def main() -> None:
     async with create_connected_server_and_client_session(server) as client:
         await client.initialize()
         listing = await client.list_tools()
-        print([tool.name for tool in listing.tools])   # ['select']
+        print([tool.name for tool in listing.tools])   # ['ops_select']
 
 
 asyncio.run(main())
 ```
 
-`create_server()` returns a configured server you can embed; `serve()` starts streamable HTTP on `127.0.0.1:8000/mcp`.
+`create_server()` returns a configured server you can embed; the installed `blue-data-ops-mcp` command starts streamable HTTP on `127.0.0.1:8000/mcp`.
 See [mcp.md](mcp.md) for the full tool shape and the client configuration.
+
+## Command line
+
+`blue-data-ops-cli` installs `blue-ops`, which reaches the same operators from a shell: 24 commands over `profile`, `catalog`, `operator`, `pipeline` and `metadata`, with `operator resource` under `operator`.
+
+```bash
+blue-ops operator run select@2.0.0 --input-file orders.json \
+  --attribute operand_key=total --attribute 'operand=>' --attribute operand_val=100
+```
+
+A record bundle arrives as a file or on standard input, never as an argument, and `--format table|json|nl` decides how the result is rendered.
+Settings resolve through four tiers — command option, environment variable, profile, built-in default — and a stored pipeline runs with `blue-ops pipeline run`.
+See [cli.md](cli.md) for the command tree, the configuration parameters, and the ten exit codes.
 
 ## Interfaces that are not built
 
-- **No command-line tool.** Neither distribution declares a console entry point, and that is a standing design decision rather than an omission. The library is the interface, and the MCP adapter is the remote one.
 - **No REST API.** There is no HTTP service in this repository. [api.md](api.md) records where that boundary would sit.

@@ -1,6 +1,6 @@
 # Blue Data Operators MCP
 
-> **Synced copy.** [`platform/mcp/README.md`](../platform/mcp/README.md) is the source of truth for the MCP adapter; this page tracks it.
+> **Synced copy.** [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is the source of truth for the MCP adapter; this page tracks it.
 > Where the two disagree, the package README wins.
 > For the Python surface these tools project, see [api-reference.md](api-reference.md); for how the adapter sits over the core library, see [architecture.md](architecture.md).
 
@@ -8,9 +8,9 @@ This package exposes Blue Data Operators as MCP tools over the structured execut
 It serves 33 primary tools and no refinement companions by default.
 The exact operator selection is the same 33-ID projection returned by core `active_registry()`.
 
-The adapter pins `blue-data-ops==3.0.0`.
-Tool names remain logical operator names such as `select` and `avg`.
-Each tool's `_meta` carries its exact mixed-version operator ID.
+The adapter pins `blue-data-ops==3.1.0`.
+Every tool name is `ops_` followed by the core operator's logical name, so the `select` operator is served as `ops_select` and `avg` as `ops_avg`.
+Each tool's `_meta` carries its exact mixed-version operator ID, which stays unprefixed because it names a core registration rather than a wire surface.
 
 ## Install
 
@@ -20,28 +20,75 @@ From the `blue-data-ops` repository root, install the sibling dependency, core, 
 ```bash
 python -m pip install ../blue-data/lib
 python -m pip install "./lib[ml,vector,llm]"
-python -m pip install ./platform/mcp
+python -m pip install ./platform/ops-mcp
 ```
+
+`platform/ops-mcp/scripts/install.sh` does the same three steps through the library's own installer, which resolves `blue-data` from its checkout first.
 
 If your artifact index is configured separately:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.0.0" \
-  "blue-data-ops-mcp==0.13.0"
+  "blue-data-ops[ml,vector,llm]==3.1.0" \
+  "blue-data-ops-mcp==1.0.0"
 ```
 
 `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators resolve a provider client when called.
-Supply credentials through the provider's environment variables.
-The `openai.model` property selects the model; its default is `gpt-4o`.
+This package reads no environment variable of its own.
+Core reads two: `BLUE_DATA_LLM_PROVIDER`, which names the provider every call is sent to and defaults to `openai`, and `BLUE_DATA_LLM_ALLOWED_MODELS`, which when set is the exact set of models a call property may ask for.
+Both come from the environment the server process was started in, which a tool caller cannot reach, and together they are what makes the provider the deployment's choice rather than the caller's.
+The rest are the provider SDK's, read the same way — `OPENAI_API_KEY` for an OpenAI-compatible endpoint, and the equivalent for whichever provider `BLUE_DATA_LLM_PROVIDER` names.
+The `openai.model` property selects the model within that provider; its default is `gpt-4o`, and a provider-qualified name such as `vertex_ai/gemini-2.5-pro` is refused, because choosing the provider is not a caller's to do.
+No tool takes a credential as an argument, and no tool is expected to be given one.
 
 Read the adapter version from distribution metadata:
 
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops-mcp") == "0.13.0"
+assert version("blue-data-ops-mcp") == "1.0.0"
 ```
+
+The same string is `blue_data_ops_mcp.__version__`, and the server reports it as `serverInfo.version` during the MCP handshake.
+
+## Run the server
+
+The package installs one console command, which serves the default selection over streamable HTTP on the loopback defaults:
+
+```bash
+blue-data-ops-mcp
+```
+
+A client reaches it at the streamable-HTTP URL rather than by spawning a process.
+Point one at it the usual way:
+
+```json
+{
+  "mcpServers": {
+    "blue-data-ops": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+The URL is the server's default bind.
+Change it in both places together, and read the transport note below before binding anything but loopback.
+
+### Transport
+
+This server speaks streamable HTTP over a stateful session.
+The rest of the Blue Data family speaks stdio, and this server is the exception.
+
+The reason is the shape of the work.
+These tools bridge long CPU-bound and provider-bound calls onto worker threads, so a slow call does not hold the event loop and several calls stay in flight at once; the suite proves both, along with protocol cancellation of a running call over a live session.
+A client-spawned stdio subprocess is a poor fit for that: it ties the server's lifetime to one client, gives concurrent work nowhere to live across sessions, and makes a long-running deployment restart per client.
+Converting would break every existing deployment and buy nothing this package needs.
+
+Both server functions and the console command accept the loopback defaults `127.0.0.1`, `8000`, and `/mcp`.
+Review network exposure before changing the loopback host: a tool call carries provider and registry settings in its `properties` argument, and loopback is what keeps that reachable only from the host the server runs on.
+A tool argument can no longer choose the provider endpoint — a property that names one is refused — but the settings a call does carry are still worth keeping on one host.
 
 ## Embed or serve
 
@@ -60,10 +107,10 @@ async def main() -> None:
     async with create_connected_server_and_client_session(server) as client:
         await client.initialize()
         listing = await client.list_tools()
-        assert [tool.name for tool in listing.tools] == ["select"]
+        assert [tool.name for tool in listing.tools] == ["ops_select"]
 
         result = await client.call_tool(
-            "select",
+            "ops_select",
             {
                 "input_data": [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]],
                 "attributes": {
@@ -81,7 +128,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-To expose the server over stateful streamable HTTP, run it directly.
+To expose the server over stateful streamable HTTP from your own process, run it directly.
 Defaults bind to `127.0.0.1:8000/mcp`:
 
 ```python
@@ -91,10 +138,12 @@ server = create_server()
 server.run(transport="streamable-http")
 ```
 
-`serve()` performs the same construction and starts streamable HTTP:
+`serve()` performs the same construction and starts streamable HTTP; `main()`, which the console command calls, is `serve()` with the defaults:
 
-```bash
-python -c 'from blue_data_ops_mcp import serve; serve()'
+```python
+from blue_data_ops_mcp import serve
+
+serve()
 ```
 
 Pass `operator_ids` to either function to replace the default selection with an exact pinned subset.
@@ -120,6 +169,8 @@ from blue_data_ops_mcp import create_server
 server = create_server(registry=caller_registry, operator_ids=("echo@2.0.0",))
 ```
 
+A caller-registered operator is served under the same prefix as the built-ins, so `echo@2.0.0` becomes `ops_echo`.
+
 An explicit `registry=` may also serve an exact supported raw package card: a retained `@2.0.0` card such as `default_registry(select="2.0.0")`, or an active `@3.0.0` card such as `default_registry(avg="3.0.0")`.
 This is observed adapter behavior, not an ordinary-selection promise.
 Raw cards have empty `tags` and `when_to_invoke`, so `_meta.tags` is empty and the tool description contains only the operator description.
@@ -136,15 +187,12 @@ assert len(ACTIVE_OPERATOR_IDS) == 33
 assert len(V2_OPERATOR_IDS) == 33
 ```
 
-Both server functions accept `host`, `port`, and `path`, with defaults `127.0.0.1`, `8000`, and `/mcp`.
-Review network exposure before changing the loopback host.
-
 ## List and call tools
 
 Start the server in one process:
 
 ```bash
-python -c 'from blue_data_ops_mcp import serve; serve()'
+blue-data-ops-mcp
 ```
 
 Then initialize an MCP session and call a tool:
@@ -168,7 +216,7 @@ async def main() -> None:
             assert len(listing.tools) == 33
 
             result = await client.call_tool(
-                "select",
+                "ops_select",
                 {
                     "input_data": [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]],
                     "attributes": {
@@ -195,7 +243,6 @@ The six built-in axes describe the primary subject (`domain-*`), pipeline role (
 The example derives the available values, then performs exact AND matching with `issubset()`.
 The client owns any normalization or other matching rules.
 
-<!-- blue-data-ops-mcp-test: tag-discovery -->
 ```python
 import asyncio
 
@@ -211,7 +258,7 @@ async def main() -> None:
     matches = [
         tool.name for tool in tools if wanted.issubset(set((tool.meta or {}).get("tags", [])))
     ]
-    assert matches == ["vector_embed", "vector_search"]
+    assert matches == ["ops_vector_embed", "ops_vector_search"]
 
 
 asyncio.run(main())
@@ -219,62 +266,79 @@ asyncio.run(main())
 
 ## Tool contract
 
-Each tool is named for its logical operator.
-Its description combines the card's `when_to_invoke` guidance and description.
+The command line and this server name the same operations differently.
+The command line follows the family's verb-first shape, so listing operators is `blue-ops operator list`.
+A tool name here is the operator's own catalog name with a prefix, `ops_select`, because an MCP client selects a tool by matching a task to a name, and the operator's name is the thing it is matching.
+Naming a tool `ops_operator_run_select` would hide that under a grammar no client uses.
+The two surfaces therefore share a vocabulary of nouns and not of verbs, and neither is a translation of the other.
+
+Each tool is named `ops_` plus its logical operator name.
+The prefix is the only part this adapter chooses; the rest is the core operator catalog's own name, verbatim.
+The shape of that name is inherited rather than designed here — bare verbs (`ops_select`, `ops_join`), verb_noun (`ops_create_table`), noun_verb (`ops_vector_search`), and codes (`ops_nl2sql`) all appear because the core catalog spells them that way.
+A client holds one flat tool namespace across every server it has loaded, and this family ships a server per source, so a bare `select` or `create_database` would collide; `create_database` in fact already does, with `blue-data-user-source`.
+
+A tool's description combines the card's `when_to_invoke` guidance and description.
 MCP `_meta` carries the exact `operator_id`, version, and ordered discovery tags.
 
-Every tool accepts the same open arguments:
+Every tool accepts the same three open arguments:
 
 - required `input_data`: a list of record groups, where each group is a list of record objects;
 - optional `attributes`: an open object of operator arguments, defaulting to a fresh empty object;
-- optional `properties`: an open object or `null` of execution settings, such as `execution.timeout_seconds`.
+- optional `properties`: an open object or `null` carrying execution and backend settings. The recognized keys are `execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, `ops_cluster`, and `ops_sklearn_estimator` and without which `ops_sklearn_estimator` does not run at all; `platform.name` together with `data_registry.name`, which the six registry-backed tools need before they return anything but an empty result; `service_prefix`; and the two provider namespaces, `openai.*` and `llm.*`, both closed. `llm.*` takes `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel` and `rate_limit`. `openai.*` takes the generation parameters of the provider call and nothing else. Which provider answers, at which endpoint, in which project, tenant or region, and under which credential are the deployment's to set, from its own environment; a property naming any of them is refused with `reserved_field` rather than quietly dropped, because a dropped routing override would change who answered and say nothing.
 
-Known attributes carry descriptions.
+Each published attribute carries its description, its JSON Schema `type` where core's declared type has a faithful one, and an `enum` where core's own validator rejects every value outside a fixed set.
+Two attributes publish no type because core resolves their declared type to `Any` and would accept anything: `ops_select`'s `operand_val` and `ops_semantic_filter`'s `return_idx`.
+An attribute core declares required appears in the `attributes` object's `required` list.
 Optional attributes that materialize a default publish it; required attributes and unmaterialized optional values publish no default.
+
+An enum is published only where core enforces it, never on the strength of a description.
+Several attributes name their permitted values in prose and still accept others — `ops_nl2sql`'s `protocol`, `ops_nl2bn`'s `protocol_variant`, `ops_semantic_transform`'s `strategy`, and the scikit-learn pass-through settings on `ops_classify` and `ops_cluster` — and those stay open here so the schema does not refuse a call the operator would run.
+
 Business validation belongs to canonical `run()`.
-An invalid attribute reaches operator validation and returns a recoverable error record.
+The published schema advertises the operator's contract; it is not a second enforcement point in front of it.
+An attribute that violates the schema still reaches operator validation and comes back as a recoverable error record rather than a protocol error.
 
 ### Default tool inventory
 
 The 33 tools `create_server()` registers without an `operator_ids` argument, derived from `ACTIVE_OPERATOR_IDS`.
-Each row's operator ID is what that tool's `_meta.operator_id` carries.
+Each row's operator ID is what that tool's `_meta.operator_id` carries, and it is the logical name without the prefix.
 Only the `domain-*` and `capability-*` tags are shown; `_meta.tags` carries all six axes in canonical order, and [`lib/OPERATORS.md`](../lib/OPERATORS.md) has each operator's full card.
 
 | Tool | Operator ID | Domain tag | Capability tags |
 |---|---|---|---|
-| `argmax` | `argmax@2.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-record-selection` |
-| `argmin` | `argmin@2.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-record-selection` |
-| `avg` | `avg@3.0.0` | `domain-arithmetic` | `capability-average`, `capability-reduction` |
-| `classify` | `classify@3.0.0` | `domain-ml` | `capability-classification` |
-| `cluster` | `cluster@3.0.0` | `domain-ml` | `capability-clustering` |
-| `create_database` | `create_database@2.0.0` | `domain-relational` | `capability-create-database` |
-| `create_table` | `create_table@2.0.0` | `domain-relational` | `capability-create-table` |
-| `data_discover` | `data_discover@2.0.0` | `domain-plan` | `capability-discovery`, `capability-metadata-search` |
-| `delete` | `delete@2.0.0` | `domain-relational` | `capability-delete` |
-| `insert` | `insert@3.0.0` | `domain-relational` | `capability-insert` |
-| `insert_table` | `insert_table@3.0.0` | `domain-relational` | `capability-persist` |
-| `intersect` | `intersect@3.0.0` | `domain-set` | `capability-intersection` |
-| `join` | `join@3.0.0` | `domain-relational` | `capability-join` |
-| `max` | `max@3.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-reduction` |
-| `min` | `min@3.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-reduction` |
-| `nl2bn` | `nl2bn@3.0.0` | `domain-query-compound` | `capability-bayesian-query`, `capability-query-execution`, `capability-query-generation` |
-| `nl2llm` | `nl2llm@3.0.0` | `domain-query-compound` | `capability-generation` |
-| `nl2sql` | `nl2sql@3.0.0` | `domain-query-compound` | `capability-query-execution`, `capability-query-generation`, `capability-sql` |
-| `normalize_text` | `normalize_text@2.0.0` | `domain-text` | `capability-normalization` |
-| `project` | `project@3.0.0` | `domain-relational` | `capability-projection` |
-| `segment_text` | `segment_text@2.0.0` | `domain-text` | `capability-segmentation` |
-| `select` | `select@2.0.0` | `domain-relational` | `capability-filter` |
-| `semantic_extract` | `semantic_extract@3.0.0` | `domain-semantic` | `capability-extraction` |
-| `semantic_filter` | `semantic_filter@3.0.0` | `domain-semantic` | `capability-filter` |
-| `semantic_join` | `semantic_join@3.0.0` | `domain-semantic` | `capability-embedding-filter`, `capability-join` |
-| `semantic_project` | `semantic_project@3.0.0` | `domain-semantic` | `capability-projection` |
-| `semantic_transform` | `semantic_transform@3.0.0` | `domain-semantic` | `capability-transformation` |
-| `sklearn_estimator` | `sklearn_estimator@2.0.0` | `domain-ml` | `capability-classification`, `capability-clustering`, `capability-transformation` |
-| `sum` | `sum@2.0.0` | `domain-arithmetic` | `capability-reduction`, `capability-sum` |
-| `union` | `union@2.0.0` | `domain-set` | `capability-union` |
-| `vector_embed` | `vector_embed@3.0.0` | `domain-vector` | `capability-embedding` |
-| `vector_search` | `vector_search@3.0.0` | `domain-vector` | `capability-search` |
-| `vector_similarity` | `vector_similarity@3.0.0` | `domain-vector` | `capability-similarity` |
+| `ops_argmax` | `argmax@2.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-record-selection` |
+| `ops_argmin` | `argmin@2.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-record-selection` |
+| `ops_avg` | `avg@3.0.0` | `domain-arithmetic` | `capability-average`, `capability-reduction` |
+| `ops_classify` | `classify@3.0.0` | `domain-ml` | `capability-classification` |
+| `ops_cluster` | `cluster@3.0.0` | `domain-ml` | `capability-clustering` |
+| `ops_create_database` | `create_database@2.0.0` | `domain-relational` | `capability-create-database` |
+| `ops_create_table` | `create_table@2.0.0` | `domain-relational` | `capability-create-table` |
+| `ops_data_discover` | `data_discover@2.0.0` | `domain-plan` | `capability-discovery`, `capability-metadata-search` |
+| `ops_delete` | `delete@2.0.0` | `domain-relational` | `capability-delete` |
+| `ops_insert` | `insert@3.0.0` | `domain-relational` | `capability-insert` |
+| `ops_insert_table` | `insert_table@3.0.0` | `domain-relational` | `capability-persist` |
+| `ops_intersect` | `intersect@3.0.0` | `domain-set` | `capability-intersection` |
+| `ops_join` | `join@3.0.0` | `domain-relational` | `capability-join` |
+| `ops_max` | `max@3.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-reduction` |
+| `ops_min` | `min@3.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-reduction` |
+| `ops_nl2bn` | `nl2bn@3.0.0` | `domain-query-compound` | `capability-bayesian-query`, `capability-query-execution`, `capability-query-generation` |
+| `ops_nl2llm` | `nl2llm@3.0.0` | `domain-query-compound` | `capability-generation` |
+| `ops_nl2sql` | `nl2sql@3.0.0` | `domain-query-compound` | `capability-query-execution`, `capability-query-generation`, `capability-sql` |
+| `ops_normalize_text` | `normalize_text@2.0.0` | `domain-text` | `capability-normalization` |
+| `ops_project` | `project@3.0.0` | `domain-relational` | `capability-projection` |
+| `ops_segment_text` | `segment_text@2.0.0` | `domain-text` | `capability-segmentation` |
+| `ops_select` | `select@2.0.0` | `domain-relational` | `capability-filter` |
+| `ops_semantic_extract` | `semantic_extract@3.0.0` | `domain-semantic` | `capability-extraction` |
+| `ops_semantic_filter` | `semantic_filter@3.0.0` | `domain-semantic` | `capability-filter` |
+| `ops_semantic_join` | `semantic_join@3.0.0` | `domain-semantic` | `capability-embedding-filter`, `capability-join` |
+| `ops_semantic_project` | `semantic_project@3.0.0` | `domain-semantic` | `capability-projection` |
+| `ops_semantic_transform` | `semantic_transform@3.0.0` | `domain-semantic` | `capability-transformation` |
+| `ops_sklearn_estimator` | `sklearn_estimator@2.0.0` | `domain-ml` | `capability-classification`, `capability-clustering`, `capability-transformation` |
+| `ops_sum` | `sum@2.0.0` | `domain-arithmetic` | `capability-reduction`, `capability-sum` |
+| `ops_union` | `union@2.0.0` | `domain-set` | `capability-union` |
+| `ops_vector_embed` | `vector_embed@3.0.0` | `domain-vector` | `capability-embedding` |
+| `ops_vector_search` | `vector_search@3.0.0` | `domain-vector` | `capability-search` |
+| `ops_vector_similarity` | `vector_similarity@3.0.0` | `domain-vector` | `capability-similarity` |
 
 A logical name appears at most once.
 A selection that would serve two versions of one name fails at construction rather than picking one.
@@ -282,7 +346,7 @@ A selection that would serve two versions of one name fails at construction rath
 ### Structured results
 
 Tools publish structured output.
-A successful `select` call returns:
+A successful `ops_select` call returns:
 
 ```json
 {
@@ -296,7 +360,7 @@ A successful `select` call returns:
 Read `structuredContent` as authoritative; `json.loads(result.content[0].text)` is the same object.
 
 A call that passes the MCP container schema but fails operator validation is still a successful MCP result.
-Calling `select` without its required attributes returns an `INVALID_INPUT` record at the `VALIDATE` stage.
+Calling `ops_select` without its required attributes returns an `INVALID_INPUT` record at the `VALIDATE` stage.
 Values are encoded with `default=str` for non-JSON leaves, while `NaN` and `Infinity` are rejected.
 
 ### How outcomes surface
@@ -305,8 +369,49 @@ Values are encoded with `default=str` for non-JSON leaves, while `NaN` and `Infi
 - An unknown tool, malformed top-level arguments, or a projection or encoding failure has `isError` true and adds no operator error record.
 - Malformed JSON-RPC and transport failures follow the MCP SDK.
 
-The MCP initialization response's `serverInfo.version` is the MCP SDK version, not this package's version.
-The distribution version is `blue-data-ops-mcp 0.13.0`; each tool's operator version is in `_meta`.
+The MCP initialization response reports this package's own version: `serverInfo.version` is `1.0.0`, matching `blue-data-ops-mcp` on the index.
+Each tool's operator version is in `_meta` and moves independently of it.
+
+### What this server does not expose
+
+| Not exposed | Why |
+|---|---|
+| MCP resources | This server is tools-only. The one candidate is core's per-operator skill packages, which are versioned documents on disk with a loader of their own; a client that wants them should read them from the installed library rather than have this server prefetch them into its context, and no tool needs them to run. |
+| A `--format` equivalent | An MCP tool's wire format is fixed JSON by protocol. The `--format table/json/nl` of [cli.md](cli.md) is a command-line concern and is deliberately not mirrored here. |
+| The pipeline executor | Declarative plan expansion and pipeline execution are a library surface, not a tool. The adapter serves one tool per operator and composes nothing; a caller sequences the calls. |
+| Core's operator registry itself | Selection happens at construction, through `operator_ids`, and is frozen for the server's lifetime. There is no tool that registers, resolves, or lists cards, because a client changing the served catalog mid-session is not a thing this contract offers. |
+
+## Migrating from 0.13.0
+
+`1.0.0` renames every tool.
+The 33 names gain an `ops_` prefix, so `select` becomes `ops_select` and `create_database` becomes `ops_create_database`.
+**Every existing client call site changes.**
+A client holds one flat tool namespace across the servers it has loaded, and `create_database` was already served with a different meaning by `blue-data-user-source`; nothing in this catalog was prefixed, and half of it is a bare verb.
+Nothing else about a tool moves: `_meta.operator_id` still carries the unprefixed logical name, the arguments are the same three containers, and the result envelope is unchanged.
+
+The published input schema now says what core already enforced.
+Each attribute carries its JSON Schema `type`, an attribute core declares required appears in the `attributes` object's `required` list — 46 of them, across 27 tools — and 17 attributes whose values core's validator closes carry an `enum`.
+`input_data`, `attributes`, and `properties` each carry a description, which none of them had.
+This is a tightening of the advertised contract: a call that omits a required attribute, or passes a value outside a closed set, was schema-valid before and is not now.
+The server's own behavior is unchanged — such a call still reaches operator validation and returns a recoverable `INVALID_INPUT` record with `isError` false — but a client that validates against the published schema will refuse it before sending.
+
+Two smaller changes land in the handshake.
+`serverInfo.version` now reports this package's version instead of the MCP SDK's, so `1.0.0` and `0.12.0` are finally distinguishable by a client that cannot read distribution metadata.
+The server also sends an `instructions` string, which was `None`.
+
+The package ships a console command.
+`blue-data-ops-mcp` replaces `python -c 'from blue_data_ops_mcp import serve; serve()'`, and `blue_data_ops_mcp.main` is the function behind it.
+
+The service directory moved from `platform/mcp/` to `platform/ops-mcp/`, matching the family's `<family>-<service>` naming.
+The distribution name `blue-data-ops-mcp` and the import name `blue_data_ops_mcp` are unchanged.
+
+The core pin moves with it, from `blue-data-ops==3.0.0` to `==3.1.0`, so a deployment updates both:
+
+```bash
+python -m pip install --index-url "$PIP_INDEX_URL" \
+  "blue-data-ops[ml,vector,llm]==3.1.0" \
+  "blue-data-ops-mcp==1.0.0"
+```
 
 ## Migrating from 0.12.0
 

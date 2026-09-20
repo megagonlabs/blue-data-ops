@@ -1,0 +1,4 @@
+selected: [[{'id': 2, 'region': 'west', 'total': 125.0}, {'id': 3, 'region': 'east', 'total': 215.0}]]
+average: [[{'avg': 170.0}]]
+normalized: [[{'id': 1, 'region': ' east ', 'total': 42.0, 'region_norm': 'east'}, {'id': 2, 'region': 'west', 'total': 125.0, 'region_norm': 'west'}, {'id': 3, 'region': 'east', 'total': 215.0, 'region_norm': 'east'}]]
+union: [[{'id': 2, 'region': 'west', 'total': 125.0}, {'id': 3, 'region': 'east', 'total': 215.0}, {'id': 4, 'region': 'north', 'total': 310.0}]]

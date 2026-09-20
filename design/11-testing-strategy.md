@@ -8,12 +8,14 @@ What each test level in this repository checks, what stands in for the things it
 The repository has no CI configuration and no `.github/` directory, so every command below is one a contributor types.
 See [12-deployment-ops.md](12-deployment-ops.md) for what that means at release time.
 
-There are two suites, one per distribution, each configured in its own `pyproject.toml` and run from its own directory:
+There are three suites, one per distribution, each configured in its own `pyproject.toml` and run from its own directory:
 
 - **`lib/tests/`** — the library suite.
   Fast, offline, and runnable with no credential and no model download.
-- **`platform/mcp/tests/`** — the adapter suite.
+- **`platform/ops-mcp/tests/`** — the adapter suite.
   Exercises registration, the wire projection, and the MCP protocol itself, over an in-process transport.
+- **`platform/ops-cli/tests/unit/`** — the command suite.
+  Runs every command through Click's own runner against a throwaway CLI home, and fails the run if the real `~/.blue-ops` appears or disappears.
 
 Within `lib/tests/unit/` the levels are distinguished by what they prove rather than by directory, because they share fixtures and run in one pass.
 Section 4 lists them.
@@ -30,7 +32,7 @@ Section 4 lists them.
 | `pytest-recording` | Declared in the core `dev` extra; no test uses it today, and there are no cassettes in the repository |
 
 All four are `dev` extras of `blue-data-ops`.
-The adapter's `dev` extra is smaller and declares `pytest`, `pytest-asyncio`, and `pytest-cov` only.
+The two interface packages' `dev` extras are smaller; of these four they declare `pytest`, `pytest-asyncio`, and `pytest-cov`.
 
 ---
 
@@ -58,10 +60,11 @@ Each line is doing a specific job:
 | `addopts` | Coverage is on by default rather than opt-in; a bare run prints the missing lines |
 | `[tool.coverage.run]` | Measures `src` only, so test and helper lines do not inflate the number |
 
-No minimum coverage threshold is configured, in either package.
+No minimum coverage threshold is configured, in any package.
 The number is a reading, not a gate.
 
-[`platform/mcp/pyproject.toml`](../platform/mcp/pyproject.toml) carries the same block with one difference: `testpaths = ["tests"]`, because the adapter's suite has no `unit/` subdirectory to separate.
+[`platform/ops-mcp/pyproject.toml`](../platform/ops-mcp/pyproject.toml) carries the same block with two differences: `testpaths = ["tests"]`, because the adapter's suite has no `unit/` subdirectory to separate, and `pythonpath = ["src", "../../lib/src"]`, which names the library root explicitly rather than leaving it to an install.
+[`platform/ops-cli/pyproject.toml`](../platform/ops-cli/pyproject.toml) carries the same two roots and keeps `testpaths = ["tests/unit"]`.
 
 ---
 
@@ -92,13 +95,31 @@ lib/tests/
     ├── operator_skill_owner_checks.py    # executes the example pages inside a resource package
     └── operator_skill_disclosure.py      # audits which resource files an import path actually opens
 
-platform/mcp/tests/
+platform/ops-mcp/tests/
 ├── conftest.py                    # module-scoped sentence-transformers stand-in for this suite
 ├── test_registration.py           # the operator selections, snapshot binding, and what a bad selection does
 ├── test_schema.py                 # the input and output schema projected for each tool
 ├── test_invocation.py             # direct calls and protocol calls must agree, including on failure
 ├── test_protocol.py               # session lifecycle, concurrency, cancellation, malformed requests
 └── test_portability.py            # distribution metadata, the public surface, and the adapter's import boundaries
+
+platform/ops-cli/tests/unit/
+├── conftest.py                    # a throwaway CLI home, the Click runner, and the library seams
+├── test_surface.py                # the command tree, the shared options, and every format over every result command
+├── test_help.py                   # help text for the root, each component, and each command
+├── test_non_flat_surface.py       # that no command is reachable outside its component
+├── test_formats.py                # table, json and nl over one command each, and the JSON payload keys
+├── test_errors.py                 # the ten exit codes and the one-line stderr shape
+├── test_catalog.py                # catalog list, inspect and select, and the refusal of `raw`
+├── test_operator.py               # operator list, search, inspect and run
+├── test_resource.py               # operator resource list, inspect and export, against the real registry
+├── test_pipeline.py               # pipeline add, import, export, list, inspect, remove and run
+├── test_profile.py                # profile add, remove, list, config, inspect and select
+├── test_configstore.py            # the profile store: atomic writes, modes, symlinks, blank values
+├── test_meta_parity.py            # that metadata inspect agrees with the installed distributions
+├── test_registry_wiring.py        # the blue-data symbols this package depends on, which the checker cannot see
+├── test_secret_canary.py          # sentinel values shaped like key material, looked for in every output channel
+└── test_readme.py                 # every command the package README documents, run against a throwaway home
 ```
 
 `tests/unit/` mirrors `src/blue_data_ops/` package for package, so the tests for a module are where the module is.
@@ -122,7 +143,7 @@ Those relative imports are the one place in the repository where they appear; th
 | Planning and execution | `unit/plan/` | Graph validation, executor preflight, planner stage order, and the admission rules on a generated plan |
 | Documentation | `unit/test_readme_usage.py`, `test_operator_reference.py`, `test_examples.py` | Shipped prose and shipped scripts still match the code — see section 7 |
 | Built artifacts | `unit/operator_skills/test_release_gate.py` and friends, over `tests/installed/` | A wheel carries the resource packages it claims, at the digests it claims — see section 8 |
-| Adapter | `platform/mcp/tests/` | Tool registration, schema projection, and that a protocol call and a direct call return the same thing |
+| Adapter | `platform/ops-mcp/tests/` | Tool registration, schema projection, and that a protocol call and a direct call return the same thing |
 
 The import-boundary level is worth calling out, because it enforces an architecture decision rather than a behavior.
 `test_portability.py` parses every module in the installed package with `ast` and fails on a disallowed import root, which is what keeps the single `blue-data` boundary in `data/` from eroding one convenient import at a time.
@@ -194,7 +215,7 @@ Skipping is narrow and explicit:
 | `pytest.importorskip("numpy")` inside a test | The few assertions that need a real array |
 | One `pytest.mark.skipif` | The `openai` extra, in `unit/plan/test_openai_generator.py`, guarded on whether the SDK imports |
 
-`parametrize` is the only pytest marker the repository uses.
+`parametrize` and the single `skipif` above are the only pytest markers the repository uses.
 There are no custom markers, no marker registry, and no `-m` selection to learn.
 
 ---
@@ -203,7 +224,7 @@ There are no custom markers, no marker registry, and no `-m` selection to learn.
 
 Three modules treat shipped text as code under test, and they are the reason the READMEs and the generated reference stay true.
 
-**`test_readme_usage.py`** collects every fence in [`lib/README.md`](../lib/README.md) and [`platform/mcp/README.md`](../platform/mcp/README.md) that carries an HTML marker comment, and executes it:
+**`test_readme_usage.py`** collects every fence in [`lib/README.md`](../lib/README.md) and [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) that carries an HTML marker comment, and executes it:
 
 ```markdown
 <!-- blue-data-ops-test: registry-roles -->
@@ -243,10 +264,10 @@ The same modules run by hand against real artifacts:
 ```bash
 cd lib
 python -m tests.installed.operator_skill_release_gate \
-  --core-wheel dist/blue_data_ops-3.0.0-py3-none-any.whl \
-  --mcp-wheel ../platform/mcp/dist/blue_data_ops_mcp-0.13.0-py3-none-any.whl \
-  --core-version 3.0.0 \
-  --mcp-version 0.13.0 \
+  --core-wheel dist/blue_data_ops-3.1.0-py3-none-any.whl \
+  --mcp-wheel ../platform/ops-mcp/dist/blue_data_ops_mcp-1.0.0-py3-none-any.whl \
+  --core-version 3.1.0 \
+  --mcp-version 1.0.0 \
   $(python -c 'import json, pathlib
 index = json.loads(pathlib.Path("src/blue_data_ops/operator_skills/_index.json").read_text())
 for operator_id in sorted(index["packages"], key=str.encode):
@@ -286,10 +307,15 @@ cd lib
 python -m pytest --no-cov
 ```
 
-The adapter suite, from its own directory and its own environment:
+The adapter suite and the command suite, each from its own directory and its own environment:
 
 ```bash
-cd platform/mcp
+cd platform/ops-mcp
+python -m pytest
+```
+
+```bash
+cd platform/ops-cli
 python -m pytest
 ```
 
@@ -314,4 +340,4 @@ Stated plainly, so nobody reads a green suite as more than it is.
 - **The `blue-data` integration is exercised through in-memory and temporary SQLite sources only.**
   Those are real `blue-data` sources rather than doubles, and the seam tests do run against them, but no test runs against a server-backed source.
 - **Coverage is reported, never enforced.**
-  No threshold exists in either package.
+  No threshold exists in any package.

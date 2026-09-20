@@ -1,0 +1,741 @@
+# blue-data-ops-cli
+
+The `blue-ops` command. It reaches the operator library in [`lib/`](../../lib/README.md) from a shell; this package parses arguments, keeps configuration, and prints results.
+
+## Install
+
+```bash
+scripts/install.sh
+```
+
+That installs the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
+`blue-data` is a core dependency of the library and is not on a public index, so it has to be resolvable first; [`docs/installation.md`](../../docs/installation.md) is the source of truth for the paths that put it there.
+
+Add the provider-backed planner's dependency with the `openai` extra:
+
+```bash
+pip install -e ".[dev,openai]"
+```
+
+This package points `pyright` at a `.venv` in its own directory, matching the other packages in this repository.
+Create and activate one before installing, or the type gate reports every import as unresolved instead of reporting real typing errors:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+```
+
+## Commands
+
+```bash
+blue-ops --help
+```
+
+```bash
+blue-ops --version
+```
+
+Commands are in the shape the Blue CLI family uses, `blue-ops <component> <action> <parameters>`:
+
+```
+blue-ops [--version] [-h|--help] [--profile NAME]
+├── profile
+│   ├── add NAME
+│   ├── remove NAME [--confirm]
+│   ├── list [--format]
+│   ├── config [PARAM [VALUE]] [--profile NAME]
+│   ├── inspect [NAME] [--format]
+│   └── select NAME
+├── catalog
+│   ├── list [--format]
+│   ├── inspect [NAME] [--format]
+│   └── select NAME
+├── operator
+│   ├── list [--catalog] [--format]
+│   ├── search QUERY [--tag TAG]... [--limit N] [--catalog] [--format]
+│   ├── inspect OPERATOR_ID [--catalog] [--format]
+│   ├── run OPERATOR_ID [--input-file PATH] [--attribute KEY=VALUE]... [--attributes-file PATH]
+│   │     [--property KEY=VALUE]... [--properties-file PATH] [--timeout SECONDS] [--model NAME]
+│   │     [--catalog] [--format] [--log] [--log-limit N]
+│   └── resource
+│       ├── list [--catalog] [--format]
+│       ├── inspect OPERATOR_ID [--catalog] [--format]
+│       └── export OPERATOR_ID [--level {2,3}] [--output-file PATH] [--confirm] [--catalog]
+├── pipeline
+│   ├── add NAME --request-file PATH [--goal TEXT] [--planner {rule,openai}] [--model NAME]
+│   │     [--send-data-context] [--confirm] [--catalog] [--format] [--log] [--log-limit N]
+│   ├── import NAME --pipeline-file PATH [--confirm] [--catalog] [--format]
+│   ├── export NAME [--output-file PATH] [--confirm]
+│   ├── list [--format]
+│   ├── inspect NAME [--catalog] [--format]
+│   ├── remove NAME [--confirm]
+│   └── run NAME --input-file PATH [--catalog] [--format] [--log] [--log-limit N]
+└── metadata
+    └── inspect [--catalog] [--format]
+```
+
+24 commands over five components and one subcomponent.
+
+The three components this repository added are its own nouns.
+A `catalog` is a view of the operator registry, which is the thing you select once so every later command reads the same one.
+An `operator` is what the library is: 33 of them, each with a pinned id, a card, tags, an attribute schema and a resource package.
+A `pipeline` is a serializable graph of operators, which is what makes `import`, `export` and `inspect` mean here what they mean everywhere else.
+`operator resource` is a subcomponent rather than a component because a resource package has no identity of its own: it is addressed by the operator id it belongs to.
+
+There is no `database`, `data` or `schema` component.
+This repository is not a `-source` repository: it has no store of its own, no database behind it, and no stored schema.
+An operator's attribute schema is part of the operator's own description rather than a component, and the data registry those three words would name belongs to `blue-data`, whose CLI already manages it with `source add/sync/query/inspect`.
+Putting the same word on different things inside one family is the thing the guide's terminology rule exists to prevent, so this CLI leaves them out and says so here.
+
+```bash
+blue-ops metadata inspect
+```
+
+Prints what is installed, which optional extras resolve, and which catalog a command would read now:
+
+```text
+                   metadata
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ key               ┃ value                   ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ blue-data-ops-cli │ 1.0.0                   │
+│ blue-data-ops     │ 3.1.0                   │
+│ blue-data-ops-mcp │ 1.0.0                   │
+│ blue-data         │ 0.1.0                   │
+│ python            │ 3.12.14                 │
+│ extras            │ llm, ml, openai, vector │
+│ catalog           │ active                  │
+│ cards             │ 33                      │
+└───────────────────┴─────────────────────────┘
+```
+
+Every version there is read from the installed distribution rather than written down, so none of them can drift from what `pip` reports.
+An extra is present when every module it brings can be located; nothing is imported to find out, so asking what is installed never pays for loading a model runtime.
+
+Every command that returns a result takes `--format`, including this one:
+
+```bash
+blue-ops metadata inspect --format json
+```
+
+```text
+{
+  "metadata": {
+    "blue-data-ops-cli": "1.0.0",
+    "blue-data-ops": "3.1.0",
+    "blue-data-ops-mcp": "1.0.0",
+    "blue-data": "0.1.0",
+    "python": "3.12.14",
+    "extras": {
+      "ml": true,
+      "vector": true,
+      "llm": true,
+      "openai": true
+    },
+    "catalog": "active",
+    "cards": 33
+  }
+}
+```
+
+## Configuration
+
+Settings live in profiles under `~/.blue-ops`. Every command reads them, and the order is the same everywhere:
+
+**command option > environment variable > profile > built-in default.**
+
+```bash
+blue-ops profile list
+```
+
+```bash
+blue-ops profile config BLUE_DATA_LLM_MODEL gpt-4o
+```
+
+`profile config` has three forms.
+With no argument it walks the parameters a first run is asked for; with a parameter name it prompts for that one; with a name and a value it sets it outright.
+A profile named with `--profile` that does not exist yet is created by the write that needs it, so a refused parameter or a value that will not store leaves nothing behind.
+
+```bash
+blue-ops profile config
+```
+
+```bash
+blue-ops profile config OPENAI_API_KEY
+```
+
+`profile inspect` shows every parameter, its value, and which tier supplied it: `environment`, `profile:<name>`, `default`, or `unset`.
+It cannot report `flag`, because a command option never reaches the resolver; it is applied on top of whatever the resolver returned.
+
+```bash
+blue-ops profile inspect
+```
+
+```text
+                         profile: default
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Parameter                               ┃ Value   ┃ Source      ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ OPENAI_API_KEY                          │ ***     │ environment │
+│ BLUE_DATA_LLM_MODEL                     │ gpt-4o  │ default     │
+│ BLUE_DATA_CLI_FORMAT                    │ table   │ default     │
+│ BLUE_DATA_CLI_LOG_LIMIT                 │ 80      │ default     │
+│ BLUE_DATA_OPS_CATALOG                   │ active  │ default     │
+│ BLUE_DATA_OPS_TIMEOUT                   │ (unset) │ unset       │
+│ BLUE_DATA_OPS_PLANNER                   │ rule    │ default     │
+│ BLUE_DATA_OPS_PLANNER_MODEL             │ gpt-4o  │ default     │
+│ BLUE_DATA_OPS_PLANNER_TIMEOUT           │ 60.0    │ default     │
+│ BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS │ 4096    │ default     │
+│ BLUE_DATA_REGISTRY_STORE                │ memory  │ default     │
+│ BLUE_DATA_REGISTRY_FILE                 │ (unset) │ unset       │
+│ BLUE_DATA_REGISTRY_REDIS_URL            │ (unset) │ unset       │
+│ BLUE_DATA_REGISTRY_REDIS_NAMESPACE      │ (unset) │ unset       │
+│ BLUE_DATA_SOURCES_CONFIG                │ (unset) │ unset       │
+└─────────────────────────────────────────┴─────────┴─────────────┘
+```
+
+Profiles are independent, and `--profile` picks one for a single command:
+
+```bash
+blue-ops profile add staging
+```
+
+```bash
+blue-ops profile config --profile staging BLUE_DATA_OPS_PLANNER openai
+```
+
+```bash
+blue-ops profile select staging
+```
+
+```bash
+blue-ops profile select default
+```
+
+```bash
+blue-ops profile remove staging --confirm
+```
+
+`--confirm` skips the question.
+Without it, `profile remove` asks, and answering no changes nothing and exits 0; declining a question you were asked is not a failure.
+Removing a profile deletes that section of the profiles file and nothing else: not another profile, and not the selection unless it pointed at what you removed, in which case it moves to a profile that exists (`default` where that survives, otherwise the first one left) and the command says which.
+`~/.blue-ops/<name>/`, which holds that profile's own selections, is left where it is, and the command names it on standard error so you can delete it yourself.
+The last profile cannot be removed: the selection has to name a profile that is there, and a store with nothing in it has nothing to name.
+
+### Parameters
+
+| Parameter | Cast | Default | Asked on a first run | Reaches |
+|---|---|---|---|---|
+| `OPENAI_API_KEY` | secret | — | yes | the provider SDK, through the environment |
+| `BLUE_DATA_LLM_MODEL` | str | `gpt-4o` | yes | the `openai.model` call property |
+| `BLUE_DATA_CLI_FORMAT` | str | `table` | | the default for `--format` |
+| `BLUE_DATA_CLI_LOG_LIMIT` | int | `80` | | the default for `--log-limit` |
+| `BLUE_DATA_OPS_CATALOG` | str | `active` | | the default for `--catalog` |
+| `BLUE_DATA_OPS_TIMEOUT` | float | — | | the `execution.timeout_seconds` call property |
+| `BLUE_DATA_OPS_PLANNER` | str | `rule` | | the default plan generator |
+| `BLUE_DATA_OPS_PLANNER_MODEL` | str | `gpt-4o` | | the provider-backed planner's model |
+| `BLUE_DATA_OPS_PLANNER_TIMEOUT` | float | `60.0` | | the provider-backed planner's timeout |
+| `BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS` | int | `4096` | | the provider-backed planner's output allowance |
+| `BLUE_DATA_REGISTRY_STORE` | str | `memory` | | the `blue-data` registry backend |
+| `BLUE_DATA_REGISTRY_FILE` | str | — | | the file backend's path |
+| `BLUE_DATA_REGISTRY_REDIS_URL` | str | — | | the redis backend's URL |
+| `BLUE_DATA_REGISTRY_REDIS_NAMESPACE` | str | — | | the redis backend's namespace |
+| `BLUE_DATA_SOURCES_CONFIG` | file | — | | the JSON file of sources pre-loaded into the registry |
+
+The first four are the family-wide parameters every Blue CLI declares.
+The five registry names are `blue-data`'s own, read verbatim, so the same variables produce the same registry here and in `blue-data`'s CLI.
+Their default is worth knowing before a first run: `memory` means the registry lives for one command and dies with it, so `create_database` creates a database and then loses it, and the next command starts empty.
+Nothing fails and nothing is written; one line on standard error says so.
+Set `BLUE_DATA_REGISTRY_STORE=file` with `BLUE_DATA_REGISTRY_FILE` to keep what a command registers.
+
+`BLUE_DATA_SOURCES_CONFIG` names a file in `blue-data`'s own format, read by its `load_sources`, so a source registered there is in the registry before the first command runs:
+
+```json
+{"sources": [{"type": "sqlite", "name": "shop", "properties": {"connection": {"database_directory": "/path/to/dir"}}}]}
+```
+
+`type` selects the `blue-data` source class and `properties` is handed to it unchanged, so which keys belong there is that source's question and not this CLI's.
+`BLUE_DATA_LLM_MODEL` sets the model the language-model operators call and `BLUE_DATA_OPS_PLANNER_MODEL` sets the planner's, because they are separate knobs: a deployment may want a cheaper model for planning than for the operator it is planning around.
+
+A parameter name is also its environment variable name, so exporting `BLUE_DATA_OPS_CATALOG` overrides the profile for one shell without editing anything.
+Exporting one *empty* is refused rather than read as unset.
+`BLUE_DATA_OPS_CATALOG=''` is a tier with a value in it, and taking it as absent would hand the setting down to the profile without saying so, which is the one thing a precedence chain must not do.
+`unset BLUE_DATA_OPS_CATALOG` is how you take a variable out of the chain.
+The store refuses a blank value for the same reason: it would be written, reported as set, and then skipped by every read.
+
+Nothing blocks on a parameter being unset.
+"Asked on a first run" means `blue-ops profile config` with no argument walks those two, and nothing more.
+Every command here runs against an empty profile; a missing credential surfaces only when an operator reaches a provider.
+
+Two settings come from the environment, not from a profile.
+`BLUE_DATA_OPS_HOME` moves the CLI home, because it is the directory the profiles are read from; exported empty it is refused, since an empty path is the working directory and the store would follow you around.
+`BLUE_DATA_PROFILE` picks the profile, and the root `--profile` overrides it.
+Either one naming a profile that does not exist is refused rather than run as an empty one: the point of putting a setting in a profile is that it applies, and a misspelled name would drop it without saying so.
+
+### Catalogs
+
+A catalog is a view of the operator registry, and `--catalog` says which one a command reads.
+
+| View | Cards | What it holds |
+|---|---|---|
+| `active` | 33 | the reviewed built-ins, one version per operator name |
+| `history` | 87 | every retained version, including the reviewed ones |
+
+The selection follows the same four tiers as everything else, with the profile's own file under the parameter that the environment can reach: `--catalog` > `BLUE_DATA_OPS_CATALOG` > `~/.blue-ops/<profile>/.selected.catalog` > `active`.
+
+The library's third view, the raw registry, is not offered.
+Its cards carry no tags and no `when_to_invoke`, and core 3.x rejects every one of them as planning authority, so `--catalog raw` is refused with that reason rather than with an unknown-value message.
+
+```bash
+blue-ops catalog list
+```
+
+```text
+┏━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Catalog ┃ Selected ┃ Cards ┃ Operators ┃ Planning     ┃
+┡━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ active  │ *        │ 33    │ 33        │ yes          │
+│ history │          │ 87    │ 33        │ by allowlist │
+└─────────┴──────────┴───────┴───────────┴──────────────┘
+```
+
+Planning admits the active selection on its own.
+A retained version from `history` is admitted only when a planning request names it in `allowed_operator_ids`.
+
+`catalog inspect` reports one view's size, its version spread, and every tag its cards carry, grouped by the library's six axes.
+Those tags are the values `operator search --tag` accepts, so this is where you look before writing a filter.
+
+```bash
+blue-ops catalog inspect
+```
+
+```bash
+blue-ops catalog inspect history
+```
+
+```bash
+blue-ops catalog select history
+```
+
+```bash
+blue-ops catalog select active
+```
+
+The selection is written to `~/.blue-ops/<profile>/.selected.catalog` at mode 0600 and belongs to that profile alone.
+
+## Operators
+
+An operator is addressed by a pinned id, `name@<major>.<minor>.<patch>`.
+A bare name works too: it resolves through the library's own lookup and the command says on standard error which id it became, because a run that silently picked a version is a run nobody can reproduce.
+In `history`, where a name has several versions, the bare form is refused and the versions are listed instead.
+
+```bash
+blue-ops operator list
+```
+
+```bash
+blue-ops operator search average
+```
+
+```bash
+blue-ops operator search "" --tag capability-filter
+```
+
+`--tag` is repeatable and every tag given must be present.
+It cannot be a fixed list of choices: the library accepts any well-formed tag and validates only its shape, so `blue-ops catalog inspect --format json` is what tells you which values are actually there.
+A blank query with no tag is refused rather than answered with an empty table — the library returns nothing for that by rule, and an empty table would read as "nothing matched".
+
+```bash
+blue-ops operator inspect select@2.0.0
+```
+
+```text
+                                  select@2.0.0
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Attribute         ┃ Type  ┃ Required ┃ Default ┃ Description                 ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ operand_key       │ str   │ yes      │         │ The key to check in each    │
+│                   │       │          │         │ record                      │
+│ operand           │ str   │ yes      │         │ Comparison operator: =, !=, │
+│                   │       │          │         │ >, >=, <, <=                │
+│ operand_val       │ Any   │ yes      │         │ Value to compare with       │
+│ approximate_match │ bool  │          │ False   │ Use epsilon tolerance for   │
+│                   │       │          │         │ numeric comparison          │
+│ eps               │ float │          │ 1e-09   │ Epsilon tolerance for       │
+│                   │       │          │         │ approximate numeric         │
+│                   │       │          │         │ comparison                  │
+└───────────────────┴───────┴──────────┴─────────┴─────────────────────────────┘
+```
+
+The attribute schema is here rather than under a `schema` component, because it describes this operator and nothing else.
+Under `--format json` it appears under a `schema` key, so the family word is used where it means the same thing.
+
+`operator run` takes a record bundle and returns what came back.
+A bundle is `list[list[dict]]`: groups of records, which is what every operator in this library consumes and produces.
+
+`orders.json`:
+
+```json
+[[{"total": 120.0}, {"total": 215.0}, {"total": 50.0}]]
+```
+
+```bash
+blue-ops operator run select@2.0.0 --input-file orders.json --attribute operand_key=total --attribute 'operand=>' --attribute operand_val=100
+```
+
+```text
+  select@2.0.0
+┏━━━━━━━┳━━━━━━━┓
+┃ group ┃ total ┃
+┡━━━━━━━╇━━━━━━━┩
+│ 0     │ 120.0 │
+│ 0     │ 215.0 │
+└───────┴───────┘
+settings: openai.model=gpt-4o (default)
+```
+
+`--input-file -` reads the bundle from standard input.
+An operator tagged `accepts-none` consumes no records, so the CLI hands it an empty bundle and `--input-file` is required only for the rest.
+
+`--attribute KEY=VALUE` sets one operator attribute and `--property KEY=VALUE` sets one call property, such as `openai.temperature=0`.
+Both are repeatable, both read their value as JSON and fall back to the literal text, so `limit=5` is the number and `key=total` is the word.
+`--attributes-file` and `--properties-file` take a JSON object of the same thing; the file is applied first and a per-key option overrides one key of it.
+
+**`--attribute` and `--property` are the only places in this CLI where you name both a key and its value in the command itself, so a key that reads as a credential is refused there.**
+The two file options are not scanned, because a file is not argv: a credential written into one reaches the library, which refuses it before it builds a request. A profile is still where one belongs.
+`--property openai.api_key=...` would be in argv and in this shell's history before any masking could reach it, and the refusal names `blue-ops profile config OPENAI_API_KEY` instead.
+The whole decoded value is held to the same shape, not just the outer key: `--attribute properties={"password": "..."}` puts a credential in those same two places, so every key of every object and array a value decodes to is checked, at any depth.
+A refusal names the key and the path it was found at, and never the value, since printing it is the thing being prevented.
+How the key is spelled does not change the answer: camel humps and separators are both read as word boundaries, so `clientSecret`, `client-secret` and `client_secret` are one name.
+
+Which words make a key a credential key is a closed list, and so is what it leaves out.
+
+| Word, as a whole word in the folded name | Refused | Why |
+|---|---|---|
+| `password`, `passwd`, `pwd`, `passphrase`, `pass_phrase` | yes | spellings of one thing and of nothing else; `Pwd=` is a password in an ODBC connection string |
+| `secret`, `token`, `credential`, `credentials` | yes | the generic words a settings object reaches for |
+| `api_key`, `apikey`, `access_key`, `secret_key`, `private_key` | yes | the qualified spellings, which fold to a word plus `key` |
+| `auth`, `authorization` | yes | a header value or a bearer token |
+| `key`, `keys`, `argmax_key`, `sum_key`, `partition_key`, `foreignKeys` | no | attribute names throughout this library; refusing them would break ordinary calls |
+| `user`, `username`, `login` | no | an account name is not key material, and a data source is configured with one |
+| `host`, `port`, `database`, `dsn` | no | connection settings, none of them secret |
+
+The account-name row is where this list differs from the one discovery uses to mask a value on the way out, and the difference is deliberate: masking a username costs one `***` in one message, while refusing one costs you the command you typed. The connection settings below it are open to both.
+
+The footer names each setting this invocation applied and the tier it came from.
+`--timeout` sets `execution.timeout_seconds` and `--model` sets `openai.model`; both fall back through the environment and the profile like everything else.
+
+## Operator resources
+
+Most operators ship a reviewed package: a guide at level 2, and worked examples at level 3.
+
+```bash
+blue-ops operator resource list
+```
+
+```bash
+blue-ops operator resource inspect select@2.0.0
+```
+
+```bash
+blue-ops operator resource export select@2.0.0
+```
+
+```bash
+blue-ops operator resource export select@2.0.0 --level 3 --output-file select.md
+```
+
+`--level` is a closed set of `2` and `3` because no package in this release declares a level 4; the library refuses one at runtime, and a closed set says so in `--help` instead.
+
+`export` has no `--format`.
+An export emits the artifact as it is written — here, Markdown — and re-encoding it as a table or a sentence would not be an export.
+`pipeline export` follows the same rule and emits its serialized record.
+
+## Pipelines
+
+A pipeline is a graph of operators, stored under the profile that made it.
+`add` and `import` are not synonyms: `import` reads a graph that already exists, `add` synthesizes one from a goal and a set of discovery queries.
+
+A planning request is a nested object: the goal, the discovery queries with their own tags and limits, the per-operator attributes, an optional data scope, an allowlist and five bounds.
+It arrives as a file rather than as a mini-language spread across the command line.
+
+`request.json`:
+
+```json
+{
+  "goal": "average total of orders above 100",
+  "discovery_queries": [
+    {"text": "filter", "tags": ["capability-filter"]},
+    {"text": "average", "tags": ["capability-average"]}
+  ],
+  "operator_attributes": {
+    "select": {"operand_key": "total", "operand": ">", "operand_val": 100},
+    "avg": {"avg_key": "total", "output_key": "average_total"}
+  }
+}
+```
+
+```bash
+blue-ops pipeline add nightly --request-file request.json
+```
+
+```text
+     pipeline: nightly
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Node     ┃ Operator     ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ 2e7f5683 │ select@2.0.0 │
+│ 78d364a8 │ avg@3.0.0    │
+└──────────┴──────────────┘
+stored as nightly in profile default
+settings: planner=rule (default)
+```
+
+`--goal` replaces the goal the file carries, which is the one field that changes between otherwise identical runs.
+`--planner rule` uses the library's shipped templates.
+`--planner openai` calls a model, needs the `openai` extra, and needs `allowed_operator_ids` in the request file — that list is an authorization boundary rather than a filter, so the CLI does not supply one for you.
+`--send-data-context` discloses the request's schema snapshot to that model and is off by default; without it a generator that has been handed a snapshot fails before it makes any provider traffic.
+
+```bash
+blue-ops pipeline list
+```
+
+```bash
+blue-ops pipeline inspect nightly
+```
+
+```bash
+blue-ops pipeline run nightly --input-file orders.json
+```
+
+```text
+    pipeline: nightly
+┏━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ group ┃ average_total ┃
+┡━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ 0     │ 167.5         │
+└───────┴───────────────┘
+settings: openai.model=gpt-4o (default)
+```
+
+**A run never writes to the store.**
+Executing a pipeline records what happened on the plan it is handed: each node's value becomes the records that passed through it and each node's status becomes `EXECUTED` or `FAILED`.
+So the copy that runs is in memory and the one on disk is left alone.
+Writing it back would put your records into `~/.blue-ops`, and it would leave a stored pipeline that runs exactly once, because a node that has already started cannot start again.
+`add` and `import` are the only commands that write.
+
+A pipeline stops at the first node that fails, exits `EXECUTION` (8), and reports which node stopped it and what every earlier node did — on standard error under a human format, and in the error's `detail` under `--format json`.
+
+```bash
+blue-ops pipeline export nightly --output-file nightly.json
+```
+
+```bash
+blue-ops pipeline import copy --pipeline-file nightly.json
+```
+
+`import` runs the executor's preflight before it stores anything, so a graph that cannot resolve its operators is refused at the door rather than at the first run.
+
+```bash
+blue-ops pipeline remove copy --confirm
+```
+
+```bash
+blue-ops pipeline remove nightly --confirm
+```
+
+Removing a pipeline deletes that pipeline's directory and nothing else.
+
+## Where this departs from the family guide
+
+Three departures.
+
+| Departure | Why |
+|---|---|
+| `run` is a verb outside the standard list | The guide's verbs are `add`, `remove`, `list`, `config`, `select`, `query`, `inspect`, `search`, `import` and `export`. None of them means "apply a transformation to a supplied record bundle and return the result". `query` is the nearest and is the wrong one: everywhere else in the family `query` retrieves from a store, and reusing it here would put one word on two meanings, which the guide forbids more firmly than it forbids a new verb. `run` is the library's own name for the same entry point. |
+| `catalog` is a component the guide does not name | It is this repository's analogue of `database`: a named view selected once that later commands read. `registry` would have collided with the data registry that `blue-data` owns and that this CLI also reads. |
+| `database`, `data` and `schema` are absent | The guide marks them as mostly for the source repositories. This one has no store: records arrive from a file and leave on stdout, so the resource being named is the operator, not the data. Operator attribute schemas are part of `operator inspect`; data schemas belong to the registry and to `blue-data`'s CLI. `profile` and `metadata` are kept, with the family's meanings. |
+
+## What this CLI leaves out
+
+Four capabilities the library has are not on the command line.
+
+| Capability | Why not |
+|---|---|
+| Embedding discovery | The caller supplies the embedder and its `space_id`, and the library states that it does not choose or install an embedding model. A flag here would make this CLI choose one, which contradicts a documented library boundary and adds a second provider surface. Use `operator search` for keyword and tag discovery. |
+| The raw registry view | Its cards carry no tags and no `when_to_invoke`, and core 3.x rejects every one of them as planning authority. `--catalog raw` is refused with that reason rather than with an unknown-value message. |
+| Data-source and registry management | `blue-data`'s own CLI owns `source add/sync/query/inspect`. `blue-ops` consumes a registry through `BLUE_DATA_REGISTRY_*` and does not manage one; a second, weaker interface to another repository's component would put the same word on different semantics. |
+| `csv` output | A record bundle is `list[list[dict]]` and CSV has no representation for the group boundary, so flattening one would silently merge groups into a single table. |
+
+Registering a custom operator, editing a pipeline graph node by node, and the library's unstructured `apply()` and `invoke()` entry points are absent for the same kind of reason: the first needs a Python class, the second is a DAG editor on a command line, and the third is a second way to do what `run` already does with weaker error handling.
+
+## Storage and secrets
+
+```
+~/.blue-ops/                      directory mode 0700
+├── .profiles                     INI, one [section] per profile, file mode 0600
+├── .selected.profile             the selected profile name, mode 0600
+└── <profile>/                    mode 0700
+    ├── .selected.catalog         active | history, mode 0600
+    └── pipeline/                 one directory per stored pipeline, mode 0700
+        └── <name>/
+            ├── pipeline.json     the serialized DataPipeline, mode 0600
+            └── provenance.json   where it came from and when, mode 0600
+```
+
+Every write goes to a temporary file in the same directory and is moved into place, so an interrupted run cannot leave a profiles file the next run refuses to parse.
+A complete write cannot either: a value holding a line break is refused, because the file is line-oriented and one pasted from a CRLF file would be read back as a separate setting.
+A write that returned is not flushed to disk: a power loss straight afterwards can leave the previous value, never a torn one.
+A removal is flushed, because the half-finished state there is somebody's pipeline partly gone under the name they still trust.
+Nothing below the home is reached by name twice.
+The home is opened once, each directory under it is opened from the one above without following a link, and every read, creation, write and removal then happens against that open directory rather than against a path.
+Checking a path and handing the same string to the next call asks the kernel to resolve it again, and a directory replaced by a link between the two answers is followed: `~/.blue-ops/default/pipeline` pointing elsewhere would put every stored pipeline there, and none of the files under it would be a link.
+Opening the directory first leaves nothing to replace, because after that the name is not used again.
+A name inside the home may still point at another place inside the home; that link is followed by walking to where it lands, which is checked the same way.
+A path found with wider permissions is reported once; the directory is left as you set it, and a file goes back to 0600 on the next write.
+Directories are created on demand at 0700 by the write that needs them, so a read never makes one.
+
+Removing a stored pipeline takes the entry before it opens it: one rename inside `<profile>/pipeline/` moves the directory to a private name, and the emptying and the `rmdir` both work on that.
+Emptying a directory takes as long as it takes, and `rmdir` takes a name rather than an open directory, so a name still in use is one that can be given to a different directory in the meantime — and the `rmdir` would delete that one.
+The claimed name is checked against the open directory before the last step, so an entry that moved stops the removal rather than redirecting it.
+`pipeline remove nightly` therefore removes the directory it was given and not whatever answers to `nightly` when it finishes.
+A new pipeline cannot be named starting with a dot, because that is where these entries live.
+
+The rename is flushed to disk before anything below it is unlinked, because it changed the namespace of `<profile>/pipeline/` and flushing the claimed directory does not flush the entry that names it.
+Without that, a power loss part way through could recover the old name over contents that were already half gone, and show you a pipeline under the name you still believe in.
+A claim that cannot be flushed goes back under the name it came from and the command fails; nothing is emptied on the strength of a rename the disk did not take.
+The final `rmdir` is flushed too, so a removal that reported success stays done across a power loss.
+
+The claimed directory records that it was claimed, before a single file inside it is unlinked, and that record is the last thing removed before the `rmdir`.
+A run interrupted in between leaves the contents under the private name, where no command reaches them, and the next `pipeline list` or `pipeline remove` finishes it.
+What gets finished is decided by that record and never by the name: an earlier version of this CLI allowed a pipeline to be named with a leading dot, so an entry spelled like a claim can be a pipeline somebody stored.
+One without the record is left exactly as it is and named on standard error, and a pipeline stored under such a name is still listed, inspected, exported and removed by name — it just cannot be the name of a new one.
+A removal that cannot write the record puts the directory back under the name it came from rather than emptying something that would be unrecognisable if the run died next.
+
+The single exception is an entry of that shape holding nothing at all, which the next command removes without asking for the record.
+That is what a run dying between dropping the record and the `rmdir` leaves, and an empty directory holds no work to lose, so warning about it on every command until you delete it by hand costs more than the entry is worth.
+One file in it is enough to make it yours again, and so is being anything other than a directory.
+
+A secret is never accepted as a value on the command line, where it would land in shell history.
+`blue-ops profile config OPENAI_API_KEY` prompts with the input hidden.
+Enter `$MY_KEY` at that prompt to store a reference to an environment variable instead of the secret itself; `profile inspect` then shows `$MY_KEY (set)` or `$MY_KEY (unset)`, so you can see what to export.
+
+A directly entered secret is stored base64-encoded behind an `enc:` prefix.
+**That is obfuscation, not encryption**: anyone who can read the file can decode it, and the file mode is the real protection.
+No command prints a secret value — not `profile inspect`, not `profile list`, not a log line, not an error message.
+
+The last two are not the store's doing.
+An error message and a `--log` line carry text this CLI did not write: a library message quoting what you typed, and a provider SDK's exception, which is free to include a request header or a fragment of a key.
+Every error line, every JSON error object and its `detail`, every log line and the traceback a logged failure prints go through this package's masking, which replaces a value the environment holds under a credential's name, and anything written in a credential's shape, with `***`.
+So does the `openai.model` entry in the `settings` envelope, because a deployment that pastes a credential into that setting gets it echoed back in the most visible line the CLI prints.
+A model name that is only a model name is unchanged.
+Records do not go through it: they are the output an operator was asked to compute, and a value that happens to read like a token is the answer you asked for.
+
+## Output formats
+
+`--format table|json|nl` is on every command that returns a result, and the default comes from `BLUE_DATA_CLI_FORMAT` when a profile sets one.
+
+```bash
+blue-ops profile list --format nl
+```
+
+```text
+1 profile(s): default. The selected one is default.
+```
+
+`table` is the Rich table above.
+`nl` is a short paragraph.
+`json` is one object on standard output and nothing else.
+
+There is no `csv`.
+A record bundle in this library is `list[list[dict]]` — groups of records — and CSV has no representation for the group boundary, so flattening one would silently merge groups into a single table.
+The guide names `json`, `table` and `nl`, and those are the three.
+
+Every JSON result is one object with a payload key named for the resource:
+
+| Command | Payload key | Beside it |
+|---|---|---|
+| `profile list` | `profiles` | `selected` |
+| `profile inspect` | `parameters` | `profile` |
+| `catalog list` | `catalogs` | `selected` |
+| `catalog inspect` | `catalog` | `selected` |
+| `operator list` | `operators` | `catalog`, `count` |
+| `operator search` | `operators` | `catalog`, `query`, `tags`, `limit`, `count` |
+| `operator inspect` | `operator` | `catalog` |
+| `operator run` | `result` | `operator_id`, `is_empty`, `errors`, `traces`, `elapsed_seconds`, `settings` |
+| `operator resource list` | `operators` | `catalog`, `count` |
+| `operator resource inspect` | `resource` | `catalog` |
+| `pipeline add` | `pipeline` | `name`, `provenance`, `planning`, `settings` |
+| `pipeline import` | `pipeline` | `name`, `preflight` |
+| `pipeline list` | `pipelines` | `profile`, `count` |
+| `pipeline inspect` | `pipeline` | `name`, `provenance`, `preflight` |
+| `pipeline run` | `result` | `name`, `succeeded`, `failed_node_id`, `node_runs`, `elapsed_seconds`, `settings` |
+| `metadata inspect` | `metadata` | — |
+
+A key that is a list or a count is there even when it is empty, so a reader branches on what it says rather than on whether it arrived.
+
+Every format strips terminal control characters from every cell, because operator output is whatever a model wrote or whatever came out of a data source, and an escape sequence in one walks the terminal cursor.
+
+Progress, logs, warnings and errors go to standard error.
+The result goes to standard output.
+Every format is safe to pipe, and the spinner is suppressed outright under `json` rather than left to terminal detection.
+
+## Errors and exit codes
+
+Errors reach the terminal as one line on standard error, with no traceback unless `--log` is set:
+
+```text
+ERROR: REQUEST no card for 'selct@2.0.0' in the active catalog. Run `blue-ops operator search selct` to see what is there.
+```
+
+The library has four structured failure taxonomies and none of them is a CLI code set, so this CLI declares ten codes, one per failure family, and carries the library's own code in the description and in the JSON error's `detail`.
+The CLI code is what a script branches on; the library code is what diagnoses the failure.
+
+| Code | Exit | Cause |
+|---|---|---|
+| — | 0 | Success, including an empty result and a declined confirmation |
+| `INTERNAL` | 1 | An exception outside the classified families |
+| `USAGE` | 2 | Usage error: unknown option, bad value, missing argument, an option on the wrong command, a confirmation with no terminal and no `--confirm` |
+| `REQUEST` | 3 | `ResolveError`, `DiscoveryError` or `PipelineError`: the request names something that cannot be resolved, or input the library will not accept |
+| `CONFIG` | 4 | A resolved configuration value the library refused, including a planner dependency that is not installed |
+| `PROFILE` | 4 | A profile operation this CLI rejected: unknown profile, unknown parameter, a value that will not cast |
+| `TRANSPORT` | 5 | The provider timed out, rate-limited the call, or was unavailable |
+| `RESOURCE` | 6 | `OperatorSkillLoadError`: an operator's resource package is missing, mismatched or invalid |
+| `PLANNING` | 7 | Any other planning failure, with the `PlanningErrorCode` and its stage in the message |
+| `EXECUTION` | 8 | An operator run returned a failed `ErrorRecord`. A `RECOVERABLE` record is not one: the run keeps exit 0, and the record is written to standard error |
+| `TIMEOUT` | 9 | An operator run exceeded its time allowance |
+
+`CONFIG` and `PROFILE` share exit 4 and are told apart by the code token.
+A script branching on "the configuration is wrong" wants one branch; a person reading the line wants to know which half.
+Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own families and collide with nothing.
+
+Under `--format json` the same failure is also written to standard output as one object, so a machine consumer gets JSON either way:
+
+```text
+{
+  "error": {
+    "code": "REQUEST",
+    "message": "no card for 'selct@2.0.0' in the active catalog. Run `blue-ops operator search selct` to see what is there.",
+    "detail": {"library_code": "RESOLVE_ERROR", "operator_id": "selct@2.0.0", "catalog": "active"}
+  }
+}
+```
+
+`detail` is an object or `null`, and it is always there, so a reader branches on what it says rather than on whether it arrived.
+For a planning failure it carries the record's `library_code`, `category`, `stage`, `retryable` and `suggestion`; for a failed operator run it carries those plus the `operator_id`.
+
+**Exit 2 belongs to Click's parser.**
+A misspelled option or a value of the wrong type is refused before any command body runs, which means before the CLI knows what `--format` you asked for.
+Those errors are always plain text on standard error, and they are the only ones that are.
+Everything the CLI refuses after the parse is, under `--format json`, also an object on standard output, the startup work included: an unknown `--profile`, a profiles file that cannot be read, a profile value that will not cast.
+One residue: if `BLUE_DATA_CLI_FORMAT` itself holds something that is not a format, the failure *is* the lookup that would have named the format, so with no `--format` on the command line there is nothing left to publish in and it reports as text.
+
+## Tests
+
+```bash
+python3 -m pytest tests/unit -q
+python3 -m ruff check . && python3 -m ruff format --check .
+python3 -m pyright
+```
+
+Every test runs offline against a throwaway CLI home, and a guard fails the run if the real `~/.blue-ops` appears or disappears.
+No test writes a credential anywhere: the values planted in `tests/unit/test_secret_canary.py` are sentinels shaped like key material, and they are looked for in every channel a string can leave by.

@@ -1,0 +1,2 @@
+expanded: avg@3.0.0 (2, 3)
+skipped without loading: avg@1.0.0

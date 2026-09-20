@@ -9,11 +9,11 @@ The flow of information between them is [04-detailed-architecture.md](04-detaile
                               External Interfaces
 
   ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
-  │    Python Library    │  │      MCP Server      │  │      CLI / REST      │
-  │    (implemented)     │  │  (implemented, own   │  │     (not built)      │
-  │ import blue_data_ops │  │    distribution)     │  │                      │
-  └──────────┬───────────┘  └──────────┬───────────┘  └──────────────────────┘
-             └───────────┬─────────────┘
+  │    Python Library    │  │      MCP Server      │  │     blue-ops CLI     │
+  │    (implemented)     │  │  (implemented, own   │  │  (implemented, own   │
+  │ import blue_data_ops │  │    distribution)     │  │    distribution)     │
+  └──────────┬───────────┘  └──────────┬───────────┘  └──────────┬───────────┘
+             └───────────┬─────────────┴─────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                          blue-data-ops core (lib/)                           │
@@ -75,7 +75,7 @@ This table is the boundary list the rest of the design documents refer back to.
 | Data Registry Seam | `data/` | the only `blue-data` import in the package, compatibility argument shapes, search-score normalization | `RegistrySeam`, `DataRegistryProvider`, `resolve_registry()` | import `operators`, `llm`, or `plan` |
 | LLM Client | `llm/` | request templating, provider dispatch, retry, caching, rate limiting, per-call usage records | `LLMClient`, `LLMClientProvider`, `resolve_llm_client()` | import `operators`; choose a provider credential |
 | Utilities | `utils/` | Blue-compatible type parsing, signature extraction, JSON merge and query, ID helpers, substitution | `blue_data_ops.utils` | import `operators`, `plan`, or `data` |
-| MCP Adapter | `platform/mcp/` | the frozen deployment snapshot, the wire projection, tool registration | `create_server()`, `serve()` | add behavior; every tool is a projection of `run()` |
+| MCP Adapter | `platform/ops-mcp/` | the frozen deployment snapshot, the wire projection, tool registration | `create_server()`, `serve()` | add behavior; every tool is a projection of `run()` |
 
 ### Dependency direction
 
@@ -103,7 +103,7 @@ The planner and executor sit above the operator surface and are removable from a
 
 ### External Interfaces
 
-Two are implemented, and two more are named here so a reader looking for them finds the reason rather than silence.
+Three are implemented, and the fourth is named here so a reader looking for it finds the reason rather than silence.
 
 **Python Library — implemented.**
 `import blue_data_ops` is the primary interface and the one every other interface is built on.
@@ -111,14 +111,16 @@ The top-level package re-exports the operator classes, the base `Operator` and `
 `blue_data_ops.operators` is the fuller surface and adds the registry factories, `OperatorCard`, the embedding index, and the type aliases.
 
 **MCP Server — implemented, separate distribution.**
-`platform/mcp/` ships as `blue-data-ops-mcp` with its own version and an exact pin on the core.
+`platform/ops-mcp/` ships as `blue-data-ops-mcp` with its own version and an exact pin on the core.
 It registers the 33 active operators as primary tools over the canonical `run()` boundary and adds no behavior of its own.
-[`../platform/mcp/README.md`](../platform/mcp/README.md) is its source of truth.
+[`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is its source of truth.
 
-**CLI — not built.**
-Neither `pyproject.toml` declares `[project.scripts]`, and there is no console entry point anywhere in the repository.
-Keeping one out of the core is a standing decision rather than an omission: the library is meant to be importable into a process that wants a few operators, and a command-line surface would put argument parsing, output formatting, and a configuration file in front of that.
-Scripts under `lib/scripts/` are development tools invoked with `python`, not installed commands.
+**CLI — implemented, separate distribution.**
+`platform/ops-cli/` ships as `blue-data-ops-cli` with its own version and an exact pin on the core, and installs one console command, `blue-ops`.
+It parses arguments, keeps profiles and their configuration, resolves a catalog, and prints results; every operator call it makes goes through the same canonical `run()` boundary the other two interfaces use.
+Keeping it out of the core is what has not changed: the library stays importable into a process that wants a few operators, with no argument parsing, output formatting, or configuration file in front of it.
+[`../platform/ops-cli/README.md`](../platform/ops-cli/README.md) is its source of truth.
+Scripts under `lib/scripts/` are the library's own maintenance and packaging tools, not installed commands.
 
 **REST API — not built.**
 There is no `platform/api/` directory and no HTTP framework in any dependency set.
@@ -215,6 +217,7 @@ The provider seam the LLM-backed operators call through.
 
 - `LLMClient.execute_api_call()` builds a templated request from call properties, dispatches through LiteLLM, and extracts the configured output path from an OpenAI-shaped response.
 - Adapter overrides are a closed key set; an unknown `llm.*` key is an `LLMError` rather than a value forwarded to the provider. Four control keys — `cache`, `cache_dir`, `max_parallel`, `rate_limit` — are consumed by the client and never sent.
+- The prefixed namespaces are closed sets. They admit the generation parameters of the provider call, and refuse everything else, including any field that chooses the provider, the endpoint, the project, tenant or region, supplies a credential, or substitutes the provider's answer. Either is an `LLMError` with code `reserved_field`, raised before the cache key is built. The endpoint and the key come from the environment the deployment starts in. `model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`. A bare model name selects a provider too, so the check is on the outcome — what the provider library would actually dispatch to — as well as on the spelling. A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.
 - Provides sync and async execution, bounded concurrency, disk caching, rate limiting, and retry with exponential backoff.
 - Records one `UsageRecord` per call, cache hits included, with model, token counts, cost, end-to-end latency, and a cache-hit flag.
 - The default lifetime is one client per invocation. `properties["llm_client"]` injects one; `CachingLLMClientProvider` reuses one per configuration, and the cache's lifetime belongs to whoever created the provider.

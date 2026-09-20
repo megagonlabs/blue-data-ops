@@ -1,23 +1,24 @@
 # blue-data-ops — API / Interface Spec
 
-Every interface a consumer outside this repository can call, and the two a reader might reasonably expect and will not find.
+Every interface a consumer outside this repository can call, and the one a reader might reasonably expect and will not find.
 
-Two external interfaces exist.
+Three external interfaces exist.
 The **Python library** is canonical: everything else delegates to it.
 The **MCP server** is a thin adapter in a second distribution, `blue-data-ops-mcp`, which holds no business logic of its own and projects the library's own result contract onto the wire.
+The **`blue-ops` command** is a third distribution, `blue-data-ops-cli`, on the same terms.
 
-There is no CLI and no REST API.
-Sections 3 and 4 say so at the position a reader would look, rather than leaving the absence to be inferred.
+There is no REST API.
+Section 3 says so at the position a reader would look, rather than leaving the absence to be inferred.
 
 Authentication and authorization are the deployment layer's.
-Neither distribution authenticates a caller, and the MCP server binds to loopback by default.
+No distribution authenticates a caller, and the MCP server binds to loopback by default.
 
 ---
 
 ## 1. Python Library
 
 `blue_data_ops` and its subpackages are the whole surface.
-Both distributions ship `py.typed`, so a consumer's type checker reads the annotations without stubs.
+All three distributions ship `py.typed`, so a consumer's type checker reads the annotations without stubs.
 
 ### 1.1 Namespace layout
 
@@ -556,9 +557,9 @@ The platform's `BlueError` and its `ErrorLoom` mixin are not provided; [`../lib/
 
 ## 2. MCP Server
 
-Implemented at `platform/mcp/` as the distribution `blue-data-ops-mcp` and the module `blue_data_ops_mcp`, built on the official SDK's `FastMCP`.
+Implemented at `platform/ops-mcp/` as the distribution `blue-data-ops-mcp` and the module `blue_data_ops_mcp`, built on the official SDK's `FastMCP`.
 It is an adapter: it selects operators, projects `run()` onto a wire envelope, and holds no operator logic.
-[`../platform/mcp/README.md`](../platform/mcp/README.md) is the source of truth for its surface, and this section is the design-level summary.
+[`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is the source of truth for its surface, and this section is the design-level summary.
 
 ### 2.1 The module surface
 
@@ -595,7 +596,10 @@ Neither is derived from the other.
 ### 2.2 The tool inventory
 
 Thirty-three primary tools and no companions.
-Each tool is named for its logical operator — `select`, `avg`, `nl2sql` — so the protocol surface stays stable while the version behind a tool moves.
+Each tool is named `ops_` plus its logical operator — `ops_select`, `ops_avg`, `ops_nl2sql` — so the protocol surface stays stable while the version behind a tool moves.
+The prefix is the only part of a name this adapter chooses.
+A client holds one flat tool namespace across every server it has loaded and this family ships a server per source, so a bare `select` or `create_database` collides; `create_database` already did, with `blue-data-user-source`'s tool of the same name and a different meaning.
+`_meta.operator_id` stays unprefixed, because it names a core registration rather than a wire surface.
 The default selection matches core `active_registry()`, so the library, the generated reference, and the protocol cannot disagree about which version is current.
 
 Each tool's description is assembled from the card: the deprecation sentence when the card is flagged, then `when_to_invoke`, then the description, joined by blank lines.
@@ -624,33 +628,49 @@ Every tool takes the same three arguments, generated from the operator's declare
 | Argument | Required | Schema |
 |---|---|---|
 | `input_data` | yes | `array` of `array` of `object`, each object open |
-| `attributes` | no, defaults to `{}` | `object` with `additionalProperties: true`, one named property per declared attribute |
+| `attributes` | no, defaults to `{}` | `object` with `additionalProperties: true`, one named property per declared attribute, and `required` listing the attributes core declares required |
 | `properties` | no, defaults to `null` | `object` with `additionalProperties: true`, or `null` |
 
-Each named attribute publishes its description.
+All three arguments carry a description.
+
+Each named attribute publishes its description, its JSON Schema `type` where core's declared type has a faithful one, and an `enum` where core's own validator closes the set.
+Two attributes publish no type, because core resolves their declared type to `Any` and would accept anything: `ops_select`'s `operand_val` and `ops_semantic_filter`'s `return_idx`.
+An enum is published only where core enforces one, never on the strength of a description — several attributes name their permitted values in prose and still accept others, and those stay open so the schema does not refuse a call the operator would run.
 A default is published only for an optional attribute that both declares one and materializes it; a required attribute and an unmaterialized optional attribute publish none.
 Published defaults are deep copies, never aliases of core state.
-The container stays open, so business validation belongs to `run()` rather than to the schema: an unknown or wrong-typed attribute passes the schema, reaches operator validation, and comes back as a recoverable record.
+
+The container stays open, and the schema advertises the operator's contract without becoming a second enforcement point in front of `run()`: an unknown or wrong-typed attribute, or an omitted required one, still passes through to operator validation and comes back as a recoverable record.
+What changed in adapter `1.0.0` is what a *client* can refuse before sending, not what the server accepts.
+
+`ops_max` publishes this, with the three long argument descriptions elided at the `…` so the shape stays readable:
 
 ```json
 {
   "type": "object",
+  "title": "ops_maxArguments",
   "required": ["input_data"],
   "properties": {
     "input_data": {
       "type": "array",
+      "title": "Input Data",
+      "description": "Record groups to operate on: …",
       "items": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
     },
     "attributes": {
       "type": "object",
+      "title": "Attributes",
+      "description": "Operator arguments for this tool. …",
       "additionalProperties": true,
       "default": {},
+      "required": ["max_key"],
       "properties": {
-        "max_key": {"description": "The key to find the maximum value for"},
-        "output_key": {"default": "max", "description": "The key name for the result max value"}
+        "max_key": {"type": "string", "description": "The key to find the maximum value for"},
+        "output_key": {"type": "string", "default": "max", "description": "The key name for the result max value"}
       }
     },
     "properties": {
+      "title": "Properties",
+      "description": "Execution and backend settings for this call, or null. …",
       "anyOf": [{"type": "object", "additionalProperties": true}, {"type": "null"}],
       "default": null
     }
@@ -687,7 +707,7 @@ Each call runs the operator in a worker thread, so a synchronous transform does 
 | malformed JSON-RPC or a transport failure | — | the SDK's behavior |
 
 A call that passes the container schema and fails operator validation is a successful MCP result.
-Calling `select` without its required attributes returns an `INVALID_INPUT` record at the `VALIDATE` stage with `isError` false.
+Calling `ops_select` without its required attributes returns an `INVALID_INPUT` record at the `VALIDATE` stage with `isError` false.
 A conversion failure the adapter causes stays an adapter error and never becomes a synthetic operator record.
 
 ### 2.6 Selections other than the default
@@ -708,40 +728,102 @@ Acceptance for execution grants no planning authority and authorizes no write; t
 
 ### 2.7 Version pairing
 
-The adapter pins the core exactly, `blue-data-ops==3.0.0`, alongside `mcp==1.27.2` and `pydantic>=2.11,<3`.
-One environment therefore holds one verified pair, and the two distributions are updated together.
-The MCP initialization response's `serverInfo.version` is the SDK's version; the distribution version is read from package metadata, and each tool's operator version is in its `_meta`.
+The adapter pins the core exactly, `blue-data-ops==3.1.0`, alongside `mcp==1.27.2` and `pydantic>=2.11,<3`.
+One environment therefore holds one verified pair, and the core and the adapter are updated together.
+The MCP initialization response's `serverInfo.version` is this package's own version, `1.0.0`, set on the server after `FastMCP` builds it because `FastMCP` takes no version argument and otherwise reports the SDK's.
+The same string is `blue_data_ops_mcp.__version__` and what package metadata returns, and each tool's operator version is in its `_meta`, moving independently of it.
 
 ---
 
 ## 3. REST API — not built
 
 There is no HTTP API in this repository.
-`platform/` holds one subdirectory, `mcp`, and there is no `platform/api/`, no ASGI or WSGI application, and no web framework in either distribution's dependencies or extras.
+`platform/` holds `ops-cli` and `ops-mcp`, and there is no `platform/api/`, no ASGI or WSGI application, and no web framework in any distribution's dependencies or extras.
 
 Nothing is planned here either, and the absence is a consequence of a standing decision rather than a gap: hosting for a model client is what MCP already provides, and a second protocol adapter would need a second consumer to justify it.
-A REST adapter, if one were ever wanted, would be a third distribution under `platform/` with its own version and its own exact pin on the core, following the shape section 2.7 describes.
+A REST adapter, if one were ever wanted, would be a fourth distribution under `platform/` with its own version and its own exact pin on the core, following the shape section 2.7 describes.
 It would stay a thin adapter over section 1 and hold no operator logic, exactly as the MCP adapter does.
 
 
 ---
 
-## 4. CLI — not built
+## 4. CLI
 
-There is no command-line interface.
-Neither `pyproject.toml` declares `[project.scripts]`, so installing either distribution adds nothing to `PATH`, and no module is runnable as `python -m`.
-No argument-parsing framework appears in either distribution's dependencies or extras.
+`blue-data-ops-cli` installs one console command, `blue-ops`, declared as `blue_data_ops_cli.commands:cli`.
+The core distribution declares no console script, so a process that installs only the library still adds nothing to `PATH`.
+No package in this repository is runnable as `python -m`.
+[`../platform/ops-cli/README.md`](../platform/ops-cli/README.md) is the source of truth for the command's behavior; this section states the contract.
 
-This is a decision rather than an omission.
-The unit of work here is an operator call whose input is a nested structure and whose output is a three-element result, and neither survives argv and stdout with its shape intact.
-The two consumers that exist, Python code and an MCP client, already speak structures.
-Serving the operators over HTTP is `serve()`, a Python call, not a console script.
+The objection the earlier interface answered still stands — an operator call's input is a nested structure and its output is a three-element result, and neither survives argv and stdout with its shape intact.
+The command answers it rather than avoiding it: a record bundle arrives as a file or on standard input, never as an argument, and a result is rendered rather than reformatted, with `--format json` emitting the structure unchanged.
 
-Two scripts under `lib/scripts/` are run from a checkout with `python`, one of which parses arguments.
-They are repository maintenance — regenerating the operator reference and checking a real LLM install — not a product interface.
-They install no entry point, and a consumer of either distribution never invokes them.
+### 4.1 The command tree
 
-`docs/` carries no CLI page for the same reason.
+Commands are `blue-ops <component> <action> <parameters>`, which is the family's shape.
+Twenty-four commands over five components and one subcomponent.
+
+| Component | Actions |
+|---|---|
+| `profile` | `add`, `remove`, `list`, `config`, `inspect`, `select` |
+| `catalog` | `list`, `inspect`, `select` |
+| `operator` | `list`, `search`, `inspect`, `run` |
+| `operator resource` | `list`, `inspect`, `export` |
+| `pipeline` | `add`, `import`, `export`, `list`, `inspect`, `remove`, `run` |
+| `metadata` | `inspect` |
+
+The root group carries `--version`, `-h`/`--help`, and `--profile NAME`.
+`--format table|json|nl` is on every command that returns a result; `--catalog active|history` is on every command that reads the registry; `--confirm` is on every command that destroys or overwrites something.
+
+There is no `database`, `data`, or `schema` component.
+This repository has no store of its own, an operator's attribute schema is part of that operator's description rather than a component, and the data registry those words would name belongs to `blue-data`, whose own CLI manages it.
+
+### 4.2 Configuration
+
+Four tiers, in one order everywhere: **command option > environment variable > profile > built-in default**.
+
+A parameter name is also its environment variable name.
+A variable exported empty is refused rather than read as unset, because an empty tier that is silently skipped hands the setting down without saying so.
+`BLUE_DATA_OPS_HOME` and `BLUE_DATA_PROFILE` come from the environment only, since one of them is the directory the profiles are read from and the other picks which profile that is.
+The parameter list, with casts and defaults, is `profile_spec.json` and is published in the package README.
+
+### 4.3 Output
+
+`table`, `json`, and `nl`, and there is no `csv`: a record bundle is `list[list[dict]]` and CSV has no representation for the group boundary.
+Every JSON result is one object with a payload key named for the resource, beside its metadata keys; a key that is a list or a count is present even when empty.
+The result goes to standard output and everything else — progress, logs, warnings, errors — to standard error.
+Every format strips terminal control characters from every cell, because operator output is whatever a model wrote or a data source held.
+
+### 4.4 Exit codes
+
+Ten codes, one per failure family, each carrying the library's own code in the description and in the JSON error's `detail`.
+
+| Code | Exit | Cause |
+|---|---|---|
+| — | 0 | success, including an empty result and a declined confirmation |
+| `INTERNAL` | 1 | an exception outside the classified families |
+| `USAGE` | 2 | usage error, refused by the parser before any command body runs |
+| `REQUEST` | 3 | `ResolveError`, `DiscoveryError`, or `PipelineError` |
+| `CONFIG` | 4 | a resolved configuration value the library refused |
+| `PROFILE` | 4 | a profile operation this CLI rejected |
+| `TRANSPORT` | 5 | the provider timed out, rate-limited, or was unavailable |
+| `RESOURCE` | 6 | `OperatorSkillLoadError` |
+| `PLANNING` | 7 | any other planning failure |
+| `EXECUTION` | 8 | an operator run returned a failed `ErrorRecord` |
+| `TIMEOUT` | 9 | an operator run exceeded its allowance |
+
+Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own failure families.
+
+### 4.5 Secrets
+
+A secret is never accepted as a value on the command line, where it would reach shell history: `--property openai.api_key=…` is refused and the refusal names `blue-ops profile config OPENAI_API_KEY`, which prompts with the input hidden.
+A stored secret is base64-encoded behind an `enc:` prefix, which is obfuscation rather than encryption; the 0600 file mode is the real protection and the README says so.
+Every error line, every log line, and the settings footer go through the package's masking, because they carry text the CLI did not write — a library message quoting an argument, or a provider SDK exception free to include a header.
+Records do not: they are the output an operator was asked to compute.
+
+### 4.6 Maintenance scripts are not this interface
+
+`lib/scripts/` holds two Python tools run from a checkout with `python`, one of which parses arguments, and three shell scripts that wrap `build`, `install`, and `publish`.
+They are repository maintenance, not a product interface, and they install no entry point.
 
 ---
 
@@ -755,8 +837,9 @@ They install no entry point, and a consumer of either distribution never invokes
 | the `DataPipeline` record as `to_dict()` emits it | public; it is the portable serialization boundary |
 | the operator resource index and manifest formats | versioned by their `format` strings, `blue-data-ops/operator-skill-index@1` and `blue-data-ops/operator-skill@1` |
 | the data-context document | versioned by `blue-data-ops/data-context@1` |
-| MCP tool names, arguments, and the result envelope | public. The operator version behind a tool may move without the tool changing. |
+| MCP tool names, arguments, and the result envelope | public. The operator version behind a tool may move without the tool changing, and adapter `1.0.0` renamed every tool once, to the `ops_` prefix. |
 | a module or name with a leading underscore | private, including the modules holding the `@3.0.0` outcome implementations. Reach those through the registry. |
 | `properties` keys | the cross-cutting dotted keys are public; operator-specific keys are documented per operator in [`../lib/OPERATORS.md`](../lib/OPERATORS.md) |
+| CLI command and option names, the JSON payload keys, and the exit codes | public. A renamed command, a removed option, a renamed payload key, or a moved exit code is a major version of `blue-data-ops-cli`. |
 
-Migration boundaries between release lines are in [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md) and, for the adapter, in [`../platform/mcp/README.md`](../platform/mcp/README.md).
+Migration boundaries between release lines are in [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md), for the adapter in [`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and for released versions of all three distributions in [`../CHANGELOG.md`](../CHANGELOG.md).

@@ -1,6 +1,6 @@
 # blue-data-ops
 
-`blue-data-ops 3.0.0` is a standalone Python package for Blue data operators. It includes record transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`, a list of record groups.
+`blue-data-ops 3.1.0` is a standalone Python package for Blue data operators. It includes record transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`, a list of record groups.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ If your artifact index is configured separately, install the released artifact i
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.0.0"
+  "blue-data-ops[ml,vector,llm]==3.1.0"
 ```
 
 The artifact index must also provide `blue-data>=0.1.0`. The sibling-checkout commands are the direct path for a contributor.
@@ -46,7 +46,7 @@ Read the distribution version separately from an operator-card version:
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "3.0.0"
+assert version("blue-data-ops") == "3.1.0"
 ```
 
 ## Usage
@@ -58,7 +58,7 @@ python examples/quickstart/core_quickstart.py
 PYTHONPATH=examples python examples/quickstart/sqlite_quickstart.py
 ```
 
-`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. It imports a helper module kept at the examples root, which is what the `PYTHONPATH` prefix is for. `examples/README.md` covers the ML, vector, planner, and live-provider examples. The examples tree is part of the source checkout only; no distribution carries it. The generated `OPERATORS.md` reference for the 33 active exact IDs does ship: in a source checkout it sits beside this README, and in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.0.0` source distribution from the same artifact index.
+`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. It imports a helper module kept at the examples root, which is what the `PYTHONPATH` prefix is for. `examples/README.md` covers the ML, vector, planner, and live-provider examples. The examples tree is part of the source checkout only; no distribution carries it. The generated `OPERATORS.md` reference for the 33 active exact IDs does ship: in a source checkout it sits beside this README, and in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.1.0` source distribution from the same artifact index.
 
 ### Registry roles
 

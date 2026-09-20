@@ -8,6 +8,8 @@ Where every file in the repository lives and why it lives there, one level deepe
 blue-data-ops/
 │
 ├── .gitignore                              # ignore rules for the whole repository: caches, build output, environments
+├── CHANGELOG.md                            # one entry per released version, newest first
+├── LICENSE                                 # BSD 3-Clause with a NOTICE clause, one copy for all three
 ├── README.md                               # entry point: one-line description, doc links, layout, quickstart, package table
 ├── ruff.toml                               # repository-root lint scope: extends lib/pyproject.toml so examples/ stays linted
 │
@@ -24,8 +26,9 @@ blue-data-ops/
 │   ├── 10-data-model.md                    # record, group, card, plan, and result shapes
 │   ├── 11-testing-strategy.md              # test levels, doubles and stubs, and how to run each suite
 │   ├── 12-deployment-ops.md                # versioning, packaging, install paths, and what is not automated
-│   ├── 13-decision-log.md                  # architecture decisions, append-only; no entries yet
-│   └── design-process.md                   # the document sequence and the review protocol
+│   ├── 13-decision-log.md                  # architecture decisions, append-only; empty, and says why
+│   ├── design-process.md                   # the document sequence and the review protocol
+│   └── repo-organization-template.md       # the family's generic skeleton, of which 07 is the filled-in form
 │
 ├── docs/                                   # how to use it; written for users, and kept in step with current behavior
 │   ├── README.md                           # doc index, grouped by what the reader is trying to do
@@ -37,6 +40,7 @@ blue-data-ops/
 │   ├── architecture.md                     # the user-facing subset of the design architecture documents
 │   ├── extending.md                        # writing an operator, a registry provider, or a plan generator
 │   ├── mcp.md                              # synced copy of the MCP adapter README
+│   ├── cli.md                              # synced copy of the blue-ops README
 │   └── api.md                              # placeholder: no REST API is built
 │
 ├── examples/                               # runnable scripts, grouped by purpose
@@ -46,6 +50,7 @@ blue-data-ops/
 │   ├── quickstart/                         # the scripts to run first on a fresh install
 │   ├── feature-demos/                      # one capability per script
 │   └── integration-demos/                  # scripts that combine more than one subsystem
+│                                           # each offline script has its captured stdout beside it as <script>.output.txt
 │
 ├── lib/                                    # the core distribution, blue-data-ops
 │   ├── COMPATIBILITY.md                    # source of truth for compatibility and migration boundaries
@@ -55,7 +60,10 @@ blue-data-ops/
 │   ├── pyproject.toml                      # package metadata, dependencies, and every tool configuration
 │   ├── .gitignore                          # package-local ignore rules for the environment and caches
 │   │
-│   ├── scripts/                            # maintenance scripts; not installed with the package
+│   ├── scripts/                            # packaging and maintenance scripts; not installed with the package
+│   │   ├── build.sh                        # python -m build
+│   │   ├── install.sh                      # editable install, resolving blue-data from its checkout first
+│   │   ├── publish.sh                      # twine upload dist/*
 │   │   ├── generate_operator_reference.py  # regenerates OPERATORS.md from the live registry and sealed evidence
 │   │   └── check_real_llm_install.py       # fails if litellm resolves to the test stub instead of a real install
 │   │
@@ -124,9 +132,32 @@ blue-data-ops/
 │       └── installed/                      # checks that run against a built wheel or an installed package
 │
 └── platform/                               # interface adapters, one publishable distribution per subdirectory
-    └── mcp/                                # the MCP distribution, blue-data-ops-mcp
+    ├── ops-cli/                            # the command line distribution, blue-data-ops-cli
+    │   ├── README.md                       # source of truth for the command: install, tree, configuration, formats, exit codes
+    │   ├── pyproject.toml                  # package metadata, the exact core pin, the blue-ops entry point, tool configuration
+    │   ├── scripts/                        # build.sh, install.sh, publish.sh, as in every distribution
+    │   ├── src/                            # same src layout as the core
+    │   │   └── blue_data_ops_cli/          # the importable command package
+    │   │       ├── __init__.py             # the package docstring; the command tree is reached through commands.py
+    │   │       ├── commands.py             # the root group, the five components, and the shared root options
+    │   │       ├── catalog.py              # blue-ops catalog: which registry view a command reads
+    │   │       ├── operator.py             # blue-ops operator: list, search, inspect, run
+    │   │       ├── resource.py             # blue-ops operator resource: the package that ships beside an operator
+    │   │       ├── pipeline.py             # blue-ops pipeline: plan, store, inspect, run
+    │   │       ├── profile.py              # blue-ops profile: profiles and their configuration
+    │   │       ├── metadata.py             # blue-ops metadata: what is installed and what resolves
+    │   │       ├── config.py               # option translation, the error taxonomy, and the library seams
+    │   │       ├── configstore.py          # the profile store: INI under ~/.blue-ops, atomic writes, 0600
+    │   │       ├── formats.py              # one renderer for table, json, and nl
+    │   │       ├── records.py              # record-bundle and KEY=VALUE parsing
+    │   │       ├── mask.py                 # one notion of a credential, for every channel that echoes text back
+    │   │       ├── py.typed                # PEP 561 marker
+    │   │       └── profile_spec.json       # the declared configuration parameters, their casts and defaults
+    │   └── tests/unit/                     # command tests: surface, formats, errors, storage, masking, README
+    └── ops-mcp/                            # the MCP distribution, blue-data-ops-mcp
         ├── README.md                       # source of truth for the adapter: install, embed, serve, tool contract
         ├── pyproject.toml                  # adapter metadata, the exact core pin, and tool configuration
+        ├── scripts/                        # build.sh, install.sh, publish.sh, as in every distribution
         ├── src/                            # same src layout as the core
         │   └── blue_data_ops_mcp/          # the importable adapter package
         │       ├── __init__.py             # lazy public surface, so importing the package costs nothing
@@ -141,9 +172,11 @@ blue-data-ops/
 
 ## Layout Rationale
 
-### `README.md`, `.gitignore`, and `ruff.toml`
+### `README.md`, `CHANGELOG.md`, `LICENSE`, `.gitignore`, and `ruff.toml`
 
-Three regular files sit at the root. `README.md` and `.gitignore` are the ones a reader meets before choosing a direction; `ruff.toml` exists for tooling rather than for reading.
+Five regular files sit at the root. `README.md`, `CHANGELOG.md`, and `LICENSE` are the ones a reader meets before choosing a direction; `.gitignore` and `ruff.toml` exist for tooling rather than for reading.
+`CHANGELOG.md` carries one entry per released version, newest first, and names the three distributions a version moved.
+`LICENSE` is a BSD 3-Clause licence with a fourth attribution and NOTICE clause, and it covers all three distributions from the root, which is how the rest of the family carries it. It is byte-identical to the copies `blue-data-kb-source` and `blue-data-llm-source` carry.
 `README.md` states what the package is, links [`docs/`](../docs/README.md) and [`examples/README.md`](../examples/README.md), and carries a quickstart that runs on a clean checkout.
 `.gitignore` covers the whole repository, and `lib/.gitignore` adds the package-local entries for the environment and caches that live under `lib/`.
 Keeping both ignore files means a contributor can create `lib/.venv` without the root file having to know that packages exist.
@@ -153,16 +186,16 @@ Keeping both ignore files means a contributor can create `lib/.venv` without the
 
 Contributor-facing reasoning, numbered so the reading order is part of the filename.
 A document here answers "why is it like this", and it is written once per decision rather than updated whenever behavior shifts.
-The numbering runs 01 through 13 with no gaps, plus [design-process.md](design-process.md), which states the sequence and the review protocol these files follow.
+The numbering runs 01 through 13 with no gaps, plus [design-process.md](design-process.md), which states the sequence and the review protocol these files follow, and [repo-organization-template.md](repo-organization-template.md), the family's generic skeleton that this document is the filled-in form of.
 [13-decision-log.md](13-decision-log.md) is append-only: a decision that is later reversed gets an addendum on the original entry, because the reason a shape was abandoned is worth as much as the shape that replaced it.
+It carries no entries, and says why: every decision this repository has taken is stated beside the thing it constrains, in the numbered documents above.
 
 ### `docs/`
 
 User-facing instructions, flat rather than numbered, because a user arrives with one question and leaves again.
 [`docs/README.md`](../docs/README.md) is the index that routes that question.
 These pages must track current code behavior, which is the opposite update rule from `design/` — when the two disagree, the code and `docs/` are right and the design document is stale.
-Two pages are deliberately thin: [`docs/mcp.md`](../docs/mcp.md) is a synced copy of [`platform/mcp/README.md`](../platform/mcp/README.md) and says so in text, and [`docs/api.md`](../docs/api.md) records that no REST API exists rather than leaving a reader to wonder.
-There is no `docs/cli.md`, because neither distribution declares a console entry point.
+Three pages are deliberately thin: [`docs/mcp.md`](../docs/mcp.md) is a synced copy of [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) and says so in text, [`docs/cli.md`](../docs/cli.md) is the same arrangement over [`platform/ops-cli/README.md`](../platform/ops-cli/README.md), and [`docs/api.md`](../docs/api.md) records that no REST API exists rather than leaving a reader to wonder.
 
 ### `examples/`
 
@@ -180,19 +213,24 @@ Anything that imports it has either installed it or put `src` on the path delibe
 Everything a wheel installs is under `lib/src/blue_data_ops/`.
 `OPERATORS.md`, `COMPATIBILITY.md`, and `scripts/` sit beside `src/` under `lib/` and reach a user through the source distribution rather than the wheel, because they are reference and maintenance material rather than runtime code; `MANIFEST.in` is what puts them there.
 
-`lib/scripts/` holds two scripts, both run by hand:
+`lib/scripts/` holds five scripts, all run by hand:
 
 | Script | Purpose |
 |---|---|
+| `build.sh` | `python -m build` from `lib/`, writing the wheel and the source distribution into `lib/dist/` |
+| `install.sh` | Installs `blue-data` from the sibling checkout, then this package editable with its `dev` extra; `BLUE_DATA_PATH` overrides where it looks |
+| `publish.sh` | `twine upload dist/*` from `lib/` |
 | `generate_operator_reference.py` | Regenerates `OPERATORS.md` from the live registry and the sealed evidence fixtures; `--check` verifies the committed file is current without rewriting it |
 | `check_real_llm_install.py` | Exits non-zero when `litellm` resolves to the test stub, so a provider-backed run cannot silently execute against a fake |
 
+The three shell scripts are the family's convention and every distribution in this repository carries a copy, so a contributor moving between packages runs the same three commands.
+
 ### `platform/`
 
-One subdirectory per external interface, each its own publishable distribution with its own version and its own dependency on the core.
-Only `mcp/` exists today.
-The adapter contains no operator behavior — every tool is a projection of `Operator.run()` — and keeping it outside `lib/` is what lets the library install into a process that wants four aggregates and no MCP SDK.
-A second interface would arrive as a sibling directory here rather than as an extra on the core distribution.
+One subdirectory per external interface, each its own publishable distribution with its own version and its own exact dependency on the core.
+Two exist: `ops-cli/` and `ops-mcp/`, named `<family>-<service>` so a directory name reads the same as the service it ships.
+Neither contains operator behavior — every tool and every command is a projection of `Operator.run()` — and keeping them outside `lib/` is what lets the library install into a process that wants four aggregates and neither an MCP SDK nor an argument parser.
+A third interface arrives as a sibling directory here rather than as an extra on the core distribution.
 
 ### Module-to-architecture mapping
 
@@ -210,9 +248,12 @@ The components are named and bounded in [03-high-level-architecture.md](03-high-
 | `data/provider.py`, `data/registry_seam.py` | Data Registry Seam — the package's only `blue-data` import boundary |
 | `llm/client.py`, `llm/provider.py`, `llm/templating.py`, `llm/errors.py` | LLM Client — templating, dispatch, retry, caching, rate limiting, usage records |
 | `utils/` | Utilities — Blue-compatible type, signature, JSON, UUID, and string helpers |
-| `platform/mcp/src/blue_data_ops_mcp/registration.py` | MCP Adapter — the operator selections and tool registration |
-| `platform/mcp/src/blue_data_ops_mcp/schema.py` | MCP Adapter — the wire projection of attributes and results |
-| `platform/mcp/src/blue_data_ops_mcp/server.py` | MCP Adapter — server construction and transport |
+| `platform/ops-mcp/src/blue_data_ops_mcp/registration.py` | MCP Adapter — the operator selections and tool registration |
+| `platform/ops-mcp/src/blue_data_ops_mcp/schema.py` | MCP Adapter — the wire projection of attributes and results |
+| `platform/ops-mcp/src/blue_data_ops_mcp/server.py` | MCP Adapter — server construction and transport |
+| `platform/ops-cli/src/blue_data_ops_cli/commands.py` and the five component modules | CLI — the command tree and one module per component |
+| `platform/ops-cli/src/blue_data_ops_cli/config.py`, `configstore.py` | CLI — option translation, the error taxonomy, and the profile store |
+| `platform/ops-cli/src/blue_data_ops_cli/formats.py`, `records.py`, `mask.py` | CLI — rendering, input parsing, and credential masking |
 
 ### Naming inside `operators/`
 
@@ -230,7 +271,7 @@ A reader who wants `select` opens `select_operator.py` without consulting an ind
 
 ### `lib/tests/`
 
-Tests live beside the package they cover, under `lib/tests/`, and the MCP adapter carries its own suite with its own fixtures rather than importing the library's.
+Tests live beside the package they cover, under `lib/tests/`, and each interface distribution carries its own suite with its own fixtures rather than importing the library's.
 
 ```text
 lib/tests/

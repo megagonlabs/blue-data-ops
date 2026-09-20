@@ -1,20 +1,21 @@
 # Installation
 
-Every supported way to install the two distributions in this repository, and what each one gives you.
-[`lib/README.md`](../lib/README.md) is the package README and stays the source of truth for the library's own requirements and minimal usage; this page covers both packages and the paths between them.
+Every supported way to install the three distributions in this repository, and what each one gives you.
+[`lib/README.md`](../lib/README.md) is the package README and stays the source of truth for the library's own requirements and minimal usage; this page covers all three packages and the paths between them.
 
 ## Packages
 
 | Package | Version | Path | Depends on |
 |---|---|---|---|
-| `blue-data-ops` | `3.0.0` | [`lib/`](../lib/README.md) | Python >= 3.11, `blue-data>=0.1.0` |
-| `blue-data-ops-mcp` | `0.13.0` | [`platform/mcp/`](../platform/mcp/README.md) | Python >= 3.11, `blue-data-ops==3.0.0` |
+| `blue-data-ops` | `3.1.0` | [`lib/`](../lib/README.md) | Python >= 3.11, `blue-data>=0.1.0` |
+| `blue-data-ops-mcp` | `1.0.0` | [`platform/ops-mcp/`](../platform/ops-mcp/README.md) | Python >= 3.11, `blue-data-ops==3.1.0` |
+| `blue-data-ops-cli` | `1.0.0` | [`platform/ops-cli/`](../platform/ops-cli/README.md) | Python >= 3.11, `blue-data-ops[ml,vector,llm]==3.1.0`, `click>=8.0`, `rich>=13.0` |
 
 Install `blue-data-ops` first.
-The adapter pins it exactly, so the two versions move together.
+Both interface packages pin it exactly, so their versions move with it.
 
-There are no install scripts in this repository.
-Install with `pip` directly, using one of the three paths below.
+Each package carries `scripts/install.sh`, which runs the `pip` commands below in the right order and resolves `blue-data` from the sibling checkout.
+The paths below are those commands spelled out, for an install that is not a source checkout or a `blue-data` that lives somewhere else.
 
 ## Requirements
 
@@ -74,12 +75,12 @@ Install `vector` only when you need embedding generation or search; `vector_simi
 ## Path 2: built wheel
 
 Build from `lib/` with the `dev` extra installed.
-`python -m build` writes `blue_data_ops-3.0.0-py3-none-any.whl` and `blue_data_ops-3.0.0.tar.gz` into `lib/dist/`.
+`python -m build`, which `lib/scripts/build.sh` wraps, writes `blue_data_ops-3.1.0-py3-none-any.whl` and `blue_data_ops-3.1.0.tar.gz` into `lib/dist/`.
 
 ```bash
 cd blue-data-ops/lib
 python -m build
-python -m pip install "dist/blue_data_ops-3.0.0-py3-none-any.whl[ml,vector,llm]"
+python -m pip install "dist/blue_data_ops-3.1.0-py3-none-any.whl[ml,vector,llm]"
 ```
 
 A wheel installs the importable package and its resources: the operator implementations, the `operator_skills/` resource packages, the plan JSON schemas, and `py.typed`.
@@ -95,8 +96,9 @@ The index must also provide `blue-data>=0.1.0`.
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.0.0" \
-  "blue-data-ops-mcp==0.13.0"
+  "blue-data-ops[ml,vector,llm]==3.1.0" \
+  "blue-data-ops-mcp==1.0.0" \
+  "blue-data-ops-cli==1.0.0"
 ```
 
 ## The MCP adapter
@@ -107,12 +109,38 @@ From the repository root:
 ```bash
 python -m pip install ../blue-data/lib
 python -m pip install "./lib[ml,vector,llm]"
-python -m pip install ./platform/mcp
+python -m pip install ./platform/ops-mcp
 ```
 
+`platform/ops-mcp/scripts/install.sh` runs those three steps through the library's own installer, and adds the dev extras on top.
+
 The adapter pins `mcp==1.27.2` and `pydantic>=2.11,<3` on top of the core's dependencies.
-It serves 33 primary tools, the same selection the core's `active_registry()` returns.
-There is no console entry point; start it from Python, as [mcp.md](mcp.md) shows.
+It serves 33 primary tools, the same selection the core's `active_registry()` returns, each named `ops_` plus its operator name.
+Installing it puts one command on `PATH`, `blue-data-ops-mcp`, which serves on the loopback defaults; [mcp.md](mcp.md) covers the rest.
+
+## The `blue-ops` command
+
+Install the core first, then the command.
+From the repository root:
+
+```bash
+python -m pip install ../blue-data/lib
+python -m pip install "./lib[ml,vector,llm]"
+python -m pip install ./platform/ops-cli
+```
+
+`platform/ops-cli/scripts/install.sh` runs those three steps through the library's own installer, and adds the dev extras on top.
+The package pins the core at `blue-data-ops[ml,vector,llm]==3.1.0`, so the three extras arrive with it whether or not the second command above named them.
+Add its own `openai` extra for the provider-backed planner behind `blue-ops pipeline add --planner openai`.
+
+Installing it puts one command on `PATH`, `blue-ops`.
+Confirm it, and see what the install resolved to:
+
+```bash
+blue-ops metadata inspect
+```
+
+[cli.md](cli.md) covers the command tree, the configuration tiers, the output formats, and the exit codes.
 
 ## Provider credentials
 
@@ -134,7 +162,7 @@ python -c "from importlib.metadata import version; print(version('blue-data-ops'
 python -c "from blue_data_ops.operators import active_registry; print(len(active_registry().list_cards()))"
 ```
 
-The first prints the distribution version, `3.0.0`.
+The first prints the distribution version, `3.1.0`.
 The second prints `33`, the number of active operator cards.
 Those two numbers move independently: an operator card carries its own version, and twelve of the 33 are active at `@2.0.0` while the other twenty-one are at `@3.0.0`.
 
@@ -146,14 +174,14 @@ With the `dev` extra installed, from `lib/`:
 python -m pytest
 ```
 
-The adapter has its own suite.
-From `platform/mcp/`:
+Each interface package has its own suite.
+From `platform/ops-mcp/` and from `platform/ops-cli/`:
 
 ```bash
 python -m pytest
 ```
 
-Both configurations set `asyncio_mode = "auto"` and report coverage on `src`.
+All three configurations set `asyncio_mode = "auto"` and report coverage on `src`.
 Ruff and Pyright read their settings from the same `pyproject.toml`:
 
 ```bash
@@ -167,4 +195,5 @@ python -m pyright
 - [quickstart.md](quickstart.md) — five minutes from an install to a running pipeline
 - [features.md](features.md) — what the library can do, with a short example per feature
 - [guide.md](guide.md) — the task-by-task walkthrough
+- [cli.md](cli.md) — the same operators from a shell
 - [../examples/README.md](../examples/README.md) — which scripts need which extra, and which need a credential

@@ -300,7 +300,7 @@ A package that changes between two calls can make the second one fail, and there
 
 ## Work against a real database
 
-Four operators reach a database through a `blue-data` registry: `create_database`, `create_table`, `insert_table`, and `data_discover`.
+Six operators reach a database through a `blue-data` registry: `create_database`, `create_table`, `insert_table`, `data_discover`, `nl2sql`, and `nl2bn`.
 Wrap the registry in a `RegistrySeam` and pass it in the call properties.
 This block creates a throwaway SQLite database, makes a table, inserts a row, reads it back, and finds the table by search.
 
@@ -363,6 +363,21 @@ with TemporaryDirectory() as directory:
     )
     print([record["name"] for record in discovered[0]])   # ['orders']
 ```
+
+`data_discover` returns a source's registered connection settings alongside its name and scope, and masks the secret-shaped entries among them.
+A key is matched however it is spelled — `password`, `api-key`, `clientSecret`, `api%5Fkey`, `api+key`, `PASS PHRASE` and `api key` all fold to the same comparison, whitespace inside the name included — and so is an account name such as `user` or `username`, which is half of a stored credential pair.
+Masking reaches inside any stored string, not only into the keys of the map: the userinfo half of a connection URI reads `***:***`, and a credential written as an assignment reads `***` whether it sits in a query string, an ODBC or JDBC connection string, or a sentence.
+A registered source's description is redacted for the connections inside it, so a credential written into free text does not escape by being prose rather than a setting.
+That is narrower than the treatment the settings themselves get, and deliberately so: a URI is taken apart by its own grammar wherever it appears, and an assignment is masked when it sits in a run of parameters that reads as a connection, but a lone `token=required` in a sentence is left alone.
+A run reads as a connection when a delimiter opens it, when a bare delimiter joins two of its parameters, or when it joins two or more and one of them names a connection structure such as `driver`, `server` or `initial catalog`.
+Nothing tells a documented schema value from a credential except the value, and the value is the thing nobody may read.
+What is deliberately not masked is the shape of the data a caller came to discover: a bare `key`, `keys` or `foreignKeys` entry, and the protocol, host, port and database of a connection, all come back as they are.
+A description holding no URI and no connection run comes back byte for byte; one holding either does not. `OAuth schema: token=required; authorization=optional` is returned as written, and `connect with Driver=X; Password=secret; Server=db` is not, although the two are punctuated identically — it is the connection keyword that separates them, not the spacing.
+What guarantees a credential does not come back is no longer the list of syntaxes the masker understands.
+After redaction the result is read again, and a credential name still assigned anything other than the mask loses the rest of its segment — so a shape the masker does not recognise fails closed rather than open.
+A value whose quoting or bracing never closes is masked to the end of the line for the same reason.
+Everything else — protocol, host, port, database, and the column metadata you came for — is returned as it stands.
+Read a credential from the registry directly if you need the value; discovery is a search surface and does not hand one back.
 
 `columns` is a list of `{"name": ..., "type": ...}` mappings; a bare type mapping fails validation.
 SQLite sources always resolve to the `public` collection, whatever you pass.

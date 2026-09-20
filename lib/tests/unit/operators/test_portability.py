@@ -289,7 +289,7 @@ def _shipped_portability_paths(lib_root: Path) -> tuple[Path, ...]:
 
     core_src = lib_root / "src" / "blue_data_ops"
     core_tests = lib_root / "tests"
-    mcp_root = lib_root.parent / "platform" / "mcp"
+    mcp_root = lib_root.parent / "platform" / "ops-mcp"
     mcp_src = mcp_root / "src"
     mcp_tests = mcp_root / "tests"
     required_directories = (
@@ -360,7 +360,7 @@ def test_no_internal_checkpoint_leaks_in_shipped_sources() -> None:
 
 def _minimal_release_tree(root: Path) -> Path:
     lib_root = root / "lib"
-    mcp_root = root / "platform" / "mcp"
+    mcp_root = root / "platform" / "ops-mcp"
     for directory in (
         lib_root / "src" / "blue_data_ops",
         lib_root / "tests",
@@ -399,14 +399,14 @@ def _minimal_release_tree(root: Path) -> Path:
         ("examples/example.py", "# see decision " + "D" + "39\n"),
         ("examples/coverage.json", '{"schema_version": "' + "k" + '3-review"}\n'),
         ("lib/scripts/check.py", "# see decision " + "D" + "39\n"),
-        ("platform/mcp/README.md", "see decision " + "D" + "39\n"),
-        ("platform/mcp/pyproject.toml", "# see decision " + "D" + "39\n"),
+        ("platform/ops-mcp/README.md", "see decision " + "D" + "39\n"),
+        ("platform/ops-mcp/pyproject.toml", "# see decision " + "D" + "39\n"),
         (
-            "platform/mcp/src/blue_data_ops_mcp/leak.py",
+            "platform/ops-mcp/src/blue_data_ops_mcp/leak.py",
             "# see decision " + "D" + "39\n",
         ),
         (
-            "platform/mcp/tests/leak.py",
+            "platform/ops-mcp/tests/leak.py",
             "# see decision " + "D" + "39\n",
         ),
     ],
@@ -443,7 +443,7 @@ def test_shipped_portability_scanner_refuses_a_file_in_place_of_a_required_root(
     tmp_path: Path,
 ) -> None:
     lib_root = _minimal_release_tree(tmp_path)
-    mcp_tests = tmp_path / "platform" / "mcp" / "tests"
+    mcp_tests = tmp_path / "platform" / "ops-mcp" / "tests"
     mcp_tests.rmdir()
     mcp_tests.write_text("ordinary package text\n", encoding="utf-8")
 

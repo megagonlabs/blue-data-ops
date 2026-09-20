@@ -32,7 +32,7 @@ from tests.unit.operators._v2_source_manifest_baseline import (
     UNAFFECTED_SOURCE_SHA256,
 )
 from tests.unit.operators._v2_source_provenance_amendments import (
-    SEMANTIC_JOIN_SOURCE_PROVENANCE,
+    SOURCE_PROVENANCE_AMENDMENTS,
 )
 
 _LIB = Path(__file__).resolve().parents[3]
@@ -41,7 +41,7 @@ _DISCOVERY_PATH = _LIB / "tests/fixtures/v2_discovery_catalog.json"
 _OUTCOMES_PATH = _LIB / "tests/fixtures/v2_operator_outcomes.json"
 
 _CURRENT_SOURCE_AGGREGATE_SHA256 = (
-    "0d35397397d59639627f7a4a955cf9bf5a03ebfb9cfbb341964a83a4f81d6581"
+    "519b8403b84ab4a642d930a6b9b9b4d84bd7884c269b62410d1c6835079cc11c"
 )
 _ABSENT = object()
 
@@ -148,28 +148,32 @@ def _project_amended_provenance_to_history(
     projected_discovery = copy.deepcopy(discovery)
     projected_outcomes = copy.deepcopy(outcomes)
     projected_sources = dict(live_sources)
-    old_source, current_source = SEMANTIC_JOIN_SOURCE_PROVENANCE
-
-    assert old_source == UNAFFECTED_SOURCE_SHA256["semantic_join"]
-    assert projected_sources.get("semantic_join") == current_source, (
-        "live source semantic_join must equal its exact current amendment digest"
-    )
 
     discovery_manifest = cast("dict[str, Any]", projected_discovery["source_manifest"])
     outcome_manifest = cast("dict[str, Any]", projected_outcomes["source_manifest"])
     discovery_files = cast("dict[str, str]", discovery_manifest["files"])
     outcome_files = cast("dict[str, str]", outcome_manifest["files"])
-    assert discovery_files.get("semantic_join") == current_source, (
-        "discovery source pin for semantic_join is not the exact current digest"
-    )
-    assert outcome_files.get("semantic_join") == current_source, (
-        "outcomes source pin for semantic_join is not the exact current digest"
-    )
 
-    row = _outcome_row(projected_outcomes, "semantic_join")
-    assert row.get("source_sha256") == current_source, (
-        "outcome row pin for semantic_join is not the exact current digest"
-    )
+    # Every amendment is checked at both ends before any of it is projected back: the
+    # historical digest against the freeze, the current digest against the tree and both
+    # fixtures. An amendment that names a file nobody changed fails here.
+    for name, (old_source, current_source) in sorted(SOURCE_PROVENANCE_AMENDMENTS.items()):
+        assert old_source == UNAFFECTED_SOURCE_SHA256[name], (
+            f"{name} amendment does not start from its frozen digest"
+        )
+        assert projected_sources.get(name) == current_source, (
+            f"live source {name} must equal its exact current amendment digest"
+        )
+        assert discovery_files.get(name) == current_source, (
+            f"discovery source pin for {name} is not the exact current digest"
+        )
+        assert outcome_files.get(name) == current_source, (
+            f"outcomes source pin for {name} is not the exact current digest"
+        )
+        assert _outcome_row(projected_outcomes, name).get("source_sha256") == current_source, (
+            f"outcome row pin for {name} is not the exact current digest"
+        )
+
     assert discovery_files == outcome_files, "fixture source manifests disagree"
     for label, manifest, files in (
         ("discovery", discovery_manifest, discovery_files),
@@ -182,10 +186,11 @@ def _project_amended_provenance_to_history(
             f"{label} source pins do not recompute the exact current aggregate"
         )
 
-    projected_sources["semantic_join"] = old_source
-    discovery_files["semantic_join"] = old_source
-    outcome_files["semantic_join"] = old_source
-    row["source_sha256"] = old_source
+    for name, (old_source, _current) in SOURCE_PROVENANCE_AMENDMENTS.items():
+        projected_sources[name] = old_source
+        discovery_files[name] = old_source
+        outcome_files[name] = old_source
+        _outcome_row(projected_outcomes, name)["source_sha256"] = old_source
     return projected_discovery, projected_outcomes, projected_sources
 
 
@@ -229,50 +234,55 @@ def test_source_manifest_amendment_scope() -> None:
     _assert_source_manifest_amendment_scope(discovery, outcomes, _live_source_digests())
 
 
-def test_unknown_live_amended_source_is_rejected() -> None:
+@pytest.mark.parametrize("name", sorted(SOURCE_PROVENANCE_AMENDMENTS))
+def test_unknown_live_amended_source_is_rejected(name: str) -> None:
     live_sources = _live_source_digests()
-    live_sources["semantic_join"] = "0" * 64
-    with pytest.raises(AssertionError, match="live source semantic_join"):
+    live_sources[name] = "0" * 64
+    with pytest.raises(AssertionError, match=f"live source {name}"):
         _assert_source_manifest_amendment_scope(
             _load(_DISCOVERY_PATH), _load(_OUTCOMES_PATH), live_sources
         )
 
 
-def test_rolled_back_live_amended_source_is_rejected() -> None:
+@pytest.mark.parametrize("name", sorted(SOURCE_PROVENANCE_AMENDMENTS))
+def test_rolled_back_live_amended_source_is_rejected(name: str) -> None:
     live_sources = _live_source_digests()
-    live_sources["semantic_join"] = SEMANTIC_JOIN_SOURCE_PROVENANCE[0]
-    with pytest.raises(AssertionError, match="live source semantic_join"):
+    live_sources[name] = SOURCE_PROVENANCE_AMENDMENTS[name][0]
+    with pytest.raises(AssertionError, match=f"live source {name}"):
         _assert_source_manifest_amendment_scope(
             _load(_DISCOVERY_PATH), _load(_OUTCOMES_PATH), live_sources
         )
 
 
-def test_forged_discovery_source_pin_is_rejected() -> None:
+@pytest.mark.parametrize("name", sorted(SOURCE_PROVENANCE_AMENDMENTS))
+def test_forged_discovery_source_pin_is_rejected(name: str) -> None:
     discovery = _load(_DISCOVERY_PATH)
     manifest = cast("dict[str, Any]", discovery["source_manifest"])
     files = cast("dict[str, str]", manifest["files"])
-    files["semantic_join"] = "f" * 64
-    with pytest.raises(AssertionError, match="discovery source pin"):
+    files[name] = "f" * 64
+    with pytest.raises(AssertionError, match=f"discovery source pin for {name}"):
         _assert_source_manifest_amendment_scope(
             discovery, _load(_OUTCOMES_PATH), _live_source_digests()
         )
 
 
-def test_stale_outcome_source_pin_is_rejected() -> None:
+@pytest.mark.parametrize("name", sorted(SOURCE_PROVENANCE_AMENDMENTS))
+def test_stale_outcome_source_pin_is_rejected(name: str) -> None:
     outcomes = _load(_OUTCOMES_PATH)
     manifest = cast("dict[str, Any]", outcomes["source_manifest"])
     files = cast("dict[str, str]", manifest["files"])
-    files["semantic_join"] = SEMANTIC_JOIN_SOURCE_PROVENANCE[0]
-    with pytest.raises(AssertionError, match="outcomes source pin"):
+    files[name] = SOURCE_PROVENANCE_AMENDMENTS[name][0]
+    with pytest.raises(AssertionError, match=f"outcomes source pin for {name}"):
         _assert_source_manifest_amendment_scope(
             _load(_DISCOVERY_PATH), outcomes, _live_source_digests()
         )
 
 
-def test_stale_outcome_row_pin_is_rejected() -> None:
+@pytest.mark.parametrize("name", sorted(SOURCE_PROVENANCE_AMENDMENTS))
+def test_stale_outcome_row_pin_is_rejected(name: str) -> None:
     outcomes = _load(_OUTCOMES_PATH)
-    _outcome_row(outcomes, "semantic_join")["source_sha256"] = SEMANTIC_JOIN_SOURCE_PROVENANCE[0]
-    with pytest.raises(AssertionError, match="outcome row pin"):
+    _outcome_row(outcomes, name)["source_sha256"] = SOURCE_PROVENANCE_AMENDMENTS[name][0]
+    with pytest.raises(AssertionError, match=f"outcome row pin for {name}"):
         _assert_source_manifest_amendment_scope(
             _load(_DISCOVERY_PATH), outcomes, _live_source_digests()
         )

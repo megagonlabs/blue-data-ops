@@ -22,6 +22,9 @@ Fill the gaps with the developer, and restructure the repository layout and cont
 12. **Deployment / Ops** — environment setup, configuration, infrastructure
 13. **Decision Log (ADR)** — architectural decisions and their rationale
 
+[repo-organization-template.md](repo-organization-template.md) sits beside the sequence rather than inside it.
+It is the family's generic skeleton, copied as it stands; [07-repo-organization.md](07-repo-organization.md) is this repository's filled-in version of it.
+
 ## Guidelines
 
 - Create documents one at a time, in order.

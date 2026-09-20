@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import re
 import traceback
 from typing import Any, ClassVar, cast
+from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
 from blue_data_ops.data import RegistrySeam, resolve_registry
 from blue_data_ops.operators._discovery import DiscoverySpec
@@ -139,6 +141,370 @@ def _construct_scope(
         return base_scope
 
 
+MASK = "***"
+"""What a masked value reads as, spelled the way the rest of the family spells one."""
+
+# A registered source keeps its connection settings in `properties`, and blue-data's
+# own sources put a password in there: the SQL, graph and Redis sources all default
+# `password`, and the Mongo source builds `protocol://username:password@host:port`
+# from `username` and `password`. A discovery result is the useful half of that map —
+# protocol, host, port, database — so the secret-shaped entries are masked and the
+# rest is returned as it stands.
+#
+# Nothing constrains how a registrar spells a key, so the name is folded to one
+# spelling before it is matched: `api-key`, `api.key`, `API KEY` and `apiKey` are the
+# same setting and a rule that recognised only `api_key` masked one of the four.
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_SEPARATORS = re.compile(r"[^a-z0-9]+")
+
+
+def _fold(name: str) -> str:
+    """`api-key`, `api.key`, `API KEY`, `apiKey` and `APIKey` all fold to `api_key`."""
+    return _SEPARATORS.sub("_", _CAMEL_BOUNDARY.sub("_", name).lower()).strip("_")
+
+
+# `uid` is here rather than in the shape below because it is a whole name and not a
+# fragment: ODBC spells the account name `UID` and its password `PWD`, and a rule that
+# masked one of that pair and published the other would be masking the spelling rather
+# than the setting. `uuid` and `guid` fold to themselves and are untouched.
+_SECRET_NAMES = frozenset({"user", "user_name", "username", "login", "uid"})
+# `pass_?phrase` rather than `passphrase`: a name is folded before it is matched, so the
+# spelled-out `PASS PHRASE` arrives as `pass_phrase` and the undivided spelling did not
+# reach it. The guide has listed `PASS PHRASE` as a covered spelling since the census was
+# written; it was the one name in that list nothing masked.
+_SECRET_SHAPE = re.compile(
+    r"(?:^|_)(?:password|passwd|pwd|pass_?phrase|secret|token|credential|credentials"
+    r"|auth|authorization|api_?key|apikey|access_?key|secret_?key|private_?key)(?:_|$)"
+)
+# Bare `key` is deliberately absent: `misc` carries primary and foreign keys, and a
+# column name masked here would hide the shape of the data a caller came to discover.
+# Folding does not change that — `foreignKeys` reads as `foreign_keys` and stays open.
+
+
+def _is_secret_name(name: str) -> bool:
+    folded = _fold(name)
+    return folded in _SECRET_NAMES or bool(_SECRET_SHAPE.search(folded))
+
+
+_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s\"'<>]+")
+"""A URI anywhere in a string, including one written into a sentence."""
+
+_USERINFO = re.compile(r"(//)([^/@\s]+)(@)")
+"""The `//user:pw@` half of an authority, found by shape when the parser cannot run."""
+
+# A parameter name, written the way a connection string writes one. A query encodes a
+# space as `%20` and, form-encoded, as `+`, so `api%5Fkey` and `api+key` are the setting
+# spelled `api_key`. The captured name is decoded before it is classified.
+_NAME_SOURCE = r"(?:[A-Za-z]|%[0-9A-Fa-f]{2})[A-Za-z0-9._%+\-]*"
+
+# A value, read through whatever closes it. ODBC braces a value containing a delimiter and
+# JDBC quotes one, and both escape their closing character by doubling it: `}}` inside
+# braces and `""` inside quotes are literals, so a value runs past a doubled closer and
+# ends at a single one. Stopping at the first closing character ended the value early and
+# published its tail.
+#
+# The three escaping forms are possessive, so a value that never closes fails outright
+# instead of backtracking onto the first closer it passed — which would publish the tail
+# again by another route. It falls to the opener-with-no-closer form below.
+#
+# An opener with no closer runs to the end of the line rather than to the next delimiter.
+# A value whose quoting is already broken cannot be read reliably to any earlier point, so
+# what follows it is password material until something says otherwise, and `Pwd={p;secret`
+# published `secret` while the rule stopped at the `;`. Only a credential's value is
+# consumed, so the run can no longer hide a pair written after it under another name. It
+# costs the tail of a malformed connection string: `Pwd={p q;Server=db` loses `Server=db`,
+# which is a host rather than a way in.
+_VALUE_SOURCE = (
+    r"\{(?:[^}]|\}\})*+\}"
+    r'|"(?:[^"]|"")*+"'
+    r"|'(?:[^']|'')*+'"
+    r"|\{.*"
+    r'|".*'
+    r"|'.*"
+    r"|[^;&\s]*"
+)
+
+_NAME = re.compile(rf"({_NAME_SOURCE})=")
+"""The name half of one pair, through the `=`."""
+
+_VALUE = re.compile(_VALUE_SOURCE)
+"""The value half, read from the character after the `=`."""
+
+# The name half of a pair as the check and the run scanner read it, rather than as the
+# grammar above writes one. Whitespace is inside a name and not a boundary: OLE DB spells
+# keywords `Data Source` and `Initial Catalog`, so the complete name of `api key=…` is
+# `api key`, which folds to the setting `api_key`. A line break is still a boundary —
+# no connection keyword spans one.
+_PUBLISHED_NAME_SOURCE = r"""[^;&?/="'{},\n\r]+"""
+
+_PUBLISHED_NAME = re.compile(rf"({_PUBLISHED_NAME_SOURCE})=")
+"""One published pair's name, through the `=`, whitespace and all."""
+
+_RUN_PAIR = re.compile(rf"(?P<name>{_PUBLISHED_NAME_SOURCE})=(?:{_VALUE_SOURCE})")
+"""One pair, name and value, as a run of parameters is walked."""
+
+_RUN_JOIN = re.compile(r"[ \t]*[;&][ \t]*")
+"""What joins one parameter to the next, with the whitespace a formatted string writes."""
+
+# Which keywords say that a run of parameters is a connection. A connection string names
+# what it reaches as well as who reaches it, and the first half is the half a sentence has
+# no reason to write: `Driver`, `Server`, `Data Source`, `Initial Catalog`, `encrypt`. The
+# credential half is deliberately absent — `token` and `authorization` are exactly what a
+# schema documents, so they cannot be the evidence that the run around them is a
+# connection. `schema` is absent for the same reason and it is not a near miss:
+# `OAuth schema: token=required` folds to `oauth_schema_token`, so admitting `schema` would
+# turn the one sentence this narrowing exists to protect into a connection string.
+_CONNECTION_KEYWORD = re.compile(
+    r"(?:^|_)(?:driver|server|data_?source|initial_?catalog|catalog|provider|database"
+    r"|dbname|host|hostname|port|dsn|service_?name|network_?library|packet_?size"
+    r"|connect(?:ion)?_?timeout|application_?name|encrypt|trusted_?connection"
+    r"|integrated_?security|persist_?security_?info|ssl_?mode|charset)(?:_|$)"
+)
+
+
+def _names_a_connection(name: str) -> bool:
+    """Whether one parameter name says what is being connected to rather than who by."""
+    return bool(_CONNECTION_KEYWORD.search(_fold(unquote_plus(name.strip()))))
+
+
+def _first_character(text: str, start: int) -> int:
+    """Where a name actually begins, past the whitespace a delimiter left in front of it."""
+    while start < len(text) and text[start].isspace():
+        start += 1
+    return start
+
+
+def _connection_parameters(text: str) -> frozenset[int]:
+    """Where every parameter of a connection run in *text* begins.
+
+    A description holds both, and they are punctuated identically.
+    `Driver=X; Password=p; Server=db` is a connection written the way Microsoft documents
+    the format, with a space after each `;`, and
+    `OAuth schema: token=required; authorization=optional` is a sentence about a schema.
+    Adjacency cannot tell them apart, because both write `; `, and requiring adjacency
+    published the first one. Adjacency is kept as one signal among several rather than
+    dropped, because the tight spelling `Driver=X;Pwd=p` is a connection string and a
+    sentence does not write one.
+
+    So the run is identified by what it holds. A run is a maximal sequence of `name=value`
+    pairs joined by a delimiter and whatever whitespace surrounds it, and it counts as a
+    connection when a delimiter opens it, or when it joins two or more parameters and
+    either a bare delimiter joins two of them or one of them names a connection structure
+    rather than a credential. The bare-delimiter clause is the rule this replaced, kept so
+    that nothing the narrower rule masked is published now: widening it to tolerate
+    whitespace adds cases and removes none. A lone assignment in the middle of a sentence
+    is still never a connection run, which is the fail-open this field took deliberately.
+
+    What comes back is where each parameter starts, not the span the run covers, because a
+    name reads back across whatever is in front of it. In
+    `Driver=X; Pwd=p; Server=db. OAuth schema: token=required` the complete name before
+    `required` is `db. OAuth schema: token`: it folds to something the census reads as a
+    credential and it begins inside the connection string without being a parameter of it.
+    A pair belongs to the run when it begins where a parameter begins.
+    """
+    grouped: list[list[re.Match[str]]] = []
+    joined_bare: list[bool] = []
+    for pair in _RUN_PAIR.finditer(text):
+        join = _RUN_JOIN.fullmatch(text, grouped[-1][-1].end(), pair.start()) if grouped else None
+        if join is None:
+            grouped.append([pair])
+            joined_bare.append(False)
+        else:
+            grouped[-1].append(pair)
+            # A name absorbs the whitespace in front of it, so the join alone does not say
+            # whether the delimiter was bare: `; Pwd` leaves `;` as the join and ` Pwd` as
+            # the name. Both halves have to be tight.
+            bare = len(join.group()) == 1 and not pair.group("name")[:1].isspace()
+            joined_bare[-1] = joined_bare[-1] or bare
+
+    parameters: set[int] = set()
+    for run, bare in zip(grouped, joined_bare, strict=True):
+        start = run[0].start()
+        opened = start > 0 and text[start - 1] in "?;&" and not text[start].isspace()
+        names_a_connection = any(_names_a_connection(pair.group("name")) for pair in run)
+        if opened or (len(run) > 1 and (bare or names_a_connection)):
+            parameters.update(_first_character(text, pair.start()) for pair in run)
+    return frozenset(parameters)
+
+
+def _in_a_connection_run(parameters: frozenset[int], text: str, start: int) -> bool:
+    """Whether a name beginning at *start* is a parameter of a connection run."""
+    return _first_character(text, start) in parameters
+
+
+def _redact_assignments(text: str, *, in_prose: bool = False) -> str:
+    """Mask every `name=value` in *text* whose name reads as a credential.
+
+    A connection string writes its parameters with `&`, with `;`, or with no URI around
+    them at all: `?user=reader&password=pw` in a DSN query,
+    `jdbc:sqlserver://host;user=alice;password=pw;` in a JDBC authority, and a bare
+    settings line stored under `dsn` all put the same pair in the same shape. Matching the
+    pair rather than the delimiter reaches all three, and nothing that is not a pair moves.
+
+    Only a credential's value is consumed. A pair under any other name is stepped over at
+    its `=` and its value is scanned like the rest of the string, because a quoted or
+    braced value is the one shape that can hold a delimiter: skipping over one under
+    `Driver=` would let `Driver="x;Pwd=p"` carry a password out whole.
+
+    *in_prose* narrows the rule for a field holding a sentence rather than a setting, to
+    the connection runs inside it. See `_connection_parameters`.
+    """
+    masked: list[str] = []
+    cursor = 0
+    parameters = _connection_parameters(text) if in_prose else frozenset[int]()
+    for name in _NAME.finditer(text):
+        if name.start() < cursor:
+            continue  # inside a value already consumed under a credential name
+        if not _is_secret_name(unquote_plus(name.group(1))):
+            continue
+        value = _VALUE.match(text, name.end())
+        end = value.end() if value else name.end()
+        if in_prose and not _in_a_connection_run(parameters, text, name.start()):
+            continue
+        masked.append(text[cursor : name.start()])
+        masked.append(f"{name.group(1)}={MASK}")
+        cursor = end
+    masked.append(text[cursor:])
+    return "".join(masked)
+
+
+# The check below reads a name the grammar above might not. It deliberately does not share
+# `_NAME_SOURCE`: a check that inherits the parser's blind spots is not a check. Anything
+# up to the `=` that is not a delimiter is a candidate name, and `unquote_plus` and the
+# fold decide what it is — so an encoding nobody has met yet reaches the same vocabulary.
+# `_PUBLISHED_NAME` is defined with the run scanner above, because the two have to agree
+# about where a name starts.
+
+_SEGMENT_END = re.compile(r"[;&]")
+_PROSE_SEGMENT_END = re.compile(r"[;&\s]")
+
+
+def _refuse_a_published_credential(text: str, *, in_prose: bool = False) -> str:
+    """Mask any credential still assigned to something other than the mask.
+
+    This is a post-condition rather than another parsing rule, and it is here because
+    every leak this operator has had was the same sentence: the scanner stopped before the
+    value did and published the remainder. Adding the next shape to the grammar fixes the
+    shape that was reported; checking the output fixes the ones that were not.
+
+    The rule is one sentence. If a credential name is assigned a segment that is not
+    exactly the mask, the whole segment goes. A shape the grammar cannot read therefore
+    fails closed, where before it failed open, and the grammar's completeness stops being
+    what the guarantee rests on.
+
+    A segment ends at `;` or `&`, and in prose also at whitespace, because a sentence ends
+    a connection string where a connection string does not. It ends no earlier than the
+    value does: a delimiter inside something that opens is data rather than a boundary, so
+    the segment runs past the enclosure first and looks for its end after it. Reading the
+    delimiter alone cut `api key={alpha;<secret>}` at the brace and published the rest.
+
+    A name is trimmed, decoded and folded, so `api key`, ` api+key` and `API%20KEY` are one
+    setting. In prose the check only looks at pairs inside a connection run — a lone
+    `token=required` documents a field and is not a credential assignment to refuse.
+    """
+    refused: list[str] = []
+    cursor = 0
+    ends = _PROSE_SEGMENT_END if in_prose else _SEGMENT_END
+    parameters = _connection_parameters(text) if in_prose else frozenset[int]()
+    for name in _PUBLISHED_NAME.finditer(text):
+        if name.start() < cursor:
+            continue
+        if not _is_secret_name(unquote_plus(name.group(1).strip())):
+            continue
+        value = _VALUE.match(text, name.end())
+        stop = ends.search(text, value.end() if value else name.end())
+        end = stop.start() if stop else len(text)
+        if text[name.end() : end] == MASK:
+            continue
+        if in_prose and not _in_a_connection_run(parameters, text, name.start()):
+            continue
+        refused.append(text[cursor : name.start()])
+        refused.append(f"{name.group(1)}={MASK}")
+        cursor = end
+    refused.append(text[cursor:])
+    return "".join(refused)
+
+
+def _redact_uri(uri: str) -> str:
+    """Mask the userinfo and the credential-bearing parameters of one URI.
+
+    A DSN carries its secret in either half — `postgresql://user:pw@host/db` and
+    `postgresql://host/db?password=pw` are the same connection written two ways — so the
+    URI is taken apart by its own grammar rather than matched as a shape. Parameters are
+    masked in the query, in the authority and in the path, because a JDBC URL keeps them
+    in the last two. Everything that is not masked is returned exactly as it arrived.
+    """
+    try:
+        parts = urlsplit(uri)
+    except ValueError:
+        # `http://[::1` matches the URI shape and `urlsplit` rejects it. Redaction is a
+        # safety transform over whatever a registrar stored, so a parse it cannot do falls
+        # back to the shape rule it replaced rather than raising: the caller is a search
+        # result, and an exception here would lose the record instead of the credential.
+        return _USERINFO.sub(lambda match: f"{match.group(1)}{MASK}{match.group(3)}", uri)
+
+    netloc = parts.netloc
+    if "@" in netloc:
+        userinfo, _, host = netloc.rpartition("@")
+        netloc = f"{MASK}:{MASK}@{host}" if ":" in userinfo else f"{MASK}@{host}"
+    netloc = _redact_assignments(netloc)
+    path = _redact_assignments(parts.path)
+    query = _redact_assignments(parts.query)
+
+    if (netloc, path, query) == (parts.netloc, parts.path, parts.query):
+        return uri
+    return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
+
+
+def _redact_string(text: str, *, in_prose: bool = False) -> str:
+    """Redact one published string. Nothing it is given makes it raise.
+
+    The assignment pass runs over the whole string first, because it is the only one that
+    reads a value as the thing that closes it: `_URI` matches a URI by shape and a shape
+    has to stop somewhere, so a quoted or braced value containing a space or a quote ends
+    the match in the middle of the credential. Masking the pair before the URI is found
+    means the URI pass never sees a half of one.
+
+    The URI pass then takes what is left apart by its own grammar, which is what reaches a
+    credential written as `//user:pw@` rather than as a pair. It runs on a prose field on
+    the same terms as on any other, because a URI is a connection however it is written.
+
+    The post-condition runs last and checks the result rather than the input. See
+    `_refuse_a_published_credential`.
+    """
+    text = _redact_assignments(text, in_prose=in_prose)
+    try:
+        text = _URI.sub(lambda match: _redact_uri(match.group(0)), text)
+    except Exception:
+        # Totality is the point: a malformed URI in one field of one record must not turn
+        # a search that should return that record into an empty result. The assignment
+        # pass above has already run on the unparsed text.
+        pass
+    return _refuse_a_published_credential(text, in_prose=in_prose)
+
+
+def _redact(value: Any, *, in_prose: bool = False) -> Any:
+    """Copy *value* with secret-shaped entries masked, leaving everything else alone."""
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in cast("dict[str, Any]", value).items():
+            name = str(key)
+            # Decoded before it is matched, exactly as the two string parsers decode a name
+            # they find in a connection string. A stored settings key can arrive
+            # percent-encoded from whatever wrote it, and `api%5Fkey` folds to `api_5_fkey`
+            # undecoded, which matches nothing and publishes the value.
+            if _is_secret_name(unquote_plus(name)):
+                redacted[name] = MASK
+            else:
+                redacted[name] = _redact(item, in_prose=in_prose)
+        return redacted
+    if isinstance(value, list):
+        return [_redact(item, in_prose=in_prose) for item in cast("list[Any]", value)]
+    if isinstance(value, str):
+        return _redact_string(value, in_prose=in_prose)
+    return value
+
+
 def _transform_result(
     result: dict[str, Any],
     concept_type: str,
@@ -157,10 +523,18 @@ def _transform_result(
 
     full_record = registry.get_record(result["name"], concept_type, result["scope"])
     if full_record:
-        transformed_result["description"] = full_record.get("description", "")
-        transformed_result["properties"] = full_record.get("properties", {})
+        # A description is prose a registrar wrote for a person, and nothing stops that
+        # person writing a connection string into it: a credential there reaches whoever
+        # can call this operator exactly as one in `properties` does. It goes through the
+        # same redaction, narrowed to what reads as a connection rather than as a
+        # sentence — a URI, and a parameter in a run of them. A lone `name=value` in prose
+        # documents a field rather than authenticating to one, and is left alone.
+        transformed_result["description"] = _redact(
+            full_record.get("description", ""), in_prose=True
+        )
+        transformed_result["properties"] = _redact(full_record.get("properties", {}))
         if include_metadata:
-            transformed_result["metadata"] = full_record.get("metadata", {})
+            transformed_result["metadata"] = _redact(full_record.get("metadata", {}))
     else:
         transformed_result["description"] = ""
         transformed_result["properties"] = {}
