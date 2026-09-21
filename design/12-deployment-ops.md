@@ -89,9 +89,23 @@ Two paths are supported, and [`docs/installation.md`](../docs/installation.md) i
 A source checkout expects `blue-data` and `blue-data-ops` as siblings under one parent directory, because the core's `blue-data` dependency is resolved from that local path rather than from an index.
 Each package's `scripts/install.sh` does that resolution: the library's installs `blue-data` from the sibling checkout and then the library, and both interface packages call the library's first, add the three extras their operators need, and then install themselves.
 
+Create and activate either a standard virtual environment:
+
 ```bash
 python -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
+```
+
+or a Conda environment:
+
+```bash
+conda create --name blue-data-ops python=3.12 pip
+conda activate blue-data-ops
+```
+
+Then run the installer with either environment active:
+
+```bash
 ./blue-data-ops/lib/scripts/install.sh
 ```
 

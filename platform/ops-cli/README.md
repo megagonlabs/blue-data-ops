@@ -4,6 +4,24 @@ The `blue-ops` command. It reaches the operator library in [`lib/`](../../lib/RE
 
 ## Install
 
+Create and activate either a standard virtual environment:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+or a Conda environment:
+
+```bash
+conda create --name blue-data-ops-cli python=3.12 pip
+conda activate blue-data-ops-cli
+```
+
+If Conda reports that activation is unavailable, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to `platform/ops-cli`.
+
+With either environment active, run:
+
 ```bash
 scripts/install.sh
 ```
@@ -17,12 +35,7 @@ Add the provider-backed planner's dependency with the `openai` extra:
 pip install -e ".[dev,openai]"
 ```
 
-This package points `pyright` at a `.venv` in its own directory, matching the other packages in this repository.
-Create and activate one before installing, or the type gate reports every import as unresolved instead of reporting real typing errors:
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-```
+Installation, runtime use, and pytest work in either environment. This package's Pyright configuration still looks for `.venv` in `platform/ops-cli`, so use the standard virtual-environment path when running the documented Pyright gate.
 
 ## Commands
 

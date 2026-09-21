@@ -6,7 +6,23 @@ The adapter pins `blue-data-ops==3.1.0`. Every tool name is `ops_` followed by t
 
 ## Install
 
-For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. From the `blue-data-ops` repository root, install the sibling dependency, core, and adapter:
+For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. From the `blue-data-ops` repository root, create and activate either a standard virtual environment:
+
+```bash
+python -m venv platform/ops-mcp/.venv
+source platform/ops-mcp/.venv/bin/activate
+```
+
+or a Conda environment:
+
+```bash
+conda create --name blue-data-ops-mcp python=3.12 pip
+conda activate blue-data-ops-mcp
+```
+
+If Conda reports that activation is unavailable, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to the repository root.
+
+With either environment active, install the sibling dependency, core, and adapter:
 
 ```bash
 python -m pip install ../blue-data/lib
@@ -15,6 +31,8 @@ python -m pip install ./platform/ops-mcp
 ```
 
 `platform/ops-mcp/scripts/install.sh` does the same three steps through the library's own installer, which resolves `blue-data` from its checkout first.
+
+Installation, runtime use, and pytest work in either environment. This package's Pyright configuration still looks for `.venv` in `platform/ops-mcp`, so use the standard virtual-environment path when running the documented Pyright gate.
 
 If your artifact index is configured separately:
 

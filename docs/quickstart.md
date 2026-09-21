@@ -12,14 +12,25 @@ For the wheel path, the optional extras, and the provider-backed operators, see 
 ls -d blue-data blue-data-ops
 ```
 
-## 2. Create and activate a virtual environment
+## 2. Create and activate an environment
 
-The package's own tooling expects the environment at `lib/.venv`, so put it there.
+Choose a standard virtual environment:
 
 ```bash
 python3 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
 ```
+
+or a Conda environment:
+
+```bash
+conda create --name blue-data-ops python=3.12 pip
+conda activate blue-data-ops
+```
+
+If Conda reports that activation is unavailable, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to the directory that holds both checkouts.
+
+Both choices support this quick start and the pytest suite. The repository's Pyright configuration still looks for `lib/.venv`, so use the standard virtual-environment path when running the documented Pyright gate.
 
 ## 3. Install `blue-data` first, then this package
 

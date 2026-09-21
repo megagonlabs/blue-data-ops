@@ -36,12 +36,30 @@ Everything heavier sits behind an extra.
 
 Run these from the parent directory that holds both checkouts.
 
+Create and activate either a standard virtual environment:
+
 ```bash
 python3 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
+```
+
+or a Conda environment:
+
+```bash
+conda create --name blue-data-ops python=3.12 pip
+conda activate blue-data-ops
+```
+
+If Conda reports that activation is unavailable, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to the directory that holds both checkouts.
+
+With either environment active, install the two packages:
+
+```bash
 python -m pip install -e ./blue-data/lib
 python -m pip install -e ./blue-data-ops/lib
 ```
+
+Installation, runtime use, and pytest work in either environment. The repository's Pyright configuration still looks for `lib/.venv`, so use the standard virtual-environment path when running the documented Pyright gate.
 
 Add the extras you need in the same command:
 

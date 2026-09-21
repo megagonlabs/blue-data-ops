@@ -9,14 +9,30 @@
 
 ## Installation
 
-For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. Then run:
+For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. Create and activate either a standard virtual environment:
 
 ```bash
 python3 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
+```
+
+or a Conda environment:
+
+```bash
+conda create --name blue-data-ops python=3.12 pip
+conda activate blue-data-ops
+```
+
+If Conda reports that activation is unavailable, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to the directory that holds both checkouts.
+
+With either environment active, run:
+
+```bash
 python -m pip install -e ./blue-data/lib
 python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]"
 ```
+
+Installation, runtime use, and pytest work in either environment. The repository's Pyright configuration still looks for `lib/.venv`, so use the standard virtual-environment path when running the documented Pyright gate.
 
 Install the `dev` extra when working on this package:
 
