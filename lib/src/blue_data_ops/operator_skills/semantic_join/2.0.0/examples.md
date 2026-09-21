@@ -1,4 +1,4 @@
-# Semantic-join check
+# Semantic-join example
 
 Environment: llm
 

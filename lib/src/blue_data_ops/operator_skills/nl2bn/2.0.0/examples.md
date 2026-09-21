@@ -1,8 +1,8 @@
-# Bayesian-network query check
+# Bayesian-network query example
 
 Environment: llm
 
-The local client first returns an invalid query, then a corrected query. The assertions show that the same schema crosses the client boundary twice.
+The local client first returns an invalid query, then a corrected query. The operator sends the same schema on both attempts.
 
 ```python
 import json

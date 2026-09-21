@@ -1,4 +1,4 @@
-# Semantic-filter check
+# Semantic-filter example
 
 Environment: llm
 

@@ -1,7 +1,6 @@
 # blue-ops — the command line
 
-> **Synced copy.** [`platform/ops-cli/README.md`](../platform/ops-cli/README.md) is the source of truth for the `blue-ops` command; this page tracks it.
-> Where the two disagree, the package README wins.
+> The complete package guide is [`platform/ops-cli/README.md`](../platform/ops-cli/README.md).
 > For the Python surface these commands call, see [api-reference.md](api-reference.md); for the same operators over MCP, see [mcp.md](mcp.md).
 
 `blue-data-ops-cli` installs one command, `blue-ops`, which reaches the operator library in [`lib/`](../lib/README.md) from a shell.
@@ -438,8 +437,6 @@ blue-ops pipeline remove copy --confirm
 
 ## Where this departs from the family guide
 
-Three departures.
-
 | Departure | Why |
 |---|---|
 | `run` is a verb outside the standard list | The guide's verbs are `add`, `remove`, `list`, `config`, `select`, `query`, `inspect`, `search`, `import` and `export`. None of them means "apply a transformation to a supplied record bundle and return the result". `query` is the nearest and is the wrong one: everywhere else in the family `query` retrieves from a store, and reusing it here would put one word on two meanings, which the guide forbids more firmly than it forbids a new verb. `run` is the library's own name for the same entry point. |
@@ -473,24 +470,22 @@ Registering a custom operator, editing a pipeline graph node by node, and the li
             └── provenance.json   where it came from and when, mode 0600
 ```
 
-Every write goes to a temporary file in the same directory and is moved into place, so an interrupted run cannot leave a profiles file the next run refuses to parse.
-A value holding a line break is refused, because the file is line-oriented and one pasted from a CRLF file would be read back as a separate setting.
-A path inside the home that is a symlink out of it is refused rather than followed.
-A path found with wider permissions is reported once; the directory is left as you set it, and a file goes back to 0600 on the next write.
+Storage operations follow these rules:
 
-A secret is never accepted as a value on the command line, where it would land in shell history.
-`blue-ops profile config OPENAI_API_KEY` prompts with the input hidden.
-Enter `$MY_KEY` at that prompt to store a reference to an environment variable instead of the secret itself; `profile inspect` then shows `$MY_KEY (set)` or `$MY_KEY (unset)`, so you can see what to export.
+- Writes use a temporary file in the destination directory and then rename it into place. Line breaks are rejected in line-oriented values. Successful writes are not flushed to disk, so a power loss may restore the previous value, but it cannot leave a torn file.
+- The CLI opens the home directory once and resolves descendants relative to open directory descriptors. It does not follow directory links during ordinary descent. A link within the home may target another location within the home; the target is resolved and checked by the same traversal. A link that resolves outside the home is refused. This prevents a directory swap from redirecting a later operation outside the home.
+- Wider directory permissions produce one warning and are otherwise left unchanged. Files return to mode 0600 on their next write. A write creates missing directories with mode 0700; reads do not create directories.
+- Pipeline removal first renames the directory to a private claim name within `<profile>/pipeline/` and flushes that rename. If the flush fails, the original name is restored and the command fails before deleting content.
+- Deletion works through the opened claimed directory. Before the final `rmdir`, the CLI verifies that the claim name still refers to that directory; if the entry moved, removal stops. The final `rmdir` is flushed so a successful removal remains complete after a power loss. New pipeline names cannot begin with a dot because that namespace is reserved for claims.
+- A claim marker is written before any file is unlinked and removed last. After an interruption, the next `pipeline list` or `pipeline remove` resumes only entries carrying that marker. A claim-shaped entry without the marker is treated as a pipeline created by an older version: it is reported on standard error and remains available to list, inspect, export, or remove, but the name cannot be reused for a new pipeline. Failure to write the marker restores the original name.
+- An empty claim-shaped directory without a marker is removed as interrupted cleanup. A nonempty directory or non-directory entry without the marker is left unchanged.
 
-A directly entered secret is stored base64-encoded behind an `enc:` prefix.
-**That is obfuscation, not encryption**: anyone who can read the file can decode it, and the file mode is the real protection.
-No command prints a secret value — not `profile inspect`, not `profile list`, not a log line, not an error message.
+Secrets follow a separate set of rules:
 
-The last two are not the store's doing.
-An error message and a `--log` line carry text this CLI did not write: a library message quoting what you typed, and a provider SDK's exception, which is free to include a request header or a fragment of a key.
-Every error line, every JSON error object and its `detail`, every log line and the traceback a logged failure prints go through this package's masking, which replaces a value the environment holds under a credential's name, and anything written in a credential's shape, with `***`.
-So does the `openai.model` entry in the `settings` envelope.
-Records do not go through it: they are the output an operator was asked to compute, and a value that happens to read like a token is the answer you asked for.
+- Secret values are not accepted as command-line arguments. `blue-ops profile config OPENAI_API_KEY` prompts without echo. Entering `$MY_KEY` stores an environment-variable reference; `profile inspect` reports `$MY_KEY (set)` or `$MY_KEY (unset)`.
+- A directly entered secret is stored as base64 behind an `enc:` prefix. This is obfuscation, not encryption; file permissions provide the protection.
+- Commands do not expose configured secret values through profile output, errors, or logs. Secret masking covers error lines, JSON error objects and their `detail`, logs, logged tracebacks, and `openai.model` in the `settings` envelope. It masks credential values found in the environment and strings with credential syntax. Ordinary model names are unchanged.
+- Operator records are not masked because they are computed output; a token-shaped record value may be a requested result.
 
 ## Output formats
 

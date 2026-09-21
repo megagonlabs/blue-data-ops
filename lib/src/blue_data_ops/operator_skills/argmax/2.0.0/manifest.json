@@ -3,6 +3,6 @@
   "operator_id": "argmax@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "3f67759065772cad55be413abd2c0054bc79263f04fe6fdc357168c1dd903998"},
-    "examples": {"path": "examples.md", "sha256": "dde40358c3c6ce510d5b7efd9780210be8a7df320b9676157897fb8f4d855a07"}
+    "examples": {"path": "examples.md", "sha256": "244a00383d5c0ea8fa6ac670ffe5ffaa527d8962a32bed1f5db7e0c4be28b88a"}
   }
 }

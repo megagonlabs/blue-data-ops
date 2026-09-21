@@ -3,6 +3,6 @@
   "operator_id": "intersect@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "3b271d9b8fd4485faac7fa3e6a4874d0f0457ae762da64027d0243b09059900f"},
-    "examples": {"path": "examples.md", "sha256": "87f276b2d69c9b293f31dc4addeeeb5f6b914e746f3880d2ab06c0f6d49c0712"}
+    "examples": {"path": "examples.md", "sha256": "0bfb97d98d06fcb231096cf7ed9426fad09381e3c733ab6ee3ffb0d51c6806bb"}
   }
 }

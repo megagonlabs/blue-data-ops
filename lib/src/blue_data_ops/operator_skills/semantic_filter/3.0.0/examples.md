@@ -1,8 +1,8 @@
-# Semantic-filter check
+# Semantic-filter example
 
 Environment: llm
 
-This scripted client exercises deterministic control flow. It makes no live provider call and says nothing about model judgment.
+This scripted client returns deterministic filter decisions. It makes no live provider call and says nothing about model judgment.
 
 ```python
 from blue_data_ops.llm import LLMClient

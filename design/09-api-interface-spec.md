@@ -1,6 +1,6 @@
 # blue-data-ops — API / Interface Spec
 
-Every interface a consumer outside this repository can call, and the one a reader might reasonably expect and will not find.
+The interfaces available to consumers of this repository.
 
 Three external interfaces exist.
 The **Python library** is canonical: everything else delegates to it.
@@ -8,7 +8,7 @@ The **MCP server** is a thin adapter in a second distribution, `blue-data-ops-mc
 The **`blue-ops` command** is a third distribution, `blue-data-ops-cli`, on the same terms.
 
 There is no REST API.
-Section 3 says so at the position a reader would look, rather than leaving the absence to be inferred.
+Section 3 records that boundary.
 
 Authentication and authorization are the deployment layer's.
 No distribution authenticates a caller, and the MCP server binds to loopback by default.
@@ -111,7 +111,7 @@ Thirty-three names, grouped as [`../lib/OPERATORS.md`](../lib/OPERATORS.md) grou
 
 A class name resolves to the `@2.0.0` implementation when constructed directly, because a `@3.0.0` outcome implementation is a separate private class the registry selects.
 Construct through `active_registry().resolve(...)` to get the active version.
-Per-operator attributes, tags, and accepted result coordinates are in [`../lib/OPERATORS.md`](../lib/OPERATORS.md), which is generated and is the source of truth for that detail.
+Per-operator attributes, tags, and documented outcomes are in [`../lib/OPERATORS.md`](../lib/OPERATORS.md), which is generated and is the source of truth for that detail.
 
 ### 1.4 The operator call surface
 
@@ -315,7 +315,7 @@ def resolve_registry(properties: Properties | None, provider: DataRegistryProvid
 
 `RegistrySeam` is the facade the registry-backed operators call.
 Its methods cover source registration and connection, database and collection-entity creation, description setting, record read and write, entity and attribute listing, schema retrieval, query execution, and record search including the hierarchical form.
-The four operators that need it are `create_database`, `create_table`, `insert_table`, and `data_discover`.
+Six operators use it: `create_database`, `create_table`, `insert_table`, `data_discover`, `nl2bn`, and `nl2sql`.
 
 `resolve_registry` resolves in this order: an injected `RegistrySeam` under `properties["data_registry"]`, a raw `blue-data` `DataRegistry` under the same key which it wraps, then the pair `properties["platform.name"]` and `properties["data_registry.name"]` handed to the provider.
 It returns `None` when none of those is present.
@@ -740,9 +740,9 @@ The same string is `blue_data_ops_mcp.__version__` and what package metadata ret
 There is no HTTP API in this repository.
 `platform/` holds `ops-cli` and `ops-mcp`, and there is no `platform/api/`, no ASGI or WSGI application, and no web framework in any distribution's dependencies or extras.
 
-Nothing is planned here either, and the absence is a consequence of a standing decision rather than a gap: hosting for a model client is what MCP already provides, and a second protocol adapter would need a second consumer to justify it.
-A REST adapter, if one were ever wanted, would be a fourth distribution under `platform/` with its own version and its own exact pin on the core, following the shape section 2.7 describes.
-It would stay a thin adapter over section 1 and hold no operator logic, exactly as the MCP adapter does.
+MCP provides the current network interface for model clients, and no REST adapter is planned.
+If a REST adapter is added, it would be a fourth distribution under `platform/`, with its own version and exact core pin, following the shape in section 2.7.
+Like the MCP adapter, it would keep operator logic in the core.
 
 
 ---

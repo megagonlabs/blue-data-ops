@@ -1,4 +1,4 @@
-# Join check
+# Join example
 
 Environment: base
 

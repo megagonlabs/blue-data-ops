@@ -4,8 +4,8 @@ What each test level in this repository checks, what stands in for the things it
 
 ## Overview
 
-**Nothing here runs automatically.**
-The repository has no CI configuration and no `.github/` directory, so every command below is one a contributor types.
+The repository has no CI configuration or `.github/` directory.
+Contributors run the commands below locally.
 See [12-deployment-ops.md](12-deployment-ops.md) for what that means at release time.
 
 There are three suites, one per distribution, each configured in its own `pyproject.toml` and run from its own directory:
@@ -60,8 +60,7 @@ Each line is doing a specific job:
 | `addopts` | Coverage is on by default rather than opt-in; a bare run prints the missing lines |
 | `[tool.coverage.run]` | Measures `src` only, so test and helper lines do not inflate the number |
 
-No minimum coverage threshold is configured, in any package.
-The number is a reading, not a gate.
+Coverage is reported on every run, but no minimum threshold is enforced.
 
 [`platform/ops-mcp/pyproject.toml`](../platform/ops-mcp/pyproject.toml) carries the same block with two differences: `testpaths = ["tests"]`, because the adapter's suite has no `unit/` subdirectory to separate, and `pythonpath = ["src", "../../lib/src"]`, which names the library root explicitly rather than leaving it to an install.
 [`platform/ops-cli/pyproject.toml`](../platform/ops-cli/pyproject.toml) carries the same two roots and keeps `testpaths = ["tests/unit"]`.
@@ -89,7 +88,7 @@ lib/tests/
 ├── stubs/
 │   ├── litellm/                   # deterministic completion stand-in that never calls a network
 │   └── sentence_transformers/     # deterministic encoder stand-in that never downloads a model
-├── fixtures/                      # JSON reference documents and the sealed reference-generator evidence
+├── fixtures/                      # JSON reference documents and digest-pinned generator inputs
 └── installed/
     ├── operator_skill_release_gate.py    # wheel metadata, resource index, and digest checks over built artifacts
     ├── operator_skill_owner_checks.py    # executes the example pages inside a resource package
@@ -145,14 +144,14 @@ Those relative imports are the one place in the repository where they appear; th
 | Built artifacts | `unit/operator_skills/test_release_gate.py` and friends, over `tests/installed/` | A wheel carries the resource packages it claims, at the digests it claims — see section 8 |
 | Adapter | `platform/ops-mcp/tests/` | Tool registration, schema projection, and that a protocol call and a direct call return the same thing |
 
-The import-boundary level is worth calling out, because it enforces an architecture decision rather than a behavior.
-`test_portability.py` parses every module in the installed package with `ast` and fails on a disallowed import root, which is what keeps the single `blue-data` boundary in `data/` from eroding one convenient import at a time.
+The import-boundary tests enforce an architecture constraint rather than runtime behavior.
+`test_portability.py` parses every module in the installed package with `ast` and rejects disallowed import roots, preserving `data/` as the single `blue-data` boundary.
 
 ---
 
 ## 5. Doubles, Stubs, and Fixtures
 
-Three different kinds of stand-in, used for three different reasons.
+The tests use three kinds of stand-in.
 
 **Doubles** replace a collaborator whose real behavior is not what the test is about.
 `tests/doubles/data.py` provides `RegistrySeamDouble`, which implements the data seam's surface and records every call so an operator test can assert on its boundary interactions offline, and `SQLSourceDouble`, which stands in for the returned SQL source's connect, cursor, `executemany`, commit, and disconnect sequence.
@@ -190,7 +189,7 @@ In practice almost every fixture is local: a test module defines its own `op()` 
 The adapter suite's `conftest.py` follows the same idea with its own inline stand-in rather than importing the library's.
 
 **Fixtures**, in the data sense, are the JSON documents under `tests/fixtures/`.
-Two of them are sealed reference projections whose SHA-256 digests are asserted by `test_operator_reference.py`, so the input to the generated operator reference cannot be edited without the suite noticing.
+Two are generator inputs whose SHA-256 digests are asserted by `test_operator_reference.py`, so the suite detects any change to the input used for the generated operator reference.
 The rest are recorded catalogs and outcome tables that the cross-version suites compare against.
 
 `numpy` and `scikit-learn` get no stub.
@@ -203,7 +202,7 @@ Where a test needs them it declares that with `pytest.importorskip`, and where a
 No test reaches an external service.
 There is no cassette tier, no `@pytest.mark.vcr`, and no recorded HTTP interaction anywhere in the repository, which is what makes a bare `pytest` safe with no `OPENAI_API_KEY` set.
 
-Two tests come close enough to be worth naming.
+Two tests exercise network libraries without contacting external services.
 `unit/plan/test_openai_generator.py` constructs a real `openai.OpenAI` client whose transport is an `httpx.MockTransport`, so the SDK's own request building and response parsing are exercised while nothing leaves the process.
 In the adapter suite, `test_protocol.py` drives the server through the SDK's in-memory session for most cases and through `httpx.ASGITransport` for the malformed-request cases; its one socket call is a deliberate connection to a closed loopback port, proving that an unreachable server surfaces as a transport exception rather than something else.
 
@@ -222,7 +221,7 @@ There are no custom markers, no marker registry, and no `-m` selection to learn.
 
 ## 7. Documentation Tests
 
-Three modules treat shipped text as code under test, and they are the reason the READMEs and the generated reference stay true.
+Three modules check the shipped READMEs, generated reference, and examples.
 
 **`test_readme_usage.py`** collects every fence in [`lib/README.md`](../lib/README.md) and [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) that carries an HTML marker comment, and executes it:
 
@@ -235,8 +234,8 @@ It then runs mutation checks: it edits one line of the registry fence, and the t
 Beyond the fences, it asserts specific sentences and install commands are present in the shipped READMEs, and it reads the version, Python floor, Ruff target, and Pyright version straight out of `pyproject.toml`.
 
 **`test_operator_reference.py`** re-runs `scripts/generate_operator_reference.py` in process and asserts that the committed `OPERATORS.md` is byte-identical to the result.
-That is what makes the generated reference safe to treat as a source of truth, and why the file is never hand-edited.
-The same module checks that the generator's evidence inputs still match their recorded digests, that a mutated evidence document fails closed, and that `--check` reports a stale file without rewriting it.
+The generated file is never hand-edited.
+The same module checks that the generator inputs still match their recorded digests, that a modified input document fails validation, and that `--check` reports a stale file without rewriting it.
 
 **`test_examples.py`** runs each offline example script in a subprocess and asserts a zero exit and non-empty output, compiles each provider-backed script without running it, and cross-checks `coverage.json` against the operator IDs the scripts actually name in their source.
 It also asserts that the offline and provider-backed lists together account for every runnable script in the tree, so a new example cannot be added without being classified.
@@ -277,8 +276,7 @@ for operator_id in sorted(index["packages"], key=str.encode):
 `--expect-operator-id` repeats once per resource package the wheel is expected to carry, in byte-sorted order, and the check fails on any difference in either direction — which is why the command reads the expected set out of the source index rather than hardcoding it.
 Substitute the two wheel paths that `python -m build` produced.
 
-That is the pre-publish check, and it is manual.
-Nothing runs it for you.
+Run this pre-publish check manually against the built artifacts.
 
 ---
 
@@ -326,7 +324,7 @@ In practice that is 3.11 and 3.12.
 
 ## 10. What Is Not Covered
 
-Stated plainly, so nobody reads a green suite as more than it is.
+The suite does not cover the following areas.
 
 - **Nothing is automated.**
   With no CI, a passing suite means someone ran it on one machine with one set of installed versions.

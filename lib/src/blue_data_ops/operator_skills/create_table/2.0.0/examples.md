@@ -1,4 +1,4 @@
-# Create-table check
+# Create-table example
 
 Environment: base
 

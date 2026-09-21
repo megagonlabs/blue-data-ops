@@ -58,7 +58,9 @@ python examples/quickstart/core_quickstart.py
 PYTHONPATH=examples python examples/quickstart/sqlite_quickstart.py
 ```
 
-`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. It imports a helper module kept at the examples root, which is what the `PYTHONPATH` prefix is for. `examples/README.md` covers the ML, vector, planner, and live-provider examples. The examples tree is part of the source checkout only; no distribution carries it. The generated `OPERATORS.md` reference for the 33 active exact IDs does ship: in a source checkout it sits beside this README, and in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. To browse them after a wheel install, download and extract the matching `blue-data-ops==3.1.0` source distribution from the same artifact index.
+`sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. It imports `_sqlite_demo.py` from the examples root, which is why its command sets `PYTHONPATH=examples`. See `examples/README.md` for the ML, vector, planner, and provider-backed examples.
+
+Examples are available only in the source checkout. The generated `OPERATORS.md` reference covers the 33 active exact IDs. In a source checkout it sits beside this README; in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. After a wheel install, download and extract the matching `blue-data-ops==3.1.0` source distribution from the same artifact index to read it.
 
 ### Registry roles
 
@@ -287,7 +289,7 @@ The 21 exact `@3.0.0` outcome operators may add shallow `input_shape`, successfu
 
 The `nl2llm@3.0.0` built-in client may report a finite nonnegative `cost` in USD with `cost_basis="estimated"` after exactly one priced provider attempt. A proven local response-cache hit reports `cost=0.0`; provider prompt caching still counts as an attempt. Retries, failures, unknown prices, and injected clients omit those cost fields.
 
-The generated `OPERATORS.md` file in source checkouts and source distributions binds each active exact ID to its live implementation and accepted success, empty, invalid, and failure coordinates. Unsupported coordinates stay labeled with their evidence limit.
+The generated `OPERATORS.md` file in source checkouts and source distributions binds each active exact ID to its implementation and documents the behavior available for that version.
 
 ## Pipelines and planning
 

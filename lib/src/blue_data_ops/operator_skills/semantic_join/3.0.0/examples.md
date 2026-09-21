@@ -1,8 +1,8 @@
-# Semantic-join check
+# Semantic-join example
 
 Environment: llm
 
-The fixed batch response below checks merge and validation behavior. It makes no provider call and does not enable embeddings.
+The fixed batch response below supplies merge decisions locally. It makes no provider call and does not enable embeddings.
 
 ```python
 from blue_data_ops.llm import LLMClient

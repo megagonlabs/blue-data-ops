@@ -92,7 +92,7 @@ Provider failures map to codes that name the planning outcome (`GENERATOR_TIMEOU
 
 ## Operator skill index validation
 
-`OperatorSkillLoader` treats its package index as a closed exact-path map. A manifest name whose key carries a `.` or `..` path segment invalidates the whole index, so every index-backed entry point (`available_operator_ids()`, `describe()`, `load()`, and `read()`) raises `OperatorSkillLoadError` with code `MANIFEST_INVALID`. One poisoned row closes the index instead of being skipped, so a legitimate operator whose own row is intact fails the same way.
+`OperatorSkillLoader` treats its package index as a closed exact-path map. A manifest name whose key carries a `.` or `..` path segment invalidates the whole index, so every index-backed entry point (`available_operator_ids()`, `describe()`, `load()`, and `read()`) raises `OperatorSkillLoadError` with code `MANIFEST_INVALID`. A single invalid row invalidates the entire index rather than being skipped, so a legitimate operator whose own row is intact fails the same way.
 
 Direct calls keep their established precedence: `describe()`, `load()`, or `read()` given a malformed operator id such as `..@1.0.0` raises `OperatorSkillLoadError` with code `INVALID_OPERATOR_ID` before the index is read at all. A malformed id is never reported as a manifest problem.
 
@@ -149,7 +149,7 @@ Code that depended on Blue-exact similarity numbers should treat `blue-data`'s r
 
 The reduce key is spelled six ways across the arithmetic operators: `argmax_key`, `argmin_key`, `avg_key`, `max_key`, `min_key` and `sum_key`. They name the same thing — the key whose values an operator reduces — and a caller moving between two of those operators has to change the attribute name as well as the operator.
 
-They stay as they are in 3.1, and that is a decision rather than an oversight.
+These names remain unchanged in 3.1.
 
 Attribute names are part of the operator contract. They appear in the card each operator publishes, in the generated reference, in the resource package that documents each exact version, in the schema every MCP client reads, and in the attributes map of every existing caller. Collapsing six names to one `key` is a breaking change to all of those at once, and a breaking change to an operator contract belongs in a major release with a migration, not in a minor release whose subject is packaging and documentation.
 

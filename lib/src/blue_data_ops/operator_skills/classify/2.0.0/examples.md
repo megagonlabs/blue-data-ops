@@ -1,8 +1,8 @@
-# Classification check
+# Classification example
 
 Environment: ml
 
-The first group trains each supported model. The second group checks prediction and missing-vector handling.
+The first group trains each supported model. The second supplies prediction records, including one without a vector.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

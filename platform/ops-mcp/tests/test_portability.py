@@ -115,17 +115,17 @@ def test_readme_states_current_pair_and_primary_only_surface() -> None:
     assert "It contains the 33 retained v2 exact IDs" in current
     assert re.search(r"33.{0,80}primary", lowered, flags=re.DOTALL)
     assert re.search(r"(?:no|zero).{0,60}companions", lowered, flags=re.DOTALL)
-    assert "exact supported raw package card" in current
-    assert "retained `@2.0.0` card" in current
-    assert "active `@3.0.0` card" in current
-    assert "observed adapter behavior, not an ordinary-selection promise" in current
-    assert "`_meta.tags` is empty" in current
-    assert "does not grant ordinary or OpenAI planning authority" in current
+    assert "supported raw package cards" in current
+    assert "retained `@2.0.0` cards" in current
+    assert "active `@3.0.0` cards" in current
+    assert "Raw cards have empty `tags` and `when_to_invoke`" in current
+    assert "does not change planner eligibility" in current
     assert "does not authorize a write" in current
     assert "MCP has no server-side tag query" in current
     assert "ops_" in current
-    assert "This server is tools-only." in current
-    assert "`--format table/json/nl` is a CLI concern" in current
+    assert "Operator resources remain available through `OperatorSkillLoader`" in current
+    assert "Table and natural-language rendering are CLI features." in current
+    assert "freezes `operator_ids` at construction" in current
     assert "OPENAI_API_KEY" in current
     # Core reads two names of its own now, and they are what makes dispatch the
     # deployment's rather than a caller's. Pin both, so the README cannot quietly go

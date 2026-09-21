@@ -1,8 +1,8 @@
-# Semantic-transform check
+# Semantic-transform example
 
 Environment: llm
 
-The scripted plan is a deterministic control-flow example, not evidence about provider planning quality.
+The scripted plan supplies fixed transformations locally; it does not evaluate provider planning quality.
 
 ```python
 from blue_data_ops.llm import LLMClient

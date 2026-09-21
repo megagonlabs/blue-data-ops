@@ -3,6 +3,6 @@
   "operator_id": "insert_table@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "1f35decc09f44637311e6e1d41c139e2790e271cda1f905ee5441dfc3d8d8b92"},
-    "examples": {"path": "examples.md", "sha256": "102bb603bb6f50fa50520d43c91f2fe2b5b98aff834dcdfe18a9b99458f2d89d"}
+    "examples": {"path": "examples.md", "sha256": "0cc7788502a5e5e1fe725f656a5e79cb22ee42fb06bcd05f42d6230bb6c10b30"}
   }
 }

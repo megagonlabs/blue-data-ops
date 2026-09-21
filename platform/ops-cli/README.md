@@ -75,16 +75,15 @@ blue-ops [--version] [-h|--help] [--profile NAME]
 
 24 commands over five components and one subcomponent.
 
-The three components this repository added are its own nouns.
-A `catalog` is a view of the operator registry, which is the thing you select once so every later command reads the same one.
-An `operator` is what the library is: 33 of them, each with a pinned id, a card, tags, an attribute schema and a resource package.
+The three additional components use repository-specific nouns.
+A `catalog` is a view of the operator registry that later commands can share.
+An `operator` is one of the library's 33 versioned operations; each has a pinned ID, card, tags, attribute schema, and resource package.
 A `pipeline` is a serializable graph of operators, which is what makes `import`, `export` and `inspect` mean here what they mean everywhere else.
 `operator resource` is a subcomponent rather than a component because a resource package has no identity of its own: it is addressed by the operator id it belongs to.
 
 There is no `database`, `data` or `schema` component.
 This repository is not a `-source` repository: it has no store of its own, no database behind it, and no stored schema.
 An operator's attribute schema is part of the operator's own description rather than a component, and the data registry those three words would name belongs to `blue-data`, whose CLI already manages it with `source add/sync/query/inspect`.
-Putting the same word on different things inside one family is the thing the guide's terminology rule exists to prevent, so this CLI leaves them out and says so here.
 
 ```bash
 blue-ops metadata inspect
@@ -216,10 +215,10 @@ blue-ops profile remove staging --confirm
 ```
 
 `--confirm` skips the question.
-Without it, `profile remove` asks, and answering no changes nothing and exits 0; declining a question you were asked is not a failure.
+Without it, `profile remove` asks, and answering no changes nothing and exits 0.
 Removing a profile deletes that section of the profiles file and nothing else: not another profile, and not the selection unless it pointed at what you removed, in which case it moves to a profile that exists (`default` where that survives, otherwise the first one left) and the command says which.
 `~/.blue-ops/<name>/`, which holds that profile's own selections, is left where it is, and the command names it on standard error so you can delete it yourself.
-The last profile cannot be removed: the selection has to name a profile that is there, and a store with nothing in it has nothing to name.
+The last profile cannot be removed, because the selection has to name a profile that is there.
 
 ### Parameters
 
@@ -257,8 +256,7 @@ Set `BLUE_DATA_REGISTRY_STORE=file` with `BLUE_DATA_REGISTRY_FILE` to keep what 
 `BLUE_DATA_LLM_MODEL` sets the model the language-model operators call and `BLUE_DATA_OPS_PLANNER_MODEL` sets the planner's, because they are separate knobs: a deployment may want a cheaper model for planning than for the operator it is planning around.
 
 A parameter name is also its environment variable name, so exporting `BLUE_DATA_OPS_CATALOG` overrides the profile for one shell without editing anything.
-Exporting one *empty* is refused rather than read as unset.
-`BLUE_DATA_OPS_CATALOG=''` is a tier with a value in it, and taking it as absent would hand the setting down to the profile without saying so, which is the one thing a precedence chain must not do.
+Exporting one *empty* is refused rather than read as unset: an empty tier taken as absent would hand the setting down to the profile without saying so.
 `unset BLUE_DATA_OPS_CATALOG` is how you take a variable out of the chain.
 The store refuses a blank value for the same reason: it would be written, reported as set, and then skipped by every read.
 
@@ -407,7 +405,7 @@ The whole decoded value is held to the same shape, not just the outer key: `--at
 A refusal names the key and the path it was found at, and never the value, since printing it is the thing being prevented.
 How the key is spelled does not change the answer: camel humps and separators are both read as word boundaries, so `clientSecret`, `client-secret` and `client_secret` are one name.
 
-Which words make a key a credential key is a closed list, and so is what it leaves out.
+Credential-key detection uses the closed list below.
 
 | Word, as a whole word in the folded name | Refused | Why |
 |---|---|---|
@@ -419,7 +417,7 @@ Which words make a key a credential key is a closed list, and so is what it leav
 | `user`, `username`, `login` | no | an account name is not key material, and a data source is configured with one |
 | `host`, `port`, `database`, `dsn` | no | connection settings, none of them secret |
 
-The account-name row is where this list differs from the one discovery uses to mask a value on the way out, and the difference is deliberate: masking a username costs one `***` in one message, while refusing one costs you the command you typed. The connection settings below it are open to both.
+Discovery masks usernames conservatively. CLI validation allows username fields because they are valid connection settings. The connection settings in the last row are allowed in both contexts.
 
 The footer names each setting this invocation applied and the tier it came from.
 `--timeout` sets `execution.timeout_seconds` and `--model` sets `openai.model`; both fall back through the environment and the profile like everything else.
@@ -547,8 +545,6 @@ Removing a pipeline deletes that pipeline's directory and nothing else.
 
 ## Where this departs from the family guide
 
-Three departures.
-
 | Departure | Why |
 |---|---|
 | `run` is a verb outside the standard list | The guide's verbs are `add`, `remove`, `list`, `config`, `select`, `query`, `inspect`, `search`, `import` and `export`. None of them means "apply a transformation to a supplied record bundle and return the result". `query` is the nearest and is the wrong one: everywhere else in the family `query` retrieves from a store, and reusing it here would put one word on two meanings, which the guide forbids more firmly than it forbids a new verb. `run` is the library's own name for the same entry point. |
@@ -582,53 +578,22 @@ Registering a custom operator, editing a pipeline graph node by node, and the li
             └── provenance.json   where it came from and when, mode 0600
 ```
 
-Every write goes to a temporary file in the same directory and is moved into place, so an interrupted run cannot leave a profiles file the next run refuses to parse.
-A complete write cannot either: a value holding a line break is refused, because the file is line-oriented and one pasted from a CRLF file would be read back as a separate setting.
-A write that returned is not flushed to disk: a power loss straight afterwards can leave the previous value, never a torn one.
-A removal is flushed, because the half-finished state there is somebody's pipeline partly gone under the name they still trust.
-Nothing below the home is reached by name twice.
-The home is opened once, each directory under it is opened from the one above without following a link, and every read, creation, write and removal then happens against that open directory rather than against a path.
-Checking a path and handing the same string to the next call asks the kernel to resolve it again, and a directory replaced by a link between the two answers is followed: `~/.blue-ops/default/pipeline` pointing elsewhere would put every stored pipeline there, and none of the files under it would be a link.
-Opening the directory first leaves nothing to replace, because after that the name is not used again.
-A name inside the home may still point at another place inside the home; that link is followed by walking to where it lands, which is checked the same way.
-A path found with wider permissions is reported once; the directory is left as you set it, and a file goes back to 0600 on the next write.
-Directories are created on demand at 0700 by the write that needs them, so a read never makes one.
+Storage operations follow these rules:
 
-Removing a stored pipeline takes the entry before it opens it: one rename inside `<profile>/pipeline/` moves the directory to a private name, and the emptying and the `rmdir` both work on that.
-Emptying a directory takes as long as it takes, and `rmdir` takes a name rather than an open directory, so a name still in use is one that can be given to a different directory in the meantime — and the `rmdir` would delete that one.
-The claimed name is checked against the open directory before the last step, so an entry that moved stops the removal rather than redirecting it.
-`pipeline remove nightly` therefore removes the directory it was given and not whatever answers to `nightly` when it finishes.
-A new pipeline cannot be named starting with a dot, because that is where these entries live.
+- Writes use a temporary file in the destination directory and then rename it into place. Line breaks are rejected in line-oriented values. Successful writes are not flushed to disk, so a power loss may restore the previous value, but it cannot leave a torn file.
+- The CLI opens the home directory once and resolves descendants relative to open directory descriptors. It does not follow directory links during ordinary descent. A link within the home may target another location within the home; the target is resolved and checked by the same traversal. A link that resolves outside the home is refused. This prevents a directory swap from redirecting a later operation outside the home.
+- Wider directory permissions produce one warning and are otherwise left unchanged. Files return to mode 0600 on their next write. A write creates missing directories with mode 0700; reads do not create directories.
+- Pipeline removal first renames the directory to a private claim name within `<profile>/pipeline/` and flushes that rename. If the flush fails, the original name is restored and the command fails before deleting content.
+- Deletion works through the opened claimed directory. Before the final `rmdir`, the CLI verifies that the claim name still refers to that directory; if the entry moved, removal stops. The final `rmdir` is flushed so a successful removal remains complete after a power loss. New pipeline names cannot begin with a dot because that namespace is reserved for claims.
+- A claim marker is written before any file is unlinked and removed last. After an interruption, the next `pipeline list` or `pipeline remove` resumes only entries carrying that marker. A claim-shaped entry without the marker is treated as a pipeline created by an older version: it is reported on standard error and remains available to list, inspect, export, or remove, but the name cannot be reused for a new pipeline. Failure to write the marker restores the original name.
+- An empty claim-shaped directory without a marker is removed as interrupted cleanup. A nonempty directory or non-directory entry without the marker is left unchanged.
 
-The rename is flushed to disk before anything below it is unlinked, because it changed the namespace of `<profile>/pipeline/` and flushing the claimed directory does not flush the entry that names it.
-Without that, a power loss part way through could recover the old name over contents that were already half gone, and show you a pipeline under the name you still believe in.
-A claim that cannot be flushed goes back under the name it came from and the command fails; nothing is emptied on the strength of a rename the disk did not take.
-The final `rmdir` is flushed too, so a removal that reported success stays done across a power loss.
+Secrets follow a separate set of rules:
 
-The claimed directory records that it was claimed, before a single file inside it is unlinked, and that record is the last thing removed before the `rmdir`.
-A run interrupted in between leaves the contents under the private name, where no command reaches them, and the next `pipeline list` or `pipeline remove` finishes it.
-What gets finished is decided by that record and never by the name: an earlier version of this CLI allowed a pipeline to be named with a leading dot, so an entry spelled like a claim can be a pipeline somebody stored.
-One without the record is left exactly as it is and named on standard error, and a pipeline stored under such a name is still listed, inspected, exported and removed by name — it just cannot be the name of a new one.
-A removal that cannot write the record puts the directory back under the name it came from rather than emptying something that would be unrecognisable if the run died next.
-
-The single exception is an entry of that shape holding nothing at all, which the next command removes without asking for the record.
-That is what a run dying between dropping the record and the `rmdir` leaves, and an empty directory holds no work to lose, so warning about it on every command until you delete it by hand costs more than the entry is worth.
-One file in it is enough to make it yours again, and so is being anything other than a directory.
-
-A secret is never accepted as a value on the command line, where it would land in shell history.
-`blue-ops profile config OPENAI_API_KEY` prompts with the input hidden.
-Enter `$MY_KEY` at that prompt to store a reference to an environment variable instead of the secret itself; `profile inspect` then shows `$MY_KEY (set)` or `$MY_KEY (unset)`, so you can see what to export.
-
-A directly entered secret is stored base64-encoded behind an `enc:` prefix.
-**That is obfuscation, not encryption**: anyone who can read the file can decode it, and the file mode is the real protection.
-No command prints a secret value — not `profile inspect`, not `profile list`, not a log line, not an error message.
-
-The last two are not the store's doing.
-An error message and a `--log` line carry text this CLI did not write: a library message quoting what you typed, and a provider SDK's exception, which is free to include a request header or a fragment of a key.
-Every error line, every JSON error object and its `detail`, every log line and the traceback a logged failure prints go through this package's masking, which replaces a value the environment holds under a credential's name, and anything written in a credential's shape, with `***`.
-So does the `openai.model` entry in the `settings` envelope, because a deployment that pastes a credential into that setting gets it echoed back in the most visible line the CLI prints.
-A model name that is only a model name is unchanged.
-Records do not go through it: they are the output an operator was asked to compute, and a value that happens to read like a token is the answer you asked for.
+- Secret values are not accepted as command-line arguments. `blue-ops profile config OPENAI_API_KEY` prompts without echo. Entering `$MY_KEY` stores an environment-variable reference; `profile inspect` reports `$MY_KEY (set)` or `$MY_KEY (unset)`.
+- A directly entered secret is stored as base64 behind an `enc:` prefix. This is obfuscation, not encryption; file permissions provide the protection.
+- Commands do not expose configured secret values through profile output, errors, or logs. Secret masking covers error lines, JSON error objects and their `detail`, logs, logged tracebacks, and `openai.model` in the `settings` envelope. It masks credential values found in the environment and strings with credential syntax. Ordinary model names are unchanged.
+- Operator records are not masked because they are computed output; a token-shaped record value may be a requested result.
 
 ## Output formats
 
@@ -648,7 +613,6 @@ blue-ops profile list --format nl
 
 There is no `csv`.
 A record bundle in this library is `list[list[dict]]` — groups of records — and CSV has no representation for the group boundary, so flattening one would silently merge groups into a single table.
-The guide names `json`, `table` and `nl`, and those are the three.
 
 Every JSON result is one object with a payload key named for the resource:
 
@@ -705,8 +669,7 @@ The CLI code is what a script branches on; the library code is what diagnoses th
 | `TIMEOUT` | 9 | An operator run exceeded its time allowance |
 
 `CONFIG` and `PROFILE` share exit 4 and are told apart by the code token.
-A script branching on "the configuration is wrong" wants one branch; a person reading the line wants to know which half.
-Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own families and collide with nothing.
+Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own families.
 
 Under `--format json` the same failure is also written to standard output as one object, so a machine consumer gets JSON either way:
 
@@ -738,4 +701,4 @@ python3 -m pyright
 ```
 
 Every test runs offline against a throwaway CLI home, and a guard fails the run if the real `~/.blue-ops` appears or disappears.
-No test writes a credential anywhere: the values planted in `tests/unit/test_secret_canary.py` are sentinels shaped like key material, and they are looked for in every channel a string can leave by.
+The secret-canary tests use synthetic values to check CLI messages, JSON error objects, logs, and tracebacks for leaks.

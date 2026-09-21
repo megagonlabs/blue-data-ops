@@ -2,7 +2,7 @@
 
 A Python library of Blue data operators addressed by exact version: record transforms, registry-backed database operations, vector and ML operators, and a local pipeline planner.
 
-→ **[Documentation](docs/README.md)** · **[Quick start](docs/quickstart.md)** · **[Examples](examples/README.md)**
+[Documentation](docs/README.md) | [Quick start](docs/quickstart.md) | [Examples](examples/README.md)
 
 ## What it does
 

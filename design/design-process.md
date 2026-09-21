@@ -1,45 +1,35 @@
-# Design Process
+# Maintaining the design documentation
 
-This document records the order the files in `design/` are written in and the review each one passes before the next is started.
+The numbered documents in this directory are arranged in reading order. They move from the
+project's purpose and common scenarios through architecture, interfaces, data structures, testing,
+and release operations. Contributors can update the relevant document directly; the numbering does
+not prescribe an implementation sequence.
 
-For a new project, work through the sequence below, completing each document before moving to implementation.
-For an existing project, work through the same sequence and create whatever is missing.
-Fill the gaps with the developer, and restructure the repository layout and content to match what the documents describe.
+Update a design document when a change alters the contract or rationale it describes. User-facing
+behavior belongs in `docs/` and the package READMEs, which should match the current implementation.
+The design documents provide the reasoning behind that behavior and may need a separate update when
+the reasoning changes.
 
-## Document Sequence
+Use [13-decision-log.md](13-decision-log.md) for a cross-cutting architectural decision that has no
+clear home in another design document. If a later decision reverses an entry, retain the original
+entry and append the replacement decision.
 
-1. **Overview** — objective, what the system does, design philosophy
-2. **Scenarios** — use cases describing how the system is used in practice
-3. **High Level Architecture** — key components and their interfaces
-4. **Detailed Architecture** — flow of information between key components
-5. **Software Stack** — languages, frameworks, and key dependencies
-6. **Library** — key classes and functions
-7. **Repo Organization** — file structure of the repository
-8. **Coding Style** — language, formatting, and conventions
-9. **API / Interface Spec** — external-facing interfaces: library, protocol server, HTTP, CLI
-10. **Data Model** — schema definitions, entity relationships, data flow
-11. **Testing Strategy** — what to test, at what level, and how
-12. **Deployment / Ops** — environment setup, configuration, infrastructure
-13. **Decision Log (ADR)** — architectural decisions and their rationale
+The document set is organized as follows:
 
-[repo-organization-template.md](repo-organization-template.md) sits beside the sequence rather than inside it.
-It is the family's generic skeleton, copied as it stands; [07-repo-organization.md](07-repo-organization.md) is this repository's filled-in version of it.
+1. [Overview](01-overview.md)
+2. [Scenarios](02-scenarios.md)
+3. [High-level architecture](03-high-level-architecture.md)
+4. [Detailed architecture](04-detailed-architecture.md)
+5. [Software stack](05-software-stack.md)
+6. [Library](06-library.md)
+7. [Repository organization](07-repo-organization.md)
+8. [Coding style](08-coding-style.md)
+9. [API and interface specification](09-api-interface-spec.md)
+10. [Data model](10-data-model.md)
+11. [Testing strategy](11-testing-strategy.md)
+12. [Deployment and operations](12-deployment-ops.md)
+13. [Decision log](13-decision-log.md)
 
-## Guidelines
-
-- Create documents one at a time, in order.
-- Each document informs the next. Do not skip ahead.
-- Store all design documents in the `design/` directory at the repository root.
-- Name files with a numeric prefix matching the sequence above, as in [01-overview.md](01-overview.md).
-- Create the decision log at the start of design, at step 1, and add entries as decisions are made. Do not wait until the end.
-- When iterative coding begins, propose the libraries and other software for the component under development, and confirm the choice before writing any code.
-
-## Review Protocol (per document)
-
-Each document goes through two reviews after its input has been gathered:
-
-1. **Completeness review** — assess the input and name anything missing or underspecified, before the document is finalized.
-2. **Integrity check** — once the document is written, check it against every document already completed, and raise any discrepancy, contradiction, or gap before moving to the next step.
-
-A document that fails either review is corrected in place.
-An entry in [13-decision-log.md](13-decision-log.md) is never corrected in place: a decision that changes keeps its original entry and gains an addendum.
+[repo-organization-template.md](repo-organization-template.md) summarizes the layout conventions
+used by this repository. The concrete tree and its rationale are in
+[07-repo-organization.md](07-repo-organization.md).

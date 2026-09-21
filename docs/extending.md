@@ -1,9 +1,7 @@
 # Extending blue-data-ops
 
-The four things this library is built to have replaced, and how to replace each one.
-
-`blue_data_ops` has no plugin discovery and no entry-point scanning.
-Everything below is an explicit constructor argument or an explicit registration, which is why nothing in an installed environment can change what an operator resolves to.
+`blue_data_ops` does not scan plugins or entry points.
+Extensions are registered explicitly or passed to constructors, so installed packages cannot change operator resolution.
 The operator lifecycle, the error vocabulary, the result envelope, and a registry's immutability are fixed and are not extension points.
 
 | To change | Supply | Reached through |
@@ -104,9 +102,9 @@ assert invalid.errors[0].code.value == "INVALID_INPUT"
 assert invalid.errors[0].operator_id == "scale@1.0.0"
 ```
 
-Three things are worth knowing before you write the second one.
+Before adding another operator, note these three constraints.
 
-**`run()` is not yours to override.**
+**Do not override `run()`.**
 It materializes declared defaults, calls `_validate_input`, calls `_execute`, and normalizes the result, turning every failure into an `ErrorRecord`.
 Your `_execute` therefore does not need its own try/except: an exception becomes `EXECUTION_FAILED` at the `EXECUTE` stage with the bundle normalized to `[[]]`.
 A `_validate_input` that returns `ValidationResult(False, reason)` becomes a recoverable `INVALID_INPUT` record carrying your reason as the suggestion.
@@ -119,7 +117,8 @@ Version your own operators with real semver; `resolve` accepts nothing else.
 **Custom tags are permissive; built-in tags are not.**
 The closed six-namespace vocabulary and the ordering rule in `DiscoverySpec` are validated for package built-ins only, and `register` stores whatever tags you pass, verbatim.
 `find()` normalizes a requested filter by stripping and case-folding it, then matches the whole token, so a custom tag is discoverable only when its stored value equals the normalized filter.
-Reusing the built-in namespaces keeps your operator findable by the same queries — a made-up namespace works, but nobody will guess it.
+Reusing the built-in namespaces makes a custom operator discoverable through the same tag queries.
+Custom namespaces require callers to know and use the exact tag.
 
 An operator resolved from your own registry runs through `PipelineExecutor` and `PipelinePlanner` normally.
 It will not be accepted by `OpenAIPlanGenerator`, which admits only supported package built-ins from an enriched package registry.
@@ -157,8 +156,8 @@ assert all("produces-data" in card.tags for card in cards)
 assert cards[0].operator_id == "select@2.0.0"
 ```
 
-Swap `TermEmbedder` for a real sentence encoder and the rest stays as written.
-The contract is narrow on purpose.
+Swap `TermEmbedder` for a real sentence encoder without changing the surrounding integration.
+The embedder contract is:
 
 | Rule | Why |
 |---|---|

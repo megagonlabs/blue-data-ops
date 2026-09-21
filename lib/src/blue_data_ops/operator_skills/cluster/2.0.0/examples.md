@@ -1,4 +1,4 @@
-# Clustering check
+# Clustering example
 
 Environment: ml
 

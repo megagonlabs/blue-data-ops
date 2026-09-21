@@ -1,8 +1,8 @@
-# Structured-generation check
+# Structured-generation example
 
 Environment: llm
 
-This scripted client checks result boundaries without contacting a provider.
+This scripted client returns fixed results without contacting a provider.
 
 ```python
 from blue_data_ops.llm import LLMClient

@@ -16,13 +16,10 @@ The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md
 | Project config | `pyproject.toml`, one per distribution |
 | Build backend | `setuptools.build_meta` |
 
-The 3.11 floor is what the Python-version-dependent behavior in the package is written against, and it is declared in `requires-python`, in the Ruff `target-version`, and in the Pyright `pythonVersion` for all three distributions.
-
-The rest of the Blue Data family floors at 3.10, and this repository does not.
-The reason is verification rather than syntax.
-`lib/scripts/check_real_llm_install.py` refuses a run below 3.11 outright, the suites are collected on one interpreter, and no gate in this repository has ever been run on 3.10 — so `>=3.10` would be a claim about an interpreter nothing here tests.
-Lowering the floor is therefore not a metadata edit: it is a second supported interpreter, which means a 3.10 run of the core, adapter, and CLI suites, and a decision about what a failure on it blocks.
-Until that run exists the declared floor stays at what is actually verified.
+Python 3.11 is the tested minimum and is declared in `requires-python`, the Ruff
+`target-version`, and the Pyright `pythonVersion` for all three distributions. Adding Python 3.10
+requires adding it to the supported test matrix and updating
+`lib/scripts/check_real_llm_install.py`, which currently rejects earlier versions.
 
 ---
 
@@ -38,7 +35,7 @@ The repository publishes three packages from one source tree.
 
 ### The core carries no server dependency
 
-This is the invariant the split exists to hold: `blue-data-ops` declares five runtime dependencies, and none of them is a server, a protocol library, or a transport.
+`blue-data-ops` declares five runtime dependencies; none provides a server, protocol, or transport.
 
 ```python
 # lib/pyproject.toml
@@ -53,10 +50,9 @@ dependencies = [
 
 `mcp` appears in `platform/ops-mcp/pyproject.toml` and nowhere else, and `click` and `rich` appear in `platform/ops-cli/pyproject.toml` and nowhere else.
 No module under `lib/src/blue_data_ops/` imports any of them, and no module under `lib/src/` imports a web framework, an ASGI server, an argument parser, or a socket library.
-A process that installs the core and calls a handful of aggregates pulls in nothing it will not use.
+Installing the core without either adapter does not install MCP or CLI dependencies.
 
-Each interface distribution's pin on the core is exact rather than a range.
-That is the point of it: one environment holds one verified core-and-interface pair, so an adapter or a command cannot be run against a core whose result envelope it was not checked against.
+Each interface distribution pins the core to an exact version so an environment uses a pair whose result envelope was tested together.
 A documentation-only release does not move any version.
 
 ### What each distribution ships
@@ -74,7 +70,7 @@ The generated operator reference and the compatibility document are source-distr
 
 ## Core dependencies
 
-Five, and each one is declared for a reason the code can be checked against.
+The core has five runtime dependencies.
 
 | Package | Constraint | Why it is a runtime dependency |
 |---|---|---|
@@ -235,7 +231,7 @@ They wrap `python -m build`, `pip install -e`, and `twine upload`; none of them 
 
 | Script | Role |
 |---|---|
-| `generate_operator_reference.py` | regenerates `lib/OPERATORS.md` from the active registry and the sealed outcome evidence. `OPERATORS.md` is never hand-edited |
+| `generate_operator_reference.py` | regenerates `lib/OPERATORS.md` from the active registry and generator fixtures. `OPERATORS.md` is never hand-edited |
 | `check_real_llm_install.py` | confirms LiteLLM resolves to a real installation rather than the test stub, and fails on a Python version below 3.11 |
 
 ---

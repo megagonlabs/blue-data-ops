@@ -3,6 +3,6 @@
   "operator_id": "cluster@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "dd95ce50465317f342783f8381b8df1688e4f948367af7d8c9b7c23c8e726cc2"},
-    "examples": {"path": "examples.md", "sha256": "fa6f06264eefba913ef9bbe29d3282f1252025d2da2cc7bbf50f068d8793b137"}
+    "examples": {"path": "examples.md", "sha256": "b08d2a76c650511447dda098d7b3d5f7f5b2f44d3f1553e33e1c7191df9c6e1b"}
   }
 }

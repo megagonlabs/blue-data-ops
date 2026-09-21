@@ -60,7 +60,8 @@ A caller that wants containment opts into it.
 
 ## Canonical call path
 
-`run()` is the structured boundary, and it has one job beyond calling the transform: make sure the caller gets a usable triple no matter what happened inside.
+`run()` is the structured boundary.
+In addition to calling the transform, it ensures that the caller receives a usable result triple for every outcome.
 
 ### Deadline wrapper
 
@@ -141,7 +142,7 @@ Resolution answers "does this ID exist here". Admission answers "may this card b
 ### Lexical
 
 1. Caller calls `find(query, tags=...)`.
-2. Each requested tag is stripped and case-folded. A token that is empty, contains any whitespace, or has no hyphen raises `DiscoveryError`, so a malformed filter fails loudly instead of quietly matching nothing.
+2. Each requested tag is stripped and case-folded. A token that is empty, contains any whitespace, or has no hyphen raises `DiscoveryError` instead of returning an empty match set.
 3. Candidates are filtered by exact AND tag membership. `None` or `[]` means no filter.
 4. A blank query with tags returns the tag-matching cards ordered by name ascending then version descending. A blank query without tags returns nothing.
 5. A nonblank query scores each candidate case-insensitively: name 10, any tag 8, `when_to_invoke` 6, description 5, each field counted at most once. Only positive scores are kept, and ties order by name then descending version.
@@ -304,7 +305,7 @@ Every entry point runs the same binding and index checks, in the same order, and
 1. **Validate the level.** Only 2, 3, and 4 exist; anything else is `NOT_AVAILABLE`.
 2. **Validate the binding.** The operator ID must match the pinned pattern, and its name must not be `.` or `..`. The registry must be exactly an `OperatorRegistry`, or the result is `TRUST_REQUIRED`. The card must exist and must be a package-owned built-in — a caller-created registration is `TRUST_REQUIRED`, not `NOT_AVAILABLE`. The card's ID, name, and version and the operator's bound ID and name must all agree, or the result is `BINDING_MISMATCH`.
 3. **Read the index.** `_index.json` is read under a 4 KiB bound, decoded with duplicate keys rejected, checked for JSON depth at most 4, checked for an exact key set and the expected format string. Every key must be a pinned ID, and every value must be exactly `<name>/<version>/manifest.json`.
-4. **Find the package.** An ID absent from the index is `NOT_AVAILABLE`. One malformed row invalidates the whole index rather than being skipped, so a legitimate operator whose own row is intact fails the same way — a poisoned entry cannot hide behind an intact neighbour.
+4. **Find the package.** An ID absent from the index is `NOT_AVAILABLE`. One malformed row invalidates the whole index rather than being skipped, including operators whose own rows are valid.
 5. **Read the manifest** under the same 4 KiB bound, with an exact key set, the expected format, and an `operator_id` matching the request. Each declared resource kind must be one of the five known kinds, its path must be exactly that kind's filename, and its digest must be 64 lowercase hex characters. A `guide` entry is required.
 6. **Read each required file** under a 16 KiB bound. The reader refuses a symlinked root, refuses a symlink at any path segment, rejects absolute and traversing relative paths, resolves both the root and the target strictly, confirms containment, and confirms the target is a regular file.
 7. **Verify the digest.** The file's SHA-256 is compared against the manifest value before the bytes are decoded. A mismatch is `RESOURCE_INVALID`, and so is a UTF-8 decode failure.

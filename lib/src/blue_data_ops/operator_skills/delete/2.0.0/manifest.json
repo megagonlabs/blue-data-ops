@@ -3,6 +3,6 @@
   "operator_id": "delete@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "809b0e04930da268c466fc85587f6530ff611885a236650d643f9ec0c2425d96"},
-    "examples": {"path": "examples.md", "sha256": "f1d22d9dfbe660bf0f0f38bad756c734eb1930c4418141c601d0e8702e6f2486"}
+    "examples": {"path": "examples.md", "sha256": "0cfcb7e3c05a6efdfdaa39beff12a63cb314f34cb7d7d151e8bc5c7aa8be4c01"}
   }
 }

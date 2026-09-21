@@ -1,8 +1,8 @@
-# Average owner check
+# Average example
 
 Environment: base
 
-This check averages the first group and verifies the successful zero result.
+This example averages the first group and shows that an empty group returns `{"avg": 0}` without setting `is_empty`.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

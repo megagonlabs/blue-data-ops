@@ -1,8 +1,8 @@
-# Normalize-text check
+# Normalize-text example
 
 Environment: base
 
-This example combines two text fields, verifies the derived output key and copied record, and exercises an invalid configuration.
+This example combines two text fields, writes the normalized text to a derived key, preserves the source record, and shows the error returned for an invalid configuration.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

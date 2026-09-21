@@ -43,4 +43,4 @@ assert invalid_meta.errors[0].code.value == "INVALID_INPUT"
 assert invalid == [[]] and invalid_attributes == {} and not invalid_meta.is_empty
 ```
 
-The empty and zero assertions exercise the documented count availability. In the summary, a missing count leaves `observations` absent; it does not insert a zero. See the [guide](Operator.md) for Boolean, integer-first conversion, and NaN behavior.
+Empty and zero results include the documented count when it is available. In the summary, a missing count leaves `observations` absent; it does not insert a zero. See the [guide](Operator.md) for Boolean, integer-first conversion, and NaN behavior.

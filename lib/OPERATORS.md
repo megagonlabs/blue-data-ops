@@ -1,8 +1,7 @@
 # Operator reference
 
-This reference covers the 33 exact cards selected by `active_registry()`. Outcome
-statements are bound to the accepted core 3.0 evidence and the separately sealed
-sklearn estimator supplement; unsupported outcomes keep their recorded limits.
+This reference covers the 33 exact cards selected by `active_registry()`. Each outcome
+table summarizes the behavior documented for that exact version.
 
 ```python
 from blue_data_ops.operators import active_registry
@@ -66,8 +65,6 @@ its stored value equals the normalized filter.
 
 ## `argmax@2.0.0`
 
-Given an input data, find the record(s) that contain the maximum value for a specified key.
-
 When to invoke: Use when the result must retain the input record or tied records with the largest value for one key.
 
 Tags: `domain-arithmetic`, `flow-aggregate`, `accepts-data`, `produces-data`, `capability-extrema`, `capability-record-selection`
@@ -87,23 +84,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.argmax_operator"
 assert type(operator).__name__ == "ArgmaxOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `argmax@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | First-group record mode preserves both tied maximum records as data. |
 | Empty | Empty record mode produces successful-empty. |
 | Invalid | A missing argmax_key is INVALID_INPUT at VALIDATE. |
 | Failure | A non-record member is contained as EXECUTION_FAILED at EXECUTE. |
 
-Discriminators:
-
-- Record-mode empty and index-mode empty are distinct.
-- Malformed non-record input cannot pass as successful-empty.
-
 ## `argmin@2.0.0`
-
-Given an input data, find the record(s) that contain the minimum value for a specified key.
 
 When to invoke: Use when the result must retain the input record or tied records with the smallest value for one key.
 
@@ -124,23 +112,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.argmin_operator"
 assert type(operator).__name__ == "ArgminOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `argmin@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | First-group record mode preserves both tied minimum records as data. |
 | Empty | Empty record mode produces successful-empty. |
 | Invalid | A missing argmin_key is INVALID_INPUT at VALIDATE. |
 | Failure | A non-record member is contained as EXECUTION_FAILED at EXECUTE. |
 
-Discriminators:
-
-- Record-mode empty and index-mode empty are distinct.
-- Malformed non-record input cannot pass as successful-empty.
-
 ## `avg@3.0.0`
-
-Given an input data, calculate the average (arithmetic mean) of values for a specified key across all records.
 
 When to invoke: Use when a numeric key must be reduced to its arithmetic mean across records.
 
@@ -161,23 +140,13 @@ assert type(operator).__module__ == "blue_data_ops.operators._avg_outcome"
 assert type(operator).__name__ == "AvgOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `avg@3.0.0`. Dependency profile `none`: Decimal typed-input transform only for the selected success discriminator.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Decimal 3.9 follows int-before-float coercion and yields average 3.0 with count 1. |
 | Empty | No usable values yields [[]], count 0, and successful-empty rather than a zero row. |
 | Invalid | Missing avg_key is INVALID_INPUT at VALIDATE. |
-| Failure | _not_applicable_: The exact active-ID fixture has no approved ordinary execution-failure coordinate for avg. |
-
-Discriminators:
-
-- Decimal 3.9 distinguishes int-first from float-first coercion.
-- No values and a real zero average have different tensor and metadata shapes.
 
 ## `classify@3.0.0`
-
-Given input data with numeric vectors and training labels, train a classifier and predict class labels for each sample using DecisionTreeClassifier, KNeighborsClassifier, or MultinomialNB.
 
 When to invoke: Use when labeled numeric vectors are available and class labels are needed for input samples.
 
@@ -209,23 +178,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._classify_outcome"
 assert type(operator).__name__ == "ClassifyOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `classify@3.0.0`. Dependency profile `real-ml`: Declared scikit-learn models; deterministic random_state where supplied.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | Real decision-tree training uses the first group and predicts across supplied groups. |
+| Success | Decision-tree training uses the first group and predicts across supplied groups. |
 | Empty | All groups empty is successful-empty without model work. |
 | Invalid | Unsupported algorithm is INVALID_INPUT before the empty shortcut. |
-| Failure | Ragged real-model vectors are contained as EXECUTION_FAILED. |
-
-Discriminators:
-
-- Unsupported algorithm is checked before empty execution.
-- Ragged-vector model failure cannot pass as invalid input or empty.
+| Failure | Ragged vectors are contained as EXECUTION_FAILED. |
 
 ## `cluster@3.0.0`
-
-Given input data with numeric vectors, compute clusters and predict cluster index for each sample using KMeans, DBSCAN, or GaussianMixture.
 
 When to invoke: Use when unlabeled numeric vectors must be assigned to clusters.
 
@@ -253,23 +213,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._cluster_outcome"
 assert type(operator).__name__ == "ClusterOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `cluster@3.0.0`. Dependency profile `real-ml`: Declared scikit-learn models; deterministic random_state where supplied.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | Real K-means produces stable cluster labels as record data. |
+| Success | K-means produces stable cluster labels as record data. |
 | Empty | An empty first group produces successful-empty under the retained first-group boundary. |
 | Invalid | Unsupported algorithm is INVALID_INPUT before empty handling. |
-| Failure | Ragged vectors are contained as a real-model execution failure. |
-
-Discriminators:
-
-- Unsupported algorithm is checked before empty execution.
-- Real labels distinguish usable fit from pass-through.
+| Failure | Ragged vectors are contained as an execution failure. |
 
 ## `create_database@2.0.0`
-
-Creates databases in data sources using the data registry. If the database already exists, it will be overwritten if overwrite is True.
 
 When to invoke: Use when one or more databases must be created or overwritten through the data registry.
 
@@ -294,23 +245,13 @@ assert type(operator).__module__ == "blue_data_ops.operators.create_database_ope
 assert type(operator).__name__ == "CreateDatabaseOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `create_database@2.0.0`. Dependency profile `real-sqlite`: Fresh RegistrySeam and SQLite source; side effect verified on disk.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | A real SQLite database is created while tensor output remains an empty pass-through. |
-| Empty | The empty tensor result is successful because the database side effect is separately observed. |
-| Invalid | _not_observed_: The frozen 46-case receipt did not include the supplementary blank-source validation call. |
-| Failure | An injected RegistrySeam failure is EXECUTION_FAILED; raw pass-through is not accepted as success proof. |
-
-Discriminators:
-
-- Filesystem creation distinguishes side-effect success from empty pass-through.
-- Injected registry failure distinguishes structured run from raw apply swallowing.
+| Success | Creates a SQLite database while returning the input tensor unchanged. |
+| Empty | An empty returned tensor can still represent successful database creation. |
+| Failure | A RegistrySeam failure returns EXECUTION_FAILED rather than a successful result. |
 
 ## `create_table@2.0.0`
-
-Creates tables (entities) in database collections using the data registry. If the table already exists, it will be overwritten if overwrite is True.
 
 When to invoke: Use when tables or entities must be created or overwritten in registry-backed database collections.
 
@@ -339,23 +280,13 @@ assert type(operator).__module__ == "blue_data_ops.operators.create_table_operat
 assert type(operator).__name__ == "CreateTableOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `create_table@2.0.0`. Dependency profile `real-sqlite`: Fresh RegistrySeam and SQLite source; sqlite_master and PRAGMA table_info verify the side effect.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | A real SQLite items(id,label) table is created with public-collection coercion. |
-| Empty | The empty tensor result is successful because the table side effect is separately observed. |
-| Invalid | _not_observed_: The frozen 46-case receipt did not include the supplementary blank-source validation call. |
-| Failure | An injected RegistrySeam failure is EXECUTION_FAILED; raw pass-through is not accepted as success proof. |
-
-Discriminators:
-
-- sqlite_master and PRAGMA columns distinguish side-effect success from empty pass-through.
-- Injected registry failure distinguishes structured run from raw apply swallowing.
+| Success | Creates a SQLite table while returning the input tensor unchanged. |
+| Empty | An empty returned tensor can still represent successful table creation. |
+| Failure | A RegistrySeam failure returns EXECUTION_FAILED rather than a successful result. |
 
 ## `data_discover@2.0.0`
-
-Discovers data sources using the data registry
 
 When to invoke: Use when data sources, databases, collections, or entities must be found through registry search.
 
@@ -391,23 +322,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.data_discover_opera
 assert type(operator).__name__ == "DataDiscoverOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `data_discover@2.0.0`. Dependency profile `registry`: Real RegistrySeam for success/empty; labeled failure double only for failure.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | A real registry search returns the created confirmation database. |
-| Empty | A real no-match registry search is successful-empty. |
+| Success | A registry search returns the matching database. |
+| Empty | A registry search with no matches returns successful-empty. |
 | Invalid | A blank query is INVALID_INPUT at VALIDATE. |
-| Failure | A labeled registry failure double is contained as EXECUTION_FAILED. |
-
-Discriminators:
-
-- Real hit and real no-match separate data from successful-empty.
-- Failure double separates structured failure from raw empty collapse.
+| Failure | A registry failure returns EXECUTION_FAILED. |
 
 ## `delete@2.0.0`
-
-Given input data, delete records from the first data source at specified positions
 
 When to invoke: Use when records must be removed from the first input group by position.
 
@@ -427,23 +349,13 @@ assert type(operator).__module__ == "blue_data_ops.operators.delete_operator"
 assert type(operator).__name__ == "DeleteOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `delete@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Deleting from the first group returns the remaining records and ignores later groups. |
 | Empty | An empty first group is successful-empty. |
 | Invalid | A non-integer delete index is INVALID_INPUT at VALIDATE. |
-| Failure | _not_applicable_: The pure slicing body has no genuine execution-failure coordinate for a valid record bundle. |
-
-Discriminators:
-
-- Deleting the first group distinguishes the out-of-range no-op.
-- Successful-empty is tied to empty input, not unchanged nonempty data.
 
 ## `insert@3.0.0`
-
-Given input data, insert records by position(s)
 
 When to invoke: Use when records from input groups must be inserted at specified positions.
 
@@ -464,23 +376,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._insert_outcome"
 assert type(operator).__name__ == "InsertOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `insert@3.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Declared records populate an existing empty first group. |
 | Empty | Empty base with no supplied records is successful-empty. |
 | Invalid | Invalid insertion position is rejected before the no-op shortcut. |
 | Failure | A lax string position that reaches the body is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- Empty-base insertion differs from the predecessor body.
-- Group-less empty and failed body have different meta states.
-
 ## `insert_table@3.0.0`
-
-Inserts data rows into database tables in a data source.
 
 When to invoke: Use when record rows must be persisted into a registry-backed database table.
 
@@ -504,23 +407,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._insert_table_outco
 assert type(operator).__name__ == "InsertTableOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `insert_table@3.0.0`. Dependency profile `real-sqlite`: Fresh RegistrySeam and disposable SQLite database per case; rowcount masking only where declared.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | Real SQLite writes preserve all records and report exact whole-call num_rows_insert. |
+| Success | Successful SQLite writes preserve all records and set num_rows_insert to the total inserted by the call. |
 | Empty | Empty input still performs registry setup then returns successful-empty with count 0. |
 | Invalid | A later non-record rejects the whole call before any write. |
-| Failure | A real second-batch UNIQUE failure exposes no partial count while the first committed row remains observable. |
-
-Discriminators:
-
-- Later-group rows and persisted SQLite rows prevent first-group-only success.
-- Second-batch failure preserves a real partial write but never a partial count.
+| Failure | If a later batch fails a UNIQUE constraint, num_rows_insert is omitted even though rows committed by an earlier batch remain. |
 
 ## `intersect@3.0.0`
-
-Given multiple input data sources, return only records that exist in all data sources
 
 When to invoke: Use when only records shared by all input groups should remain under the configured match rule.
 
@@ -540,23 +434,13 @@ assert type(operator).__module__ == "blue_data_ops.operators._intersect_outcome"
 assert type(operator).__name__ == "IntersectOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `intersect@3.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Sequence matching returns the exact first-group record. |
 | Empty | Any empty supplied operand makes the intersection successful-empty. |
 | Invalid | Fewer than two operands is INVALID_INPUT at VALIDATE. |
-| Failure | _not_applicable_: The accepted pure-operation instrument names no separate execution-failure coordinate. |
-
-Discriminators:
-
-- An empty middle operand prevents implementations that drop empty groups.
-- Single operand rejection distinguishes invalid from empty intersection.
 
 ## `join@3.0.0`
-
-Joins multiple JSON array data sources using N-way join operations
 
 When to invoke: Use when two or more JSON record groups must be joined on configured keys and join types.
 
@@ -579,23 +463,13 @@ assert type(operator).__module__ == "blue_data_ops.operators._join_outcome"
 assert type(operator).__name__ == "JoinOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `join@3.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Inner join keeps the left key once and uses generated suffix defaults. |
 | Empty | No matching keys with an explicit empty suffix list is successful-empty. |
 | Invalid | Invalid duplicate suffixes are rejected before an empty-group shortcut. |
-| Failure | _not_applicable_: The exact active-ID fixture has no approved ordinary execution-failure coordinate for join. |
-
-Discriminators:
-
-- Explicit empty suffix list is valid while duplicate suffixes fail before empty execution.
-- No-match empty differs from a matched zero-like record.
 
 ## `max@3.0.0`
-
-Given an input data, find the maximum value for a specified key across all records.
 
 When to invoke: Use when a numeric key must be reduced to its largest value.
 
@@ -616,23 +490,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._max_outcome"
 assert type(operator).__name__ == "MaxOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `max@3.0.0`. Dependency profile `none`: Pure exact-ID direct calls with a narrow coercion double for the failure coordinate.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | First-group coercion and custom output naming produce the real maximum. |
 | Empty | No usable comparable value is successful-empty rather than a null record. |
 | Invalid | Missing max_key is INVALID_INPUT at VALIDATE. |
 | Failure | An unrelated coercion exception is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- No usable value differs from a real zero maximum.
-- A coercion exception is not normalized to empty.
-
 ## `min@3.0.0`
-
-Given an input data, find the minimum value for a specified key across all records.
 
 When to invoke: Use when a numeric key must be reduced to its smallest value.
 
@@ -653,23 +518,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._min_outcome"
 assert type(operator).__name__ == "MinOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `min@3.0.0`. Dependency profile `none`: Pure exact-ID direct calls with a narrow coercion double for the failure coordinate.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | First-group coercion and custom output naming produce the real minimum. |
 | Empty | No usable comparable value is successful-empty rather than a null record. |
 | Invalid | Missing min_key is INVALID_INPUT at VALIDATE. |
 | Failure | An unrelated coercion exception is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- No usable value differs from a real zero minimum.
-- A coercion exception is not normalized to empty.
-
 ## `nl2bn@3.0.0`
-
-Translates natural language questions into Bayesian Network queries using LLM models
 
 When to invoke: Use when a natural-language question must be translated into a Bayesian-network query.
 
@@ -699,23 +555,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._nl2bn_outcome"
 assert type(operator).__name__ == "NL2BNOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `nl2bn@3.0.0`. Dependency profile `scripted-provider-and-registry`: Scripted LLMClient plus deterministic RegistrySeam result.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A backend probability of zero remains tensor data. |
-| Empty | Zero backend rows is source-confirmed successful-empty. |
+| Empty | A backend result with zero rows is successful-empty. |
 | Invalid | A blank required question is INVALID_INPUT before provider work. |
 | Failure | A nonempty result without probability is EXECUTION_FAILED. |
 
-Discriminators:
-
-- Zero probability is data while zero backend rows is empty.
-- Missing probability cannot masquerade as no answer.
-
 ## `nl2llm@3.0.0`
-
-Processes natural language query using LLM models and returns structured data
 
 When to invoke: Use when a natural-language request should be sent to the configured reasoning provider and returned as structured data.
 
@@ -737,23 +584,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._nl2llm_outcome"
 assert type(operator).__name__ == "NL2LLMOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `nl2llm@3.0.0`. Dependency profile `scripted-provider`: Scripted LLMClient; no live provider.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A provider array of requested records remains tensor data. |
 | Empty | An explicit provider empty array is successful-empty. |
 | Invalid | A blank required query is INVALID_INPUT before provider work. |
 | Failure | A provider object where an array is required is EXECUTION_RESULT_INVALID at NORMALIZE. |
 
-Discriminators:
-
-- Provider [] is valid empty while provider {} is invalid normalized output.
-- Blank query must not call the provider.
-
 ## `nl2sql@3.0.0`
-
-Translates natural language questions into SQL queries using LLM models
 
 When to invoke: Use when a natural-language question must be translated into SQL, with optional execution.
 
@@ -782,23 +620,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._nl2sql_outcome"
 assert type(operator).__name__ == "NL2SQLOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `nl2sql@3.0.0`. Dependency profile `scripted-provider-and-registry`: Scripted LLMClient plus deterministic RegistrySeam result.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Query-only SQL remains a tensor record. |
 | Empty | A successful backend query with zero rows is successful-empty. |
 | Invalid | A blank question is INVALID_INPUT before routing. |
 | Failure | A malformed provider response is EXECUTION_FAILED. |
 
-Discriminators:
-
-- Query-only SQL is data while zero executed rows is empty.
-- Malformed provider and backend shapes cannot pass as no rows.
-
 ## `normalize_text@2.0.0`
-
-Normalize raw text into a stable canonical form for downstream extraction and segmentation.
 
 When to invoke: Use when text needs canonical Unicode, whitespace, case, or recognized-date normalization before later text work.
 
@@ -826,23 +655,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.normalize_text_oper
 assert type(operator).__name__ == "NormalizeTextOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `normalize_text@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | All groups are preserved; blank field data normalizes to an empty string record. |
 | Empty | No input records is successful-empty, distinct from blank-field data. |
 | Invalid | An empty text_field list is INVALID_INPUT at VALIDATE. |
 | Failure | A non-record member is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- Blank normalized text remains a record; no records is empty.
-- Group preservation prevents first-group-only normalization.
-
 ## `project@3.0.0`
-
-Given an input data, return only a set of attributes for each data element (key-wise)
 
 When to invoke: Use when each record should retain and optionally rename a specified set of keys without semantic inference.
 
@@ -863,23 +683,13 @@ assert type(operator).__module__ == "blue_data_ops.operators._project_outcome"
 assert type(operator).__name__ == "ProjectOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `project@3.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Projection uses the first group and an empty projected record remains data. |
 | Empty | A valid projection with no source rows is successful-empty. |
 | Invalid | An empty requested-key list is INVALID_INPUT before empty execution. |
-| Failure | _not_applicable_: The accepted pure projection instrument names no separate execution-failure coordinate. |
-
-Discriminators:
-
-- An empty projected record is data; no source rows is empty.
-- Empty requested keys fail before the empty-data shortcut.
 
 ## `segment_text@2.0.0`
-
-Split normalized text into stable segments with offsets and flat metadata.
 
 When to invoke: Use when normalized text must be split into stable segments with offsets and metadata.
 
@@ -906,23 +716,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.segment_text_operat
 assert type(operator).__name__ == "SegmentTextOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `segment_text@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Segments preserve groups while blank or missing text records are skipped. |
 | Empty | Producing no segments from blank-only input is successful-empty. |
 | Invalid | A blank text_field is INVALID_INPUT at VALIDATE. |
 | Failure | An unknown format placeholder on nonblank input is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- Blank rows are skipped while nonblank later-group rows yield segments.
-- Bad format placeholder is failure, not no-segment empty.
-
 ## `select@2.0.0`
-
-Given an input data, filter data elements based on a specified condition by type-aware comparison (record-wise)
 
 When to invoke: Use when records should be filtered by a type-aware comparison against one key.
 
@@ -946,23 +747,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.select_operator"
 assert type(operator).__name__ == "SelectOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `select@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Selection uses the first group, returns matching records, and skips missing fields. |
 | Empty | A valid no-match selection is successful-empty. |
 | Invalid | An unsupported operand is INVALID_INPUT at VALIDATE. |
-| Failure | The accepted lax eps string boundary is contained as VALIDATION_FAILED at VALIDATE. |
-
-Discriminators:
-
-- Missing fields are skipped without admitting later groups.
-- String eps validator failure is distinct from unsupported-operand invalid input.
+| Failure | A lax eps string is contained as VALIDATION_FAILED at VALIDATE. |
 
 ## `semantic_extract@3.0.0`
-
-Extracts entities from natural language text fields using LLM models
 
 When to invoke: Use when entities must be extracted from text fields using natural-language instructions.
 
@@ -985,23 +777,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._semantic_extract_o
 assert type(operator).__name__ == "SemanticExtractOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `semantic_extract@3.0.0`. Dependency profile `scripted-provider`: Scripted LLMClient; no live provider.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A leading empty group is preserved while a later group is extracted. |
 | Empty | All supplied groups empty skips the provider and is successful-empty. |
 | Invalid | A malformed input bundle is INVALID_INPUT. |
 | Failure | A non-object combined provider response is EXECUTION_FAILED. |
 
-Discriminators:
-
-- A valid empty entity list remains record data; all groups empty is tensor empty.
-- Non-object provider results fail instead of becoming empty entities.
-
 ## `semantic_filter@3.0.0`
-
-Filters records based on natural language conditions using LLM models
 
 When to invoke: Use when records must be filtered by a natural-language condition that cannot be expressed as a simple comparison.
 
@@ -1024,23 +807,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._semantic_filter_ou
 assert type(operator).__name__ == "SemanticFilterOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `semantic_filter@3.0.0`. Dependency profile `scripted-provider`: Scripted LLMClient; no live provider.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Index mode emits one indices record per group, including an empty group. |
 | Empty | A valid false predicate result is successful-empty. |
 | Invalid | return_idx must be an actual Boolean. |
 | Failure | An undocumented Boolean alias fails instead of becoming false. |
 
-Discriminators:
-
-- Index mode preserves one indices record per group.
-- Provider false is empty while unrecognized Boolean aliases fail.
-
 ## `semantic_join@3.0.0`
-
-Joins two datasets based on natural language join predicate using LLM models
 
 When to invoke: Use when two datasets must be joined by a natural-language relationship rather than exact keys.
 
@@ -1079,23 +853,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._semantic_join_outc
 assert type(operator).__name__ == "SemanticJoinOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `semantic_join@3.0.0`. Dependency profile `scripted-provider`: Scripted LLMClient; optional embedding failure is a separately labeled double.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A valid JSON-Boolean batch response produces joined record data. |
 | Empty | A valid false batch response is successful-empty. |
 | Invalid | Group arity other than two is INVALID_INPUT. |
 | Failure | An unparseable batch response is EXECUTION_FAILED, not no-match. |
 
-Discriminators:
-
-- No pairs skips the provider while malformed nonempty-pair response fails.
-- Two-group validation prevents arity errors from reaching raw body semantics.
-
 ## `semantic_project@3.0.0`
-
-Projects records to select and rename columns using LLM-based mapping resolution
 
 When to invoke: Use when fields must be selected or renamed using semantic mapping.
 
@@ -1115,23 +880,13 @@ assert type(operator).__module__ == "blue_data_ops.operators._semantic_project_o
 assert type(operator).__name__ == "SemanticProjectOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `semantic_project@3.0.0`. Dependency profile `scripted-provider`: Scripted LLMClient; no live provider.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A leading empty group is preserved while a later group is projected. |
 | Empty | A valid explicit empty mapping has the documented successful-empty drop-all meaning. |
-| Invalid | _not_observed_: The accepted family instrument names no separate validation-stage invalid case. |
 | Failure | A non-object provider mapping is EXECUTION_FAILED. |
 
-Discriminators:
-
-- Explicit empty mapping is documented drop-all empty.
-- Non-object mapping fails instead of becoming an empty mapping.
-
 ## `semantic_transform@3.0.0`
-
-Transforms data into target fields and values using LLM-based transformations
 
 When to invoke: Use when records must be converted into requested target fields or values using natural-language transformations.
 
@@ -1153,23 +908,12 @@ assert type(operator).__module__ == "blue_data_ops.operators._semantic_transform
 assert type(operator).__name__ == "SemanticTransformOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `semantic_transform@3.0.0`. Dependency profile `scripted-provider`: Scripted LLMClient; no live provider.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A leading empty group is preserved while later data is transformed. |
-| Empty | _not_observed_: The accepted family instrument has no successful-empty tensor coordinate; an empty object is record data. |
-| Invalid | _not_observed_: The accepted family instrument names no separate validation-stage invalid case. |
 | Failure | A non-object transformation plan is EXECUTION_FAILED. |
 
-Discriminators:
-
-- Empty object for an optional target is record data, not tensor empty.
-- Malformed plan fails rather than producing an empty-dict fallback.
-
 ## `sklearn_estimator@2.0.0`
-
-Build and run a scikit-learn estimator for classification, regression, clustering, or transformation on DataBundle records.
 
 When to invoke: Use when an arbitrary scikit-learn estimator is required.
 
@@ -1191,23 +935,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.sklearn_estimator"
 assert type(operator).__name__ == "SklearnEstimator"
 ```
 
-Evidence source: accepted expected case for exact ID `sklearn_estimator@2.0.0`. Dependency profile `ml`: Install the ml extra; package import remains independent of NumPy and scikit-learn.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | A lower-case LinearRegression name trains on the first group and predicts the later group. |
 | Empty | An empty bundle returns the original empty input from the raw compatibility call. |
 | Invalid | An unknown estimator is INVALID_INPUT at VALIDATE through structured run. |
 | Failure | A fit_predict-only estimator with later inference data fails at EXECUTE instead of refitting. |
 
-Discriminators:
-
-- Case-insensitive lookup and a dynamic constructor parameter are exercised together.
-- One fitted model is distinguished from independent per-group fit_predict calls.
-
 ## `sum@2.0.0`
-
-Given an input data, calculate the sum of values for a specified key across all records.
 
 When to invoke: Use when a numeric key must be reduced to its total across records.
 
@@ -1228,23 +963,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.sum_operator"
 assert type(operator).__name__ == "SumOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `sum@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | First-group numeric coercion produces the exact sum record. |
-| Empty | _not_applicable_: No-contribution and empty inputs produce the domain identity record {sum: 0}, not successful-empty. |
+| Empty | No-contribution and empty inputs produce the domain identity record {sum: 0}, not successful-empty. |
 | Invalid | A missing sum_key is INVALID_INPUT at VALIDATE. |
 | Failure | A non-record member is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- Empty contributions yield a zero identity record rather than successful-empty.
-- Malformed bundle failure cannot pass as identity data.
-
 ## `union@2.0.0`
-
-Given multiple input data sources, combine all records and remove exact duplicates
 
 When to invoke: Use when input groups must be combined and duplicate records removed under the configured match rule.
 
@@ -1264,23 +990,14 @@ assert type(operator).__module__ == "blue_data_ops.operators.union_operator"
 assert type(operator).__name__ == "UnionOperator"
 ```
 
-Evidence source: accepted runtime observation for exact ID `union@2.0.0`. Dependency profile `none`: Pure exact-ID direct calls.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | key_match flattens all groups while retaining records with different field names. |
 | Empty | All empty groups produce successful-empty. |
 | Invalid | An unsupported match mode is INVALID_INPUT. |
 | Failure | A non-record member is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- Different match modes have distinct deduplication behavior.
-- Malformed member failure cannot pass as all-empty.
-
 ## `vector_embed@3.0.0`
-
-Convert text data into vector embeddings using a specified model.
 
 When to invoke: Use when text fields must be encoded as vectors for later similarity work.
 
@@ -1305,23 +1022,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._vector_embed_outco
 assert type(operator).__name__ == "VectorEmbedOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `vector_embed@3.0.0`. Dependency profile `deterministic-embedder`: Construction and encode doubles; no model download.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Deterministic embeddings are appended to each ordinary record. |
 | Empty | All groups empty skips model construction and is successful-empty. |
 | Invalid | Invalid control policy is rejected before the empty shortcut. |
 | Failure | Model construction failure is contained as EXECUTION_FAILED. |
 
-Discriminators:
-
-- Leading empty groups are preserved and later groups still embed.
-- All-empty skips construction while construction failure is an error.
-
 ## `vector_search@3.0.0`
-
-Perform semantic search within each dataset using text or vector queries.
 
 When to invoke: Use when records in each group must be ranked by similarity to a text or vector query.
 
@@ -1350,23 +1058,14 @@ assert type(operator).__module__ == "blue_data_ops.operators._vector_search_outc
 assert type(operator).__name__ == "VectorSearchOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `vector_search@3.0.0`. Dependency profile `real-numpy-and-deterministic-embedder`: Existing vectors use real NumPy; generated-vector cases use a deterministic embedder.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
-| Success | Declared top_k truncates sorted hit records and discriminates from the v2 body. |
+| Success | A declared top_k truncates the sorted hit records. |
 | Empty | A valid threshold with no hits is successful-empty. |
 | Invalid | Missing query is INVALID_INPUT at VALIDATE. |
 | Failure | Candidate metadata failure is EXECUTION_FAILED, not successful-empty. |
 
-Discriminators:
-
-- Attribute top_k changes output relative to the predecessor body.
-- No-hit threshold empty differs from malformed candidate failure.
-
 ## `vector_similarity@3.0.0`
-
-Compute similarity between two lists of records using embeddings.
 
 When to invoke: Use when records from two groups must be compared by embedding-based similarity in pairwise or cartesian mode.
 
@@ -1394,16 +1093,9 @@ assert type(operator).__module__ == "blue_data_ops.operators._vector_similarity_
 assert type(operator).__name__ == "VectorSimilarityOutcomeOperator"
 ```
 
-Evidence source: accepted expected case for exact ID `vector_similarity@3.0.0`. Dependency profile `real-numpy-and-deterministic-embedder`: Existing-vector scoring uses real NumPy; generated-vector cases use a deterministic embedder.
-
-| Outcome | Evidence |
+| Outcome | Behavior |
 |---|---|
 | Success | Pairwise cosine emits exact pair identities, order, metrics, and scores. |
 | Empty | Both pairwise operands empty is successful-empty. |
 | Invalid | One empty pairwise operand is INVALID_INPUT. |
 | Failure | Generated vector dimension mismatch is EXECUTION_FAILED. |
-
-Discriminators:
-
-- Both-empty pairwise is valid while one-empty pairwise is invalid.
-- No-pair cartesian skips optional imports while dimension mismatch fails.

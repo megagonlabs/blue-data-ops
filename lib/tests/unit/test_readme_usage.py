@@ -525,15 +525,14 @@ def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
     assert "blue-data-ops==3.1.0" in mcp_readme
     assert "33 primary tools and no refinement companions" in mcp_readme
     assert "select caller-created `@2.0.0` cards" in mcp_readme
-    assert "exact supported raw package card" in mcp_readme
-    assert "retained `@2.0.0` card" in mcp_readme
-    assert "active `@3.0.0` card" in mcp_readme
-    assert "observed adapter behavior, not an ordinary-selection promise" in mcp_readme
+    assert "supported raw package cards" in mcp_readme
+    assert "retained `@2.0.0` cards" in mcp_readme
+    assert "active `@3.0.0` cards" in mcp_readme
     assert "Raw cards have empty `tags` and `when_to_invoke`" in mcp_readme
-    assert "`_meta.tags` is empty" in mcp_readme
-    assert "tool description contains only the operator description" in mcp_readme
-    assert "does not grant ordinary or OpenAI planning authority" in mcp_readme
+    assert "does not change planner eligibility" in mcp_readme
     assert "does not authorize a write" in mcp_readme
+    assert "Operator resources remain available through `OperatorSkillLoader`" in mcp_readme
+    assert "freezes `operator_ids` at construction" in mcp_readme
     assert "cannot shadow any of the 33 supported built-in logical names" in mcp_readme
     assert "Custom v1 and v3 cards are rejected" in mcp_readme
     assert "It contains the 33 retained v2 exact IDs" in mcp_readme

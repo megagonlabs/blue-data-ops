@@ -1,4 +1,4 @@
-# SQL-result boundary check
+# SQL-result boundary example
 
 Environment: llm
 

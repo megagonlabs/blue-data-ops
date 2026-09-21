@@ -3,6 +3,6 @@
   "operator_id": "project@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "cc2b6da51a106661f12ca2b08909443ddffb7a4405d3de0e1a87b91d5d9f9477"},
-    "examples": {"path": "examples.md", "sha256": "d73c582d0b93c0ad5dce28eb2872eed78119484f7812407f1f1fc22428d07fce"}
+    "examples": {"path": "examples.md", "sha256": "5ae3d32c25294453d8e85f07a6b62eb2563884bde1df82dcd13e7efa8fcbb0d1"}
   }
 }

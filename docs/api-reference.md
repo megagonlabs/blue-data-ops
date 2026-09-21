@@ -3,7 +3,7 @@
 The public Python surface of `blue-data-ops`, module by module.
 For a task-oriented walkthrough see [guide.md](guide.md); for the shapes behind these signatures see [`design/09-api-interface-spec.md`](../design/09-api-interface-spec.md).
 
-Per-operator metadata — attributes, defaults, tags, invocation guidance, and accepted outcome coordinates for each of the 33 active operator IDs — lives in the generated [`lib/OPERATORS.md`](../lib/OPERATORS.md), which is the source of truth for that content and is never hand-edited.
+The generated [`lib/OPERATORS.md`](../lib/OPERATORS.md) contains attributes, defaults, tags, invocation guidance, and documented outcomes for all 33 active operator IDs. It is the source of truth for that content and should not be edited by hand.
 This page does not restate it.
 [`lib/README.md`](../lib/README.md) is the source of truth for the library package itself; where the two overlap, it wins.
 For the MCP tool surface see [mcp.md](mcp.md).
@@ -436,8 +436,7 @@ The Blue-compatible helpers the operator surface depends on.
 
 ## Not part of the public API
 
-One interface named in the interface spec is not built.
-There is no `platform/api/`, so there is no REST API; [api.md](api.md) is the placeholder for it.
+The repository provides no REST API or `platform/api/`; [api.md](api.md) describes the current boundary.
 
 The `blue-ops` command is a separate distribution with its own reference, [cli.md](cli.md); nothing on this page is reachable through it except by running an operator.
 

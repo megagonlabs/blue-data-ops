@@ -1,8 +1,8 @@
-# Vector-search check
+# Vector-search example
 
 Environment: vector
 
-This example uses existing embeddings, so it exercises ranking without constructing or downloading a model. It also shows that `top_k` is effective only as a property in this version.
+This example ranks existing embeddings without constructing or downloading a model. It also shows that `top_k` is effective only as a property in this version.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

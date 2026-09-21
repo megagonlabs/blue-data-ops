@@ -1,4 +1,4 @@
-# Insert check
+# Insert example
 
 Environment: base
 

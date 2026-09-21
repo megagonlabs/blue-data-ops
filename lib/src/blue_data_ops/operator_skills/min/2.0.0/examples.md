@@ -1,8 +1,8 @@
-# Minimum-value check
+# Minimum-value example
 
 Environment: base
 
-This check skips unusable values and verifies the successful null result.
+This example skips unusable values and returns a successful null result when none remain.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

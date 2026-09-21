@@ -36,7 +36,9 @@ extraPaths = ["src", "tests/stubs"]
 ```
 
 The four selected rule families are pycodestyle (`E`), pyflakes (`F`), isort (`I`), and pyupgrade (`UP`).
-`ruff format` has no section of its own — it reads `line-length` from `[tool.ruff]`, and everything else is the formatter's default.
+Source formatting uses Ruff's defaults and the configured line length. The operator-reference
+generator adds `--preview` when it formats `OPERATORS.md` because Ruff's Markdown formatter requires
+preview mode.
 `extraPaths` lets Pyright resolve the deterministic stubs that stand in for the optional heavy dependencies; [11-testing-strategy.md](11-testing-strategy.md) owns how pytest reaches the same modules.
 [`platform/ops-mcp/pyproject.toml`](../platform/ops-mcp/pyproject.toml) and [`platform/ops-cli/pyproject.toml`](../platform/ops-cli/pyproject.toml) repeat the same settings; neither carries the core's stub path, and both put `../../lib/src` on `extraPaths` so the checker sees the library's real types instead of treating every import from it as unknown.
 
@@ -69,7 +71,7 @@ python -m pytest
 ## Type Hints
 
 The Python floor is 3.11, and each package states it three times: `requires-python = ">=3.11"`, Ruff's `target-version = "py311"`, and Pyright's `pythonVersion = "3.11"`.
-For the core package a test keeps the three honest — `lib/tests/unit/test_readme_usage.py` reads all of them out of `lib/pyproject.toml` and asserts them, so a floor bump that updates only one fails the suite.
+For the core package, `lib/tests/unit/test_readme_usage.py` reads all three values from `lib/pyproject.toml` and fails if they diverge.
 
 Pyright strict is the real standard here, and it is stricter than a convention: every parameter and every return is annotated, private functions included, and an unannotated signature is an error rather than a style note.
 Every distribution ships a `py.typed` marker, so a consumer gets those annotations.

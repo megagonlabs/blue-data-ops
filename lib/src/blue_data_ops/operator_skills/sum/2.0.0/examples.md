@@ -1,4 +1,4 @@
-# Sum check
+# Sum example
 
 Environment: base
 

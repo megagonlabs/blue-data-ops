@@ -1,8 +1,8 @@
-# Minimum-record check
+# Minimum-record example
 
 Environment: base
 
-This example keeps a numeric tie and checks the empty and invalid outcomes.
+This example preserves a numeric tie and also shows the empty and invalid outcomes.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

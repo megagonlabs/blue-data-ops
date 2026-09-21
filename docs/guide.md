@@ -364,20 +364,16 @@ with TemporaryDirectory() as directory:
     print([record["name"] for record in discovered[0]])   # ['orders']
 ```
 
-`data_discover` returns a source's registered connection settings alongside its name and scope, and masks the secret-shaped entries among them.
-A key is matched however it is spelled — `password`, `api-key`, `clientSecret`, `api%5Fkey`, `api+key`, `PASS PHRASE` and `api key` all fold to the same comparison, whitespace inside the name included — and so is an account name such as `user` or `username`, which is half of a stored credential pair.
-Masking reaches inside any stored string, not only into the keys of the map: the userinfo half of a connection URI reads `***:***`, and a credential written as an assignment reads `***` whether it sits in a query string, an ODBC or JDBC connection string, or a sentence.
-A registered source's description is redacted for the connections inside it, so a credential written into free text does not escape by being prose rather than a setting.
-That is narrower than the treatment the settings themselves get, and deliberately so: a URI is taken apart by its own grammar wherever it appears, and an assignment is masked when it sits in a run of parameters that reads as a connection, but a lone `token=required` in a sentence is left alone.
-A run reads as a connection when a delimiter opens it, when a bare delimiter joins two of its parameters, or when it joins two or more and one of them names a connection structure such as `driver`, `server` or `initial catalog`.
-Nothing tells a documented schema value from a credential except the value, and the value is the thing nobody may read.
-What is deliberately not masked is the shape of the data a caller came to discover: a bare `key`, `keys` or `foreignKeys` entry, and the protocol, host, port and database of a connection, all come back as they are.
-A description holding no URI and no connection run comes back byte for byte; one holding either does not. `OAuth schema: token=required; authorization=optional` is returned as written, and `connect with Driver=X; Password=secret; Server=db` is not, although the two are punctuated identically — it is the connection keyword that separates them, not the spacing.
-What guarantees a credential does not come back is no longer the list of syntaxes the masker understands.
-After redaction the result is read again, and a credential name still assigned anything other than the mask loses the rest of its segment — so a shape the masker does not recognise fails closed rather than open.
-A value whose quoting or bracing never closes is masked to the end of the line for the same reason.
-Everything else — protocol, host, port, database, and the column metadata you came for — is returned as it stands.
-Read a credential from the registry directly if you need the value; discovery is a search surface and does not hand one back.
+`data_discover` returns a source's registered connection settings with its name and scope, but masks credentials in both settings and descriptions.
+
+- Credential keys are normalized before comparison. For example, `password`, `api-key`, `clientSecret`, `api%5Fkey`, `api+key`, `PASS PHRASE`, and `api key` are treated consistently. Account keys such as `user` and `username` are also treated as part of a stored credential pair.
+- String values are inspected as well as mapping keys. URI userinfo becomes `***:***`. Credential assignments are masked in query strings, ODBC and JDBC connection strings, and connection-like free text.
+- In descriptions, a lone assignment such as `token=required` remains unchanged unless it is part of a connection parameter run. A run starts with a delimiter, joins two parameters with a bare delimiter, or joins at least two parameters where one names connection structure such as `driver`, `server`, or `initial catalog`. In settings values, credential assignments are masked even when they appear alone.
+- Bare `key`, `keys`, and `foreignKeys` entries are not masked. Protocol, host, port, database, and column metadata are also preserved.
+- Descriptions without a URI or connection parameter run are returned byte for byte. `OAuth schema: token=required; authorization=optional` is unchanged; `connect with Driver=X; Password=secret; Server=db` is redacted because it contains connection keywords.
+- After the first redaction pass, any remaining credential assignment in a settings value loses the rest of its segment. In descriptions, this fallback applies only inside a connection parameter run. An unclosed quoted or braced credential value follows the same rule: it is masked through its segment in settings and only within a connection run in descriptions. These fallback rules cover credential syntax the first pass does not recognize.
+
+Read credentials directly from the registry when needed. Discovery is a search surface and does not return their values.
 
 `columns` is a list of `{"name": ..., "type": ...}` mappings; a bare type mapping fails validation.
 SQLite sources always resolve to the `public` collection, whatever you pass.
@@ -585,7 +581,7 @@ except PlanningError as error:
 Stages are `VALIDATION`, `DISCOVERY`, `DATA_CONTEXT`, `GENERATION`, `SELECTION`, `COMPILATION`, and `PREFLIGHT`.
 `PlanningRequest` also bounds how many discovery cards, candidates, steps, nodes, and edges a run may produce.
 
-Two boundaries are worth knowing before you write a generator.
+Custom generators must follow two admission boundaries.
 The planner compiles only admitted, supported exact ids that its own discovery returned, so a generator cannot introduce an operator the caller filtered out.
 Without an allowlist, built-ins are limited to the `active_registry()` selection; an exact allowlist may admit retained v2/v3 built-ins from `versioned_registry()`, and a caller-owned registry with a caller-owned rule may admit caller-created v2 cards.
 

@@ -1,7 +1,9 @@
 # blue-data-ops — High Level Architecture
 
-This document is the level-one decomposition: the components the repository actually contains, what each one owns, and the interface every other component reaches it through.
-The flow of information between them is [04-detailed-architecture.md](04-detailed-architecture.md); the class and function inventory per module is [06-library.md](06-library.md).
+The repository is divided into the components below, with each component's responsibility and
+external interface identified.
+See [04-detailed-architecture.md](04-detailed-architecture.md) for information flow and
+[06-library.md](06-library.md) for the module inventory.
 
 ## Diagram
 
@@ -79,7 +81,8 @@ This table is the boundary list the rest of the design documents refer back to.
 
 ### Dependency direction
 
-The import graph is acyclic at the directory level, and two of its edges are load-bearing enough to state.
+The import graph is acyclic at the directory level.
+Two edges define the main dependency boundaries.
 
 `data/` imports no other package directory in `blue_data_ops`.
 It defines its own local `Properties` alias rather than importing the one in `operators/types.py`, precisely so the edge stays one-way: operators import the seam, and the seam knows nothing about operators.
@@ -103,7 +106,7 @@ The planner and executor sit above the operator surface and are removable from a
 
 ### External Interfaces
 
-Three are implemented, and the fourth is named here so a reader looking for it finds the reason rather than silence.
+The repository implements the Python library, MCP server, and CLI.
 
 **Python Library — implemented.**
 `import blue_data_ops` is the primary interface and the one every other interface is built on.
@@ -118,7 +121,7 @@ It registers the 33 active operators as primary tools over the canonical `run()`
 **CLI — implemented, separate distribution.**
 `platform/ops-cli/` ships as `blue-data-ops-cli` with its own version and an exact pin on the core, and installs one console command, `blue-ops`.
 It parses arguments, keeps profiles and their configuration, resolves a catalog, and prints results; every operator call it makes goes through the same canonical `run()` boundary the other two interfaces use.
-Keeping it out of the core is what has not changed: the library stays importable into a process that wants a few operators, with no argument parsing, output formatting, or configuration file in front of it.
+The separate distribution keeps argument parsing, output formatting, and profile configuration out of the core.
 [`../platform/ops-cli/README.md`](../platform/ops-cli/README.md) is its source of truth.
 Scripts under `lib/scripts/` are the library's own maintenance and packaging tools, not installed commands.
 
@@ -151,7 +154,7 @@ The 33 concrete implementations, plus the 21 outcome subclasses that layer measu
 - The catalog is one explicit, name-ordered tuple in `registry.py`. Package export scanning never decides membership, and adding a module does not add an operator.
 - `OperatorDiscoverOperator` is an operator-shaped facade over registry discovery. It carries no `DISCOVERY` record, which keeps it out of the built-in card catalog and out of the MCP inventory.
 
-The per-operator attribute tables, tags, and accepted outcome coordinates are generated into [`../lib/OPERATORS.md`](../lib/OPERATORS.md).
+The per-operator attribute tables, tags, and documented outcomes are generated into [`../lib/OPERATORS.md`](../lib/OPERATORS.md).
 
 ### Operator Registry
 
@@ -177,7 +180,7 @@ Three factories build different views over the same catalog, and the difference 
 Reviewed prose about an operator, addressed by the same exact ID the operator is.
 
 - 54 packages under `operator_skills/<name>/<version>/`, each with a `manifest.json` naming its files and their SHA-256 digests.
-- `_index.json` is a closed exact-path map from pinned ID to manifest path. One malformed row invalidates the whole index rather than being skipped, so a poisoned entry cannot hide behind an intact neighbour.
+- `_index.json` is a closed exact-path map from pinned ID to manifest path. One malformed row invalidates the whole index rather than being skipped, including entries whose own rows are valid.
 - Every read is bounded before decoding: 4 KiB for the index and a manifest, 16 KiB for a resource, JSON depth 4.
 - The reader refuses symlinks at every path segment, rejects absolute and traversing relative paths, and confirms the resolved file sits under the package root and is a regular file.
 - A load returns the registry card, the requested level, the loaded kinds, the operator's live attribute schema, the declared input and output shapes, and the text.
@@ -234,11 +237,11 @@ The porting details that are easy to get wrong — which `typing` objects `strin
 
 ### MCP Adapter
 
-A projection, not a second implementation.
+The adapter projects `Operator.run()` and implements no operator behavior.
 
 - `freeze_deployment()` validates and freezes one exact primary-only selection. The backing registry may be a superset; only the selected cards become tools.
 - A package-owned selection must be a same-registry built-in resolving to the expected implementation class. Explicit caller registrations are accepted at `2.0.0` only, and a custom card cannot shadow a supported built-in logical name.
 - Duplicate logical names in a selection fail rather than one winning.
 - `make_run_handler()` wraps `Operator.run()`, moves it off the event loop with `asyncio.to_thread`, and validates the projected payload against the `RunResult` model.
 - The wire conversion applies `default=str` once for exotic leaves and rejects non-finite floats. That rejection is an adapter error and becomes a tool error, never a synthetic operator `ErrorRecord`.
-- Tool names stay logical; `_meta` carries the exact `operator_id`, the version, and the ordered tags.
+- Tool names add the adapter's `ops_` prefix to the logical name; `_meta` carries the exact `operator_id`, the version, and the ordered tags.

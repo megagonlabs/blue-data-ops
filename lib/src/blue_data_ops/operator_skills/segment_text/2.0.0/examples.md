@@ -1,8 +1,8 @@
-# Segment-text check
+# Segment-text example
 
 Environment: base
 
-This example creates overlapping word segments, copies one metadata field, and checks an invalid strategy.
+This example creates overlapping word segments, copies one metadata field, and shows the error returned for an invalid strategy.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

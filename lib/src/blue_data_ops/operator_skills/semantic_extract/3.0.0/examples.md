@@ -1,8 +1,8 @@
-# Semantic-extraction check
+# Semantic-extraction example
 
 Environment: llm
 
-This deterministic in-process client checks control flow only. It does not call a provider or measure extraction quality.
+This deterministic in-process client returns fixed extraction results. It does not call a provider or measure extraction quality.
 
 ```python
 from typing import Any

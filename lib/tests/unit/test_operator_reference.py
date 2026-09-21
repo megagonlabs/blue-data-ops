@@ -127,13 +127,35 @@ def test_every_reference_section_binds_live_implementation_and_evidence() -> Non
     generated = generator.render_reference()
     for card, operator, row in bound:
         section = generated.split(f"## `{card.operator_id}`", 1)[1].split("\n## `", 1)[0]
-        evidence = row["evidence"]
         assert type(operator).__module__ == row["implementation"]["module"]
         assert type(operator).__name__ == row["implementation"]["symbol"]
-        assert f"{evidence['source_kind']} for exact ID `{card.operator_id}`" in section
-        for claim in row["claims"].values():
-            description = claim.get("summary") or claim["reason"]
-            assert description in section
+        for kind, claim in row["claims"].items():
+            source_text = claim.get("summary") or claim["reason"]
+            rendered_text = generator._claim_text(card.operator_id, kind, claim)
+            if rendered_text is None:
+                assert source_text not in section
+            else:
+                assert rendered_text in section
+
+
+def test_reference_applies_reader_facing_overrides() -> None:
+    generator = _generator()
+    rows = generator._load_combined_rows()
+    generated = generator.render_reference()
+    rewritten_claims: set[tuple[str, str]] = set()
+
+    for row in rows:
+        operator_id = row["operator_id"]
+        for kind, claim in row["claims"].items():
+            source_text = claim.get("summary") or claim["reason"]
+            rendered_text = generator._claim_text(operator_id, kind, claim)
+            if rendered_text is None:
+                assert source_text not in generated
+            elif source_text not in rendered_text:
+                rewritten_claims.add((operator_id, kind))
+                assert source_text not in generated
+
+    assert rewritten_claims == set(generator.CLAIM_TEXT_OVERRIDES)
 
 
 def test_reference_omits_internal_source_case_ids_with_firing_control() -> None:

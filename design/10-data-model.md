@@ -13,8 +13,7 @@ The package holds five families of structure:
 | Resource packages | the per-operator Markdown shipped as package data, and the index and manifests that bind it | `operator_skills/` |
 | Plan and planning records | a serializable pipeline, a planning request, and the schema snapshot a generator may be given | `plan/` |
 
-Persistence is the caller's problem throughout.
-The package serializes and validates; it never writes a file of its own.
+The package validates and serializes these structures but does not persist them.
 
 ---
 
@@ -47,7 +46,7 @@ The shipped per-operator guides sometimes call a bundle a *tensor*. It is the sa
 
 ### 1.1 The empty forms
 
-Three empty-looking values mean three different things, and the distinction is load-bearing.
+The three empty forms have distinct meanings.
 
 | Value | Meaning |
 |---|---|
@@ -298,15 +297,24 @@ It is an immutable dataclass and its `operator_id` is always pinned.
 
 ```python
 OperatorCard(
-    operator_id="select@2.0.0",
-    name="select",
+    operator_id="normalize_text@2.0.0",
+    name="normalize_text",
     version="2.0.0",
     description=(
-        "Given an input data, filter data elements based on a specified condition "
-        "by type-aware comparison (record-wise)"
+        "Normalize raw text into a stable canonical form for downstream extraction "
+        "and segmentation."
     ),
-    tags=("domain-relational", "flow-transform", "accepts-data", "produces-data", "capability-filter"),
-    when_to_invoke="Use when records should be filtered by a type-aware comparison against one key.",
+    tags=(
+        "domain-text",
+        "flow-transform",
+        "accepts-data",
+        "produces-data",
+        "capability-normalization",
+    ),
+    when_to_invoke=(
+        "Use when text needs canonical Unicode, whitespace, case, or recognized-date "
+        "normalization before later text work."
+    ),
     deprecated=False,
 )
 ```

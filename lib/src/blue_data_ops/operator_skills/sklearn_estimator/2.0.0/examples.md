@@ -1,8 +1,8 @@
-# Scikit-learn estimator check
+# Scikit-learn estimator example
 
 Environment: ml
 
-The first group trains a classifier. The second group checks inference and missing-vector handling.
+The first group trains a classifier. The second supplies inference records, including one without a vector.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

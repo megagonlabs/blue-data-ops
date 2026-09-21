@@ -1,4 +1,4 @@
-# Natural-language generation check
+# Natural-language generation example
 
 Environment: llm
 

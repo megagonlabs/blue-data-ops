@@ -1,4 +1,4 @@
-# Maximum-record check
+# Maximum-record example
 
 Environment: base
 

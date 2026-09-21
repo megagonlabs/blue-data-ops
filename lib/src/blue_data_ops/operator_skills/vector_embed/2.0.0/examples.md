@@ -1,8 +1,8 @@
-# Vector-embed check
+# Vector-embed example
 
 Environment: base
 
-The release check uses the successful-empty path. It confirms that no optional model package is needed for an empty first group.
+The empty-input example uses the successful-empty path and requires no optional model package.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -23,7 +23,7 @@ assert output_attributes == {}
 assert meta.errors == []
 ```
 
-The nonempty path needs `blue-data-ops[vector]`. Downloading the named model leaves the process. A credential may be needed when the model host restricts access. This fence is syntax-checked but is not release evidence.
+The nonempty path needs `blue-data-ops[vector]`. It downloads the named model over the network, and a restricted model host may require credentials.
 
 ```python live
 from blue_data_ops.operators import versioned_registry

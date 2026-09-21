@@ -88,6 +88,50 @@ ROW_KEYS = {
     "discriminators",
 }
 CLAIM_KINDS = ("success", "empty", "invalid", "failure")
+CLAIM_TEXT_OVERRIDES = {
+    ("classify@3.0.0", "success"): (
+        "Decision-tree training uses the first group and predicts across supplied groups."
+    ),
+    ("classify@3.0.0", "failure"): ("Ragged vectors are contained as EXECUTION_FAILED."),
+    ("cluster@3.0.0", "success"): ("K-means produces stable cluster labels as record data."),
+    ("cluster@3.0.0", "failure"): ("Ragged vectors are contained as an execution failure."),
+    ("create_database@2.0.0", "success"): (
+        "Creates a SQLite database while returning the input tensor unchanged."
+    ),
+    ("create_database@2.0.0", "empty"): (
+        "An empty returned tensor can still represent successful database creation."
+    ),
+    ("create_database@2.0.0", "failure"): (
+        "A RegistrySeam failure returns EXECUTION_FAILED rather than a successful result."
+    ),
+    ("create_table@2.0.0", "success"): (
+        "Creates a SQLite table while returning the input tensor unchanged."
+    ),
+    ("create_table@2.0.0", "empty"): (
+        "An empty returned tensor can still represent successful table creation."
+    ),
+    ("create_table@2.0.0", "failure"): (
+        "A RegistrySeam failure returns EXECUTION_FAILED rather than a successful result."
+    ),
+    ("data_discover@2.0.0", "success"): ("A registry search returns the matching database."),
+    ("data_discover@2.0.0", "empty"): (
+        "A registry search with no matches returns successful-empty."
+    ),
+    ("data_discover@2.0.0", "failure"): ("A registry failure returns EXECUTION_FAILED."),
+    ("insert_table@3.0.0", "success"): (
+        "Successful SQLite writes preserve all records and set num_rows_insert to the total "
+        "inserted by the call."
+    ),
+    ("insert_table@3.0.0", "failure"): (
+        "If a later batch fails a UNIQUE constraint, num_rows_insert is omitted even though "
+        "rows committed by an earlier batch remain."
+    ),
+    ("nl2bn@3.0.0", "empty"): ("A backend result with zero rows is successful-empty."),
+    ("select@2.0.0", "failure"): (
+        "A lax eps string is contained as VALIDATION_FAILED at VALIDATE."
+    ),
+    ("vector_search@3.0.0", "success"): ("A declared top_k truncates the sorted hit records."),
+}
 
 
 def _sha256(data: bytes) -> str:
@@ -344,6 +388,7 @@ def _format_reference(markdown: str) -> str:
         "-m",
         "ruff",
         "format",
+        "--preview",
         "--no-cache",
         "--config",
         str(LIB_ROOT / "pyproject.toml"),
@@ -365,10 +410,19 @@ def _format_reference(markdown: str) -> str:
     return result.stdout
 
 
-def _claim_text(claim: dict[str, Any]) -> str:
-    if claim["status"] == "supported":
-        return claim["summary"]
-    return f"_{claim['status']}_: {claim['reason']}"
+def _claim_text(operator_id: str, kind: str, claim: dict[str, Any]) -> str | None:
+    if claim["status"] == "not_observed":
+        return None
+    if claim["status"] == "not_applicable" and (operator_id, kind) != (
+        "sum@2.0.0",
+        "empty",
+    ):
+        return None
+    text = CLAIM_TEXT_OVERRIDES.get(
+        (operator_id, kind),
+        claim.get("summary") or claim["reason"],
+    )
+    return text
 
 
 def _render_unformatted_reference(
@@ -384,9 +438,8 @@ def _render_unformatted_reference(
     lines = [
         "# Operator reference",
         "",
-        "This reference covers the 33 exact cards selected by `active_registry()`. Outcome",
-        "statements are bound to the accepted core 3.0 evidence and the separately sealed",
-        "sklearn estimator supplement; unsupported outcomes keep their recorded limits.",
+        "This reference covers the 33 exact cards selected by `active_registry()`. Each outcome",
+        "table summarizes the behavior documented for that exact version.",
         "",
         "```python",
         "from blue_data_ops.operators import active_registry",
@@ -410,7 +463,10 @@ def _render_unformatted_reference(
         "accepts": ("kind of upstream input accepted", "one or more"),
         "produces": ("result kind or externally visible effect", "one or more"),
         "capability": ("operation family or specific action", "one or more"),
-        "requires": ("unconditional operator-specific runtime requirement", "zero or more"),
+        "requires": (
+            "unconditional operator-specific runtime requirement",
+            "zero or more",
+        ),
     }
     axis_order = [axis for axis in meanings if axis in tag_axes]
     axis_order.extend(sorted(tag_axes.keys() - meanings.keys()))
@@ -464,14 +520,10 @@ def _render_unformatted_reference(
 
     for card, operator, row in bound:
         implementation = row["implementation"]
-        evidence = row["evidence"]
-        dependency = row["dependency_profile"]
         name, version = card.operator_id.split("@", 1)
         lines.extend(
             [
                 f"## `{card.operator_id}`",
-                "",
-                card.description,
                 "",
                 f"When to invoke: {card.when_to_invoke}",
                 "",
@@ -505,25 +557,16 @@ def _render_unformatted_reference(
                 f"assert type(operator).__name__ == {implementation['symbol']!r}",
                 "```",
                 "",
-                f"Evidence source: {evidence['source_kind']} for exact ID "
-                f"`{evidence['original_operator_id']}`. Dependency profile "
-                f"`{dependency['kind']}`: {dependency['setup']}",
-                "",
-                "| Outcome | Evidence |",
+                "| Outcome | Behavior |",
                 "|---|---|",
             ]
         )
         for kind in CLAIM_KINDS:
-            lines.append(f"| {kind.capitalize()} | {_claim_text(row['claims'][kind])} |")
-        lines.extend(
-            [
-                "",
-                "Discriminators:",
-                "",
-                *[f"- {value}" for value in row["discriminators"]],
-                "",
-            ]
-        )
+            text = _claim_text(card.operator_id, kind, row["claims"][kind])
+            if text is None:
+                continue
+            lines.append(f"| {kind.capitalize()} | {text} |")
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 

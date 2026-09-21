@@ -1,4 +1,4 @@
-# Projection check
+# Projection example
 
 Environment: base
 

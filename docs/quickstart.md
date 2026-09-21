@@ -140,7 +140,7 @@ print(run.execution.output_data)                                   # [[{'average
 ## Next steps
 
 - [features.md](features.md) — what the library can do, with a short example per feature
-- [guide.md](guide.md) — the same ground task by task, plus registry-backed tables, operator resources, and migration from 2.x
-- [../examples/README.md](../examples/README.md) — whole programs you can run as they are, with the offline ones executed by the test suite
+- [guide.md](guide.md) — the same material organized task by task, plus registry-backed tables, operator resources, and migration from 2.x
+- [../examples/README.md](../examples/README.md) — whole programs you can run as they are
 - [mcp.md](mcp.md) — serve the same operators as MCP tools
 - [cli.md](cli.md) — run the same operators from a shell

@@ -2,7 +2,7 @@
 
 Environment: ml
 
-The first group trains a decision tree. The second group checks prediction and missing-vector handling with different records.
+The first group trains a decision tree. The second supplies prediction records, including one without a vector.
 
 ```python
 from blue_data_ops.operators import versioned_registry

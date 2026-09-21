@@ -50,8 +50,9 @@ assert mean == [[{"average_total": 170.0}]]
 
 ## Scenario 2: Reading and Writing a Registered Data Source
 
-A caller wants operators to touch a real database rather than in-memory records.
-Four operators need a `blue-data` registry to do their work: `create_database`, `create_table`, `insert_table`, and `data_discover`.
+A caller wants operators to use registered data rather than only in-memory records.
+Six operators use a `blue-data` registry: `create_database`, `create_table`, `insert_table`, `data_discover`, `nl2bn`, and `nl2sql`.
+The first four create, modify, or read registered data; `nl2bn` and `nl2sql` use the registry while generating and, when enabled, executing queries.
 The caller registers its source with `blue-data`, wraps the registry in a `RegistrySeam`, and passes the seam through call properties under `data_registry`.
 
 The seam is the only place the package imports `blue-data`, so the operator itself never sees the underlying registry's argument order or result shapes.
@@ -531,7 +532,7 @@ Level 2 is the card plus the live attribute schema plus the guide; level 3 adds 
 ## Scenario 13: Serving the Operators to an Agent
 
 An LLM agent needs to call these operators without a Python import.
-The MCP adapter registers the 33 active operators as primary tools over the canonical `run()` boundary, named for their logical operator and carrying the exact pinned ID in `_meta`.
+The MCP adapter registers the 33 active operators as primary tools over the canonical `run()` boundary, adds `ops_` to each logical name, and carries the exact pinned ID in `_meta`.
 `create_server()` returns a configured `FastMCP` instance for embedding; `serve()` starts it over streamable HTTP, bound by default to `127.0.0.1:8000/mcp`.
 
 A call that satisfies the container schema but fails operator validation is still a successful MCP result, with the record inside `exec_meta`.
@@ -551,11 +552,11 @@ async def main() -> None:
     async with create_connected_server_and_client_session(server) as client:
         await client.initialize()
         listing = await client.list_tools()
-        assert [tool.name for tool in listing.tools] == ["select"]
+        assert [tool.name for tool in listing.tools] == ["ops_select"]
         assert listing.tools[0].meta["operator_id"] == "select@2.0.0"
 
         result = await client.call_tool(
-            "select",
+            "ops_select",
             {
                 "input_data": [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]],
                 "attributes": {"operand_key": "score", "operand": ">", "operand_val": 5},
@@ -583,7 +584,7 @@ The supported migration has two shapes.
 A `DeclarativeOperator` used as an executable leaf becomes an ordinary `Operator` subclass.
 A declarative plan definition becomes either a materialized `DataPipeline` the caller constructs and executes directly, or a `PlanGenerator.generate()` implementation returning `Sequence[PlanDraft]` for `PipelinePlanner`.
 
-This is not a drop-in migration, and the boundary is stated rather than implied.
+This migration is not drop-in.
 Automatic refinement, expansion of old declarative plan definitions, dynamic alternatives, and malformed-plan normalization are not preserved, and a caller that needs them stays on a compatible core 2.x and MCP 0.x pair.
 Where 1.x or 2.x behavior is deliberately wanted, `versioned_registry()` resolves it by exact ID and `default_registry()` keeps the raw compatibility view with its per-name version override.
 

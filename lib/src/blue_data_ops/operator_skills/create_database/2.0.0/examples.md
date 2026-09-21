@@ -1,8 +1,8 @@
-# Create-database check
+# Create-database example
 
 Environment: base
 
-This check uses an in-memory registry and source. It records the database locally and makes no network request.
+This example uses an in-memory registry and source. It records the database locally and makes no network request.
 
 ```python
 from typing import Any

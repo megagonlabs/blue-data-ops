@@ -1,4 +1,4 @@
-# Intersection check
+# Intersection example
 
 Environment: base
 

@@ -63,7 +63,7 @@ The URL is the server's default bind. Change it in both places together, and rea
 
 This server speaks streamable HTTP over a stateful session. The rest of the Blue Data family speaks stdio, and this server is the exception.
 
-The reason is the shape of the work. These tools bridge long CPU-bound and provider-bound calls onto worker threads, so a slow call does not hold the event loop and several calls stay in flight at once; the suite proves both, along with protocol cancellation of a running call over a live session. A client-spawned stdio subprocess is a poor fit for that: it ties the server's lifetime to one client, gives concurrent work nowhere to live across sessions, and makes a long-running deployment restart per client. Converting would break every existing deployment and buy nothing this package needs.
+Long CPU- and provider-bound calls run on worker threads, keeping the event loop responsive while multiple calls remain in flight. Stateful HTTP sessions also support cancellation of a running call. A client-spawned stdio process would tie the server lifetime to one client and would not preserve the current cross-session concurrency model. Changing to stdio would be a breaking transport change.
 
 Both server functions and the console command accept the loopback defaults `127.0.0.1`, `8000`, and `/mcp`. Review network exposure before changing the loopback host: a tool call carries provider and registry settings in its `properties` argument, and loopback is what keeps that reachable only from the host the server runs on.
 
@@ -139,7 +139,7 @@ server = create_server(registry=caller_registry, operator_ids=("echo@2.0.0",))
 
 A caller-registered operator is served under the same prefix as the built-ins, so `echo@2.0.0` becomes `ops_echo`.
 
-An explicit `registry=` may also serve an exact supported raw package card: a retained `@2.0.0` card such as `default_registry(select="2.0.0")`, or an active `@3.0.0` card such as `default_registry(avg="3.0.0")`. This is observed adapter behavior, not an ordinary-selection promise. Raw cards have empty `tags` and `when_to_invoke`, so `_meta.tags` is empty and the tool description contains only the operator description. MCP accepts the card for explicit execution; acceptance does not grant ordinary or OpenAI planning authority and does not authorize a write. The caller and deployment host remain responsible for invocation authorization.
+With an explicit `registry=`, the server can expose supported raw package cards, including retained `@2.0.0` cards and active `@3.0.0` cards. Raw cards have empty `tags` and `when_to_invoke`, so their tool metadata is correspondingly limited. Serving a raw card does not change planner eligibility and does not authorize a write; the deployment host remains responsible for access control on write-capable tools.
 
 `V2_OPERATOR_IDS` remains available for callers that imported the old constant. It contains the 33 retained v2 exact IDs; it is a compatibility tuple, not the default mixed-version selection.
 
@@ -337,14 +337,14 @@ A call that passes the MCP container schema but fails operator validation is sti
 
 The MCP initialization response reports this package's own version: `serverInfo.version` is `1.0.0`, matching `blue-data-ops-mcp` on the index. Each tool's operator version is in `_meta` and moves independently of it.
 
-### What this server does not expose
+### Server scope
 
-| Not exposed | Why |
+| Surface | Availability |
 |---|---|
-| MCP resources | This server is tools-only. The one candidate is core's per-operator skill packages, which are versioned documents on disk with a loader of their own; a client that wants them should read them from the installed library rather than have this server prefetch them into its context, and no tool needs them to run. |
-| A `--format` equivalent | An MCP tool's wire format is fixed JSON by protocol. `--format table/json/nl` is a CLI concern and is deliberately not mirrored here. |
-| The pipeline executor | Declarative plan expansion and pipeline execution are a library surface, not a tool. The adapter serves one tool per operator and composes nothing; a caller sequences the calls. |
-| Core's operator registry itself | Selection happens at construction, through `operator_ids`, and is frozen for the server's lifetime. There is no tool that registers, resolves, or lists cards, because a client changing the served catalog mid-session is not a thing this contract offers. |
+| MCP resources | None. Operator resources remain available through `OperatorSkillLoader` in core. |
+| Output formatting | Tool results use the MCP JSON envelope. Table and natural-language rendering are CLI features. |
+| Pipeline execution | Available through the core library, not as an MCP tool. The server exposes one tool per operator. |
+| Registry management | The server freezes `operator_ids` at construction and exposes no registry-mutation or registry-discovery tools. |
 
 ## Migrating from 0.13.0
 

@@ -3,6 +3,6 @@
   "operator_id": "union@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "1b32ea30c71a8e801facc8a67bb1e8e6bc15a14f59c095af6b0ca1cfbba41e50"},
-    "examples": {"path": "examples.md", "sha256": "bd287444614562deeca8f8a78dd88b69622988339842a53e7a6356de9e8ac51e"}
+    "examples": {"path": "examples.md", "sha256": "9f157f30f3d3f143292bbcbbfacff2798cb197cc127dbc4e8835c9e4acb7e862"}
   }
 }

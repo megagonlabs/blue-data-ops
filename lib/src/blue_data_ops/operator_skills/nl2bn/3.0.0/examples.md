@@ -1,8 +1,8 @@
-# Bayesian-result boundary check
+# Bayesian-result boundary example
 
 Environment: llm
 
-The scripted client and registry exercise local control flow only. They do not contact a provider or a Bayesian-query backend.
+The scripted client and registry run locally without contacting a provider or a Bayesian-query backend.
 
 ```python
 from copy import deepcopy

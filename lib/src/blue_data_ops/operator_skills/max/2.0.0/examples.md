@@ -1,4 +1,4 @@
-# Maximum-value check
+# Maximum-value example
 
 Environment: base
 

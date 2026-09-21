@@ -3,6 +3,6 @@
   "operator_id": "join@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "1ecd70cfa545981d83dd476e9e9f90667c3abf2d06374e783eec46f7821cf52f"},
-    "examples": {"path": "examples.md", "sha256": "ca94cb500365af46f3b1b127420b9c8a3e604a20565938f11cc537c5d8c84f75"}
+    "examples": {"path": "examples.md", "sha256": "5ccb720a2e30911b673238ec90e4aa16c6b03856210728563594db69d71ea643"}
   }
 }

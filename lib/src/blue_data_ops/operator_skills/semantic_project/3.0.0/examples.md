@@ -1,8 +1,8 @@
-# Semantic-projection check
+# Semantic-projection example
 
 Environment: llm
 
-The local client below supplies fixed mappings. It checks operator behavior without a provider call.
+The local client below supplies fixed mappings without making a provider call.
 
 ```python
 from blue_data_ops.llm import LLMClient

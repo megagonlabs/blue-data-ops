@@ -1,8 +1,9 @@
-# Natural-language-to-SQL check
+# Natural-language-to-SQL example
 
 Environment: llm
 
-The following explicit Python check uses local registry and LLM seams. It generates SQL without executing it.
+This example uses local registry and LLM implementations. An explicit Python check confirms that the
+generated SQL is returned without being executed.
 
 ```python
 from typing import Any

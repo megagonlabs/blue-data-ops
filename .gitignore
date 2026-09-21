@@ -11,8 +11,6 @@ build/
 .eggs/
 
 # Virtual environments
-# Both spellings of .venv: a symlink to a shared environment is a file, not a
-# directory, and the trailing-slash pattern does not match it.
 .venv/
 .venv
 venv/

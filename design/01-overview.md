@@ -4,9 +4,8 @@
 
 An agentic platform needs data work it can name, version, plan over, and run without the platform runtime being present.
 Blue's operator contract gives that work a shape: a list of record groups in, a list of record groups out, with a declared attribute schema in front of it.
-The platform implementation of that contract is wired into the platform's own runtime: its service clients, its synchronization bus, its remote routing.
-A consumer that wanted one aggregate took the deployment with it.
-This package holds the operator surface on its own, and reproduces none of that runtime.
+The platform implementation of that contract depends on the platform runtime, including its service clients, synchronization bus, and remote routing.
+This package provides the operator surface without those runtime dependencies.
 It installs as an ordinary Python library, resolves operators by exact version, executes them in process, and returns failures as data the caller inspects rather than exceptions the caller must catch.
 
 ## What It Does
@@ -29,29 +28,27 @@ The generated per-operator reference is [`../lib/OPERATORS.md`](../lib/OPERATORS
 
 ## Design Philosophy
 
-Identity is exact and immutable.
-A version is part of an operator's name, a registration can never be overwritten or deregistered, and `resolve()` accepts nothing but a fully pinned ID.
-The loose half of that contract lives in discovery, which takes fuzzy queries and returns cards that are already pinned, so a caller who searched still executes something it can name.
+Operator IDs include an exact version.
+Registrations cannot be overwritten or removed, and `resolve()` accepts only fully pinned IDs.
+Discovery accepts fuzzy queries but returns pinned cards.
 
-Failure reporting follows what is left to carry a record.
-An operator call always produces a result triple, so invalid input, a broken transform, and a blown deadline all arrive inside `ExecMeta.errors` with the output normalized to `[[]]`.
-Planning has no partial pipeline to attach a record to, so it raises `PlanningError` carrying the same structured record on the exception instead.
-That asymmetry is deliberate, and planning is the only place in the package where a recoverable outcome is reported by raising.
+Operator calls report invalid input, transform failures, and timeouts in `ExecMeta.errors`, with output normalized to `[[]]`.
+Planning raises `PlanningError` with the same structured record because no partial pipeline exists to carry it.
+Planning is the only package surface that raises to report a recoverable outcome.
 
-Weight is opt-in.
 The core declares five runtime dependencies.
-NumPy, scikit-learn, sentence-transformers, LiteLLM, and the OpenAI SDK are extras, and each is imported inside the function that needs it, so a missing extra becomes an `EXECUTION_FAILED` record at call time rather than a broken package import.
+NumPy, scikit-learn, sentence-transformers, LiteLLM, and the OpenAI SDK are optional extras imported at the point of use.
+A missing extra therefore produces an `EXECUTION_FAILED` record at call time instead of breaking package import.
 
-Each external system gets one boundary.
-`blue-data` is imported in `data/` and nowhere else, and the seam there absorbs the argument-order and search-score differences so no operator has to know about them.
+External dependencies have dedicated boundaries.
+`blue-data` is imported only in `data/`, whose seam handles argument-order and search-score differences.
 LiteLLM sits behind `LLMClient`.
-The one place that needs a provider's structured-output guarantee — the OpenAI plan generator — holds its own separate SDK seam, and that seam is the only import of the SDK in the package.
+The OpenAI plan generator uses a separate SDK seam for structured output; it is the package's only OpenAI SDK import.
 
-Authority is granted, never inferred.
-Constructing a registry does not make its cards plannable.
-The planner admits the reviewed active selection by default and an explicit allowlist otherwise, then the compiler rechecks card identity, provenance, and lifecycle against the live registry after the generator has already run.
-A generator can be wrong, or hostile, without being able to introduce an operator the caller never allowed.
+Registry membership alone does not make a card plannable.
+The planner admits the active selection by default or an explicit allowlist, and the compiler rechecks card identity, provenance, and lifecycle against the live registry after generation.
+A generator cannot introduce an operator that the caller did not allow.
 
-Interfaces stay outside the core.
-The core distribution `blue-data-ops` declares no console entry point and no HTTP server; the MCP adapter and the `blue-ops` command are separate distributions, each with its own version and its own exact pin on the core.
-That keeps the library installable in a process that wants a handful of aggregates and nothing else.
+The core distribution declares no console entry point or HTTP server.
+The MCP adapter and `blue-ops` command are separate distributions with their own versions and exact core pins.
+The library therefore remains installable without either interface's dependencies.

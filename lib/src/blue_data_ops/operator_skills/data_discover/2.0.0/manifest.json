@@ -3,6 +3,6 @@
   "operator_id": "data_discover@2.0.0",
   "resources": {
     "guide": {"path": "Operator.md", "sha256": "ea3b559a9cb9f88517b1900582faee258352acae15945af1eaca3b4c2801af2e"},
-    "examples": {"path": "examples.md", "sha256": "6e81ac97294d7dc8049e9585a4002173c99d5a08130f6ec1d2d2ebae9a7725e0"}
+    "examples": {"path": "examples.md", "sha256": "1bd0b329e14298c86717c69a0f22695b40528005380e7609707cb64737958104"}
   }
 }

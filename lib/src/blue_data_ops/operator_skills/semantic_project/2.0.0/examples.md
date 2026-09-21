@@ -1,4 +1,4 @@
-# Semantic-projection check
+# Semantic-projection example
 
 Environment: llm
 

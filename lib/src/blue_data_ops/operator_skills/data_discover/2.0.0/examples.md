@@ -1,4 +1,4 @@
-# Data-discovery check
+# Data-discovery example
 
 Environment: base
 

@@ -1,8 +1,8 @@
-# Vector-similarity check
+# Vector-similarity example
 
 Environment: vector
 
-This example uses existing embeddings, so it does not construct or download a model. It verifies result keys and a rejected pairwise call.
+This example uses existing embeddings, so it does not construct or download a model. It shows the result keys and the error returned for a mismatched pairwise call.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

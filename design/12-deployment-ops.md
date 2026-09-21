@@ -4,25 +4,21 @@ How the three distributions are versioned, built, installed, and operated, and w
 
 ## Overview
 
-This repository ships three Python distributions and nothing else.
-There is no container image, no service manifest, and no pipeline.
+This repository publishes three Python distributions.
+It has no CI, container image, service manifest, or deployment pipeline.
+Tests, builds, and publishing are run manually, sometimes through the scripts described below.
 All three are installed into a Python process — a caller's process for the library, one the operator starts for the MCP adapter, which serves streamable HTTP on a loopback address by default, and a shell's for the `blue-ops` command.
 
-One absence and one convention shape everything below, and both are stated once here rather than repeated in every section:
-
-- **There is no CI.**
-  The repository has no `.github/` directory and no CI configuration of any kind.
-  Every check, build, and publish step is a command someone runs.
-- **The shell scripts wrap those commands and automate nothing beyond them.**
-  Each distribution carries `scripts/{build,install,publish}.sh`, which is the family's convention.
-  They run `python -m build`, `pip install -e`, and `twine upload dist/*` with this repository's own sibling-checkout resolution folded in; nothing invokes them, and no `deploy.sh` exists.
-  `lib/scripts/` also holds the two Python maintenance scripts described in [07-repo-organization.md](07-repo-organization.md).
+Each distribution carries `scripts/{build,install,publish}.sh`.
+They run `python -m build`, `pip install -e`, and `twine upload dist/*`, with sibling-checkout resolution included where needed.
+Nothing invokes them automatically, and no `deploy.sh` exists.
+`lib/scripts/` also contains the two Python maintenance scripts described in [07-repo-organization.md](07-repo-organization.md).
 
 ---
 
 ## 1. Versioning
 
-Three version axes run independently, and conflating them is the usual source of confusion.
+The repository uses three independent version axes.
 
 | Axis | Where it lives | Moves when |
 |---|---|---|
@@ -33,13 +29,11 @@ Three version axes run independently, and conflating them is the usual source of
 Each distribution declares its own version and none reads another's.
 There is no repository-wide version, and no `MAJOR.MINOR.PATCH` for the repository as a whole.
 
-Operator card versions are the axis that matters most in practice.
 A card is registered under `name@<MAJOR.MINOR.PATCH>`, registration is immutable — no overwrite and no deregister — and a version is therefore never reused.
-That is what lets the history registry keep the 87 cards that earlier releases resolved while the active view offers the 33 a current caller should use.
+The history registry retains 87 cards from earlier releases, while the active view offers the 33 cards intended for current callers.
 [`lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md) is the source of truth for which boundary a given change crosses, and [10-data-model.md](10-data-model.md) covers the card record itself.
 
-A change that touches only documentation moves none of the three.
-A distribution version bump is a claim about code.
+A documentation-only change does not move any of the three versions.
 
 The repository carries no Git tags, so a release is identified by its commit and by the version in the `pyproject.toml` at that commit.
 [`../CHANGELOG.md`](../CHANGELOG.md) carries one entry per released version and names which of the three distributions moved.
@@ -57,12 +51,11 @@ The repository carries no Git tags, so a release is identified by its commit and
 Each package's own README is the source of truth for installing and using it: [`lib/README.md`](../lib/README.md), [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and [`platform/ops-cli/README.md`](../platform/ops-cli/README.md).
 
 The core declares no `[project.scripts]`, so installing the library alone adds no command to `PATH`.
-That is the part of the earlier decision that has not moved: the library is imported, and neither argument parsing nor output formatting sits in front of it.
-Each interface is its own distribution instead, so a process that wants four aggregates installs neither.
+Argument parsing and output formatting remain in the interface distributions, and a process that needs only the library installs neither interface.
 
-Each interface package's pin on the core is exact, not a floor.
-That is deliberate: the adapter's tool schemas are a projection of the core's attribute specs, and a core that changed a spec would change the wire contract without the adapter's version moving.
-The same holds for the command's rendering of an operator's attribute schema.
+Each interface package pins the core to an exact version.
+The adapter's tool schemas project the core's attribute specs, and the command renders the same schemas.
+A core specification change could otherwise alter either interface contract without moving its version.
 Upgrading the core therefore requires an interface release, and each pair is verified together.
 
 The three `[project]` blocks are minimal — `name`, `version`, `description`, `readme`, `requires-python`, and `dependencies`.
@@ -166,7 +159,7 @@ Those five patterns are the reason a wheel-only install can still load a resourc
 Adding a resource directory without adding its pattern here produces a wheel that imports fine and fails at first read, which is exactly the failure the built-artifact checks in [11-testing-strategy.md](11-testing-strategy.md) exist to catch.
 The adapter's `package-data` declares `py.typed` alone, and the command's declares `py.typed` and `profile_spec.json`, which is the configuration parameter list every `blue-ops profile` command reads.
 
-**Files in the source distribution but not the wheel** come from `lib/MANIFEST.in`: `COMPATIBILITY.md`, `OPERATORS.md`, three named test fixtures — two of which are the reference generator's sealed inputs — and `scripts/`, both the Python tools and the three shell scripts.
+**Files in the source distribution but not the wheel** come from `lib/MANIFEST.in`: `COMPATIBILITY.md`, `OPERATORS.md`, three named test fixtures — two of which are reference-generator inputs — and `scripts/`, both the Python tools and the three shell scripts.
 A source checkout and an extracted source distribution therefore both carry the reference material and the generator; a wheel does not.
 [`lib/README.md`](../lib/README.md) states that difference for users and tells a wheel-only reader to fetch the matching source distribution.
 Neither interface package has a `MANIFEST.in`.
@@ -179,7 +172,7 @@ A test enforces that.
 ## 5. Publishing
 
 `twine` is a `dev` extra of every package and is the intended upload tool, wrapped by each one's `scripts/publish.sh`.
-Beyond that, publishing is unautomated: there is no CI job and no registry configured in the repository.
+The repository has no publishing CI job or configured package registry.
 
 The pre-publish sequence, all of it manual:
 
@@ -191,8 +184,7 @@ The pre-publish sequence, all of it manual:
 6. Add a `CHANGELOG.md` entry naming each distribution whose version moved and what a caller has to do about it.
 7. Upload with `twine`, or `scripts/publish.sh`, against whichever index the operator is publishing to.
 
-Steps 3 and 5 are specific to this repository.
-Neither is wired into `pytest`, so both are easy to skip, and both are worth the two minutes.
+Steps 3 and 5 are specific to this repository and are not part of `pytest`.
 
 ---
 
@@ -227,18 +219,17 @@ The defaults, from `create_server()`:
 
 Two tests in the adapter suite assert those settings and the transport `serve()` picks, so a default cannot change quietly.
 
-**The transport is the family's exception, and the reason is the shape of the work.**
-The rest of the Blue Data family speaks stdio.
-These tools bridge long CPU-bound and provider-bound calls onto worker threads, so a slow call does not hold the event loop and several calls stay in flight at once; the adapter suite proves both, along with protocol cancellation of a running call over a live session.
-A client-spawned stdio subprocess fits that badly: it ties the server's lifetime to one client, gives concurrent work nowhere to live across sessions, and makes a long-running deployment restart per client.
-Converting would break every existing deployment, and the adapter has served streamable HTTP since `0.1.0`.
-That is the technical case; whether the family wants one server out of step with the rest is a decision above this repository.
+The MCP adapter serves streamable HTTP; the rest of the Blue Data family speaks stdio.
+Long CPU- and provider-bound calls run on worker threads, keeping the event loop responsive while multiple calls remain in flight.
+Stateful HTTP sessions also support cancellation of a running call.
+A client-spawned stdio process would tie the server lifetime to one client and would not preserve the current cross-session concurrency model.
+Changing transports would break existing deployments. The adapter has served streamable HTTP since `0.1.0`.
 
 Passing `operator_ids` replaces the default 33-tool selection with an exact pinned subset, and an empty tuple serves nothing.
 [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is the source of truth for the adapter's setup, tool contract, and migration notes; [`docs/mcp.md`](../docs/mcp.md) is a synced copy of it.
 
 Operationally this is a supervised process: no health endpoint, no readiness check, and no metrics path exist for a supervisor to poll.
-It watches the process and the port.
+A supervisor watches the process and the port.
 
 ---
 
@@ -292,7 +283,7 @@ Point it somewhere outside the tree, or add it to the ignore file, before enabli
 
 **Credentials are never read by this package.**
 An LLM-backed operator hands its request to LiteLLM, and the plan generator hands its request to the OpenAI SDK; each of those libraries reads its own provider variables, such as `OPENAI_API_KEY`, from the environment.
-**That is the only route a credential takes, and the only one there has ever been meant to be.**
+**That is the only route a credential takes.**
 A credential or an endpoint supplied in `properties` is now refused rather than forwarded, so a caller cannot choose either, and a deployment configures both by starting the process with them in its environment.
 Nothing here reads, stores, logs, or forwards a key, and no credential belongs in a `properties` mapping, which is serialized into a plan record.
 
@@ -312,7 +303,6 @@ What exists is per-call and in-process.
 The library configures no handler and installs no formatter, which is correct for a library: the host application decides where records go.
 A caller that wants operator logs configures the `blue_data_ops` logger itself.
 
-Nothing else is instrumented.
 There is no metrics endpoint, no OpenTelemetry dependency, no structured-log formatter, and no trace export.
 Cost and latency exist because the LLM client records them per call, not because anything aggregates them.
 
@@ -320,7 +310,7 @@ Cost and latency exist because the LLM client records them per call, not because
 
 ## 9. What Is Not Automated
 
-Collected in one place, because several of these read as oversights when they are current state.
+The repository does not automate the following operations.
 
 - **No pipeline.**
   No `.github/`, no CI configuration, no verify, build, or publish stage.
@@ -336,5 +326,5 @@ Collected in one place, because several of these read as oversights when they ar
 - **No process supervision recipe.**
   The MCP server is started by the commands in section 6 and supervised by whatever the operator already uses.
 
-None of this needs to change for the library, which is installed rather than deployed.
-It would need to change for anything that runs the MCP adapter as a long-lived service, and that is the point at which the first item on this list stops being acceptable.
+The library is installed rather than deployed.
+Long-running MCP deployments need process supervision and release automation beyond what this repository provides.

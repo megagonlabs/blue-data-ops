@@ -1,4 +1,4 @@
-# Union check
+# Union example
 
 Environment: base
 

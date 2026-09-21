@@ -1,8 +1,8 @@
-# Select check
+# Select example
 
 Environment: base
 
-This example filters one group, verifies record identity, and checks both successful-empty and invalid outcomes.
+This example filters one group, preserves record identity, and shows both successful-empty and invalid outcomes.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

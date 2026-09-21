@@ -28,7 +28,7 @@ It re-exports the operator classes reachable from the package root, the base `Op
 
 ## `operators/types.py` — the data and error vocabulary
 
-Every shape the operator boundary speaks, and nothing behavioral.
+`operators/types.py` defines the data and error types used at the operator boundary; it contains no behavior.
 The type aliases are plain aliases, so a caller never has to construct a wrapper to call an operator.
 
 | Name | Definition | Notes |
@@ -97,7 +97,7 @@ Class-level declarations, read by the runtime and never mutated on the class.
 
 | Class attribute | Purpose |
 |---|---|
-| `name` | the logical operator name, which becomes the registry key and the MCP tool name |
+| `name` | the logical operator name and registry key; the MCP adapter prefixes it with `ops_` when registering a tool |
 | `description` | the card description and part of the MCP tool description |
 | `attributes` | the frozen `dict[str, AttributeSpec]` declaration |
 | `PROPERTIES` | class-level property defaults, deep-copied onto each instance |
@@ -189,7 +189,8 @@ A frozen dataclass. Discovery-facing metadata whose `operator_id` is always pinn
 | `list_cards` | `() -> list[OperatorCard]` | every card, name ascending then version descending |
 
 Registration is immutable: no overwrite, no deregister.
-Resolution is strict and discovery is loose, deliberately, and they are two separate APIs — `resolve()` never answers "latest", and `find()`/`find_latest()` take loose queries and hand back cards that are already pinned.
+`resolve()` requires a pinned ID and never selects a latest version.
+`find()` and `find_latest()` accept looser queries but return pinned cards.
 
 Text scoring weights are fixed: name 10, any tag 8, `when_to_invoke` 6, description 5, each field at most once.
 Positive scores only; ties order by name then descending version.
@@ -219,9 +220,9 @@ For the 21 outcome-enabled names, `default_registry()` selects the outcome imple
 | `_builtin_operator_classes` | `() -> tuple[type[Operator], ...]` | the explicit, name-ordered catalog tuple every factory builds from |
 | `_outcome_operator_classes` | `() -> dict[str, type[Operator]]` | the 21 outcome classes keyed by logical name |
 
-Both halves of `is_builtin_card` are load-bearing and neither implies the other.
-Identity proves the caller holds *this* registry's card rather than an equal-looking one from another `versioned_registry()` result, which matters because the OpenAI generator goes on to read live declarations out of that instance.
-The provenance set proves the package factory registered it, because public `register()` accepts anything and an equal-looking custom card would otherwise pass identity.
+`is_builtin_card` requires both object identity and package provenance.
+Identity ties the card to this registry instance, which the OpenAI generator later uses to read live declarations.
+Provenance confirms that a package factory registered the card; public `register()` also accepts caller-defined cards.
 
 `upgrade_legacy_operator_id` raises `UpgradeError` on a missing, malformed, ambiguous, or unregistered target.
 A token that is both a registered bare name and an alias key is ambiguous and fails; alias precedence is not granted.
@@ -640,7 +641,8 @@ The provider gets the whole packaged schema document and the local validator get
 Decoder bounds are module constants rather than schema keywords, because a byte bound is checked locally against UTF-8 rather than code points: 128 bytes for an ID, 256 for a label, 32768 for one step's attributes JSON, 131072 for the raw response, 131072 for the request, and attribute nesting depth 64.
 
 `_decode_attributes()` merges the caller's attributes first, then the model's.
-An undeclared key is rejected before the overlap test, and the order is load-bearing: with the overlap test first, a key the caller had also supplied would have skipped the declaration check, admitting a model-authored field outside the operator's declaration whenever the caller happened to name it too.
+An undeclared key is rejected before the overlap test.
+Reversing this order would let a model-authored field bypass the declaration check whenever the caller supplied the same key.
 An overlapping key must agree exactly rather than being overwritten by whichever side wrote last.
 
 `_map_provider_exception()` maps by exception class and HTTP status onto `GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, `GENERATOR_UNAVAILABLE`, `GENERATOR_REQUEST_REJECTED`, `GENERATOR_REFUSED`, and `GENERATOR_RESPONSE_INVALID`.

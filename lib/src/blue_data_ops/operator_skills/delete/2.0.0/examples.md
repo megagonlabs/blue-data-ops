@@ -1,4 +1,4 @@
-# Delete check
+# Delete example
 
 Environment: base
 

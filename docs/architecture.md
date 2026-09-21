@@ -13,8 +13,8 @@ The repository holds two tiers.
 - **`lib/`** is the core library, distributed as `blue-data-ops`. Everything the system can do lives here.
 - **`platform/`** holds deployable adapters over `lib/`. Today that is an MCP server and a command line, distributed separately as `blue-data-ops-mcp` and `blue-data-ops-cli`.
 
-An adapter never adds behavior.
-It projects the same operator call the Python caller makes, which is why the interfaces cannot drift in what an operator does.
+The MCP adapter validates protocol containers, projects core results into JSON, and handles MCP transport.
+The CLI parses inputs, uses the core library APIs, and renders results.
 
 ### The core library
 
@@ -73,7 +73,7 @@ It projects the same operator call the Python caller makes, which is why the int
            └──────────────────────┘    └──────────────────────┘
 ```
 
-Two arrows leave the package, and only two.
+The package has two external dependency boundaries.
 `data/` is the single `blue-data` import boundary, so every operator that needs a data registry reaches one through the same facade instead of holding its own coupling.
 `llm/` is the single model-provider boundary, so the eight provider-backed operators — `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators — share one transport, one cache, and one usage ledger.
 
@@ -129,8 +129,8 @@ An empty result is `[[]]`, one empty group, never `[]`.
 
 Attributes are the per-call arguments an operator declares; properties are execution settings.
 Both are plain `dict[str, Any]`.
-An operator declares each attribute once as an `AttributeSpec`, and that declaration is what drives default materialization, validation, the MCP JSON schema, and the generated reference in [`lib/OPERATORS.md`](../lib/OPERATORS.md).
-One declaration, four consumers.
+An operator declares each attribute once as an `AttributeSpec`.
+The declaration drives default materialization, validation, the MCP JSON schema, and the generated reference in [`lib/OPERATORS.md`](../lib/OPERATORS.md).
 
 ---
 
@@ -166,7 +166,7 @@ The wrapper itself never retries.
 
 ## Data flow: resolving an operator
 
-Resolution is strict and discovery is loose, on purpose.
+Resolution requires a pinned ID; discovery accepts looser queries and returns pinned cards.
 
 ```text
 registry = active_registry()          # 33 cards: 12 at @2.0.0, 21 at @3.0.0
@@ -180,7 +180,7 @@ registry.resolve("select@2.0.0")      # strict → exactly that operator
     a bare name raises ResolveError; there is no "latest" at resolution time
 ```
 
-Every card `find()` returns is already pinned, so the loose call hands you something the strict call accepts.
+Every card `find()` returns is already pinned, so it is in the form `resolve()` accepts.
 A registered `name@version` is immutable: no overwrite, no deregister, no silent upgrade.
 That is what makes a saved pipeline reproducible — the IDs in the record name one implementation each, for as long as the registry that resolves them offers it.
 
@@ -279,12 +279,12 @@ create_server(registry=None, operator_ids=None)
   ← DeploymentSnapshot, ordered by logical name
 
   register one tool per binding:
-    name         the logical operator name, e.g. "select"
+    name         "ops_" plus the logical operator name, e.g. "ops_select"
     description  the card's when_to_invoke, then its description
     _meta        operator_id, version, ordered tags
     signature    input_data (required), attributes, properties
 
-client.call_tool("select", {...})
+client.call_tool("ops_select", {...})
   → handler runs operator.run(...) on a worker thread
   → project the result once: default=str for exotic leaves, reject NaN and Infinity
   ← structuredContent {output_data, output_attributes, exec_meta}

@@ -2,7 +2,7 @@
 
 Environment: base
 
-This example creates a table in a temporary directory. It registers a SQLite source, inserts rows from a later input group, and checks the stored rows. The returned groups then feed an average after the caller combines their rows into one group.
+This example creates a table in a temporary directory. It registers a SQLite source, inserts rows from a later input group, and reads the stored rows. The returned groups then feed an average after the caller combines their rows into one group.
 
 ```python
 import sqlite3

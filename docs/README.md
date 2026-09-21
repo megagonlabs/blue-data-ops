@@ -1,7 +1,5 @@
 # Documentation
 
-Landing page for all documentation in `blue-data-ops` — what to read depends on what you are doing.
-
 ## Start here
 
 | Doc | Read this if you want to... |
@@ -28,13 +26,10 @@ Landing page for all documentation in `blue-data-ops` — what to read depends o
 | [architecture.md](architecture.md) | Understand how the pieces fit together — the component diagram and the path data takes through `run()`, the executor, and the planner |
 | [extending.md](extending.md) | Write your own operator, registry, plan generator, or embedder against the package seams |
 
-## Source of truth
+## Authoritative references
 
-These pages track the behavior of the code as it stands, not the plan for it.
-A page that has drifted from the code is a bug in the page.
-
-Five files outside this directory own their subjects.
-Where a page here repeats one of them, the file below wins.
+These pages describe current behavior.
+For overlapping topics, use the following authoritative files.
 
 | File | Owns |
 |---|---|
@@ -46,4 +41,3 @@ Where a page here repeats one of them, the file below wins.
 
 [mcp.md](mcp.md) and [cli.md](cli.md) are synced copies of the last two and name their source at the top.
 Everything else here is written for this directory.
-A doc that exists but is missing from the tables above is a bug in [this index](README.md).

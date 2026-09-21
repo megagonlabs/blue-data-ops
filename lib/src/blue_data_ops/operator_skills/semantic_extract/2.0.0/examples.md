@@ -1,4 +1,4 @@
-# Semantic-extraction check
+# Semantic-extraction example
 
 Environment: llm
 

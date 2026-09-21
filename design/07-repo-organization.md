@@ -26,9 +26,9 @@ blue-data-ops/
 │   ├── 10-data-model.md                    # record, group, card, plan, and result shapes
 │   ├── 11-testing-strategy.md              # test levels, doubles and stubs, and how to run each suite
 │   ├── 12-deployment-ops.md                # versioning, packaging, install paths, and what is not automated
-│   ├── 13-decision-log.md                  # architecture decisions, append-only; empty, and says why
-│   ├── design-process.md                   # the document sequence and the review protocol
-│   └── repo-organization-template.md       # the family's generic skeleton, of which 07 is the filled-in form
+│   ├── 13-decision-log.md                  # cross-cutting and superseding architecture decisions
+│   ├── design-process.md                   # guidance for maintaining the design documents
+│   └── repo-organization-template.md       # conventions used by this repository's layout
 │
 ├── docs/                                   # how to use it; written for users, and kept in step with current behavior
 │   ├── README.md                           # doc index, grouped by what the reader is trying to do
@@ -64,7 +64,7 @@ blue-data-ops/
 │   │   ├── build.sh                        # python -m build
 │   │   ├── install.sh                      # editable install, resolving blue-data from its checkout first
 │   │   ├── publish.sh                      # twine upload dist/*
-│   │   ├── generate_operator_reference.py  # regenerates OPERATORS.md from the live registry and sealed evidence
+│   │   ├── generate_operator_reference.py  # regenerates OPERATORS.md from the registry and generator fixtures
 │   │   └── check_real_llm_install.py       # fails if litellm resolves to the test stub instead of a real install
 │   │
 │   ├── src/                                # src layout, so the package is never importable from the project root
@@ -128,7 +128,7 @@ blue-data-ops/
 │       ├── unit/                           # one subdirectory per source package that has its own tests
 │       ├── doubles/                        # in-memory doubles for the data seam, recording every call
 │       ├── stubs/                          # deterministic stand-ins for the optional heavy dependencies
-│       ├── fixtures/                       # JSON reference documents and sealed evidence projections
+│       ├── fixtures/                       # JSON reference documents and reference-generator inputs
 │       └── installed/                      # checks that run against a built wheel or an installed package
 │
 └── platform/                               # interface adapters, one publishable distribution per subdirectory
@@ -184,30 +184,32 @@ Keeping both ignore files means a contributor can create `lib/.venv` without the
 
 ### `design/`
 
-Contributor-facing reasoning, numbered so the reading order is part of the filename.
-A document here answers "why is it like this", and it is written once per decision rather than updated whenever behavior shifts.
-The numbering runs 01 through 13 with no gaps, plus [design-process.md](design-process.md), which states the sequence and the review protocol these files follow, and [repo-organization-template.md](repo-organization-template.md), the family's generic skeleton that this document is the filled-in form of.
-[13-decision-log.md](13-decision-log.md) is append-only: a decision that is later reversed gets an addendum on the original entry, because the reason a shape was abandoned is worth as much as the shape that replaced it.
-It carries no entries, and says why: every decision this repository has taken is stated beside the thing it constrains, in the numbered documents above.
+Contributor-facing design rationale, numbered in reading order.
+A document here explains the decisions behind the system rather than tracking every behavior change.
+The numbering runs 01 through 13 with no gaps. [design-process.md](design-process.md) explains how to
+maintain the set, and [repo-organization-template.md](repo-organization-template.md) summarizes the
+layout conventions used here. [13-decision-log.md](13-decision-log.md) is reserved for decisions that
+cross document boundaries or supersede an earlier architecture decision.
 
 ### `docs/`
 
-User-facing instructions, flat rather than numbered, because a user arrives with one question and leaves again.
-[`docs/README.md`](../docs/README.md) is the index that routes that question.
+`docs/` contains unnumbered user documentation indexed by [`docs/README.md`](../docs/README.md).
 These pages must track current code behavior, which is the opposite update rule from `design/` — when the two disagree, the code and `docs/` are right and the design document is stale.
-Three pages are deliberately thin: [`docs/mcp.md`](../docs/mcp.md) is a synced copy of [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) and says so in text, [`docs/cli.md`](../docs/cli.md) is the same arrangement over [`platform/ops-cli/README.md`](../platform/ops-cli/README.md), and [`docs/api.md`](../docs/api.md) records that no REST API exists rather than leaving a reader to wonder.
+[`docs/mcp.md`](../docs/mcp.md) and [`docs/cli.md`](../docs/cli.md) mirror their adapter READMEs.
+[`docs/api.md`](../docs/api.md) states that the repository provides no REST API.
 
 ### `examples/`
 
-Scripts a reader can run, at the repository root rather than inside `lib/`, so that an example is a property of the repository and not a file that happens to ship in one source distribution.
+Runnable scripts live at the repository root rather than inside `lib/`; they are repository examples and do not ship in the library distribution.
 The three subdirectories group by purpose: the first scripts to run, single-capability demonstrations, and scripts that combine more than one subsystem.
 [`examples/README.md`](../examples/README.md) is the source of truth for which script sits where, what each one demonstrates, and which ones need an extra or a credential.
 `_sqlite_demo.py` stays at the top of the tree with a leading underscore, marking it as shared setup rather than an example in its own right.
-`coverage.json` maps each runnable script to the exact operator IDs it exercises, and the test suite checks that map against the scripts' own source, so an example that stops touching an operator cannot quietly keep the claim.
+`coverage.json` maps each runnable script to the exact operator IDs it exercises.
+Tests compare the map with the IDs referenced by each script.
 
 ### `lib/`
 
-The core distribution, and the only place business logic lives.
+`lib/` contains the core distribution and all operator behavior.
 The `src/` layout inside `lib/` keeps `blue_data_ops` from being importable just because a shell happens to be sitting in `lib/`.
 Anything that imports it has either installed it or put `src` on the path deliberately, which is what `pythonpath` in [`lib/pyproject.toml`](../lib/pyproject.toml) does for the test suite.
 Everything a wheel installs is under `lib/src/blue_data_ops/`.
@@ -220,7 +222,7 @@ Everything a wheel installs is under `lib/src/blue_data_ops/`.
 | `build.sh` | `python -m build` from `lib/`, writing the wheel and the source distribution into `lib/dist/` |
 | `install.sh` | Installs `blue-data` from the sibling checkout, then this package editable with its `dev` extra; `BLUE_DATA_PATH` overrides where it looks |
 | `publish.sh` | `twine upload dist/*` from `lib/` |
-| `generate_operator_reference.py` | Regenerates `OPERATORS.md` from the live registry and the sealed evidence fixtures; `--check` verifies the committed file is current without rewriting it |
+| `generate_operator_reference.py` | Regenerates `OPERATORS.md` from the active registry and generator fixtures; `--check` verifies the committed file is current without rewriting it |
 | `check_real_llm_install.py` | Exits non-zero when `litellm` resolves to the test stub, so a provider-backed run cannot silently execute against a fake |
 
 The three shell scripts are the family's convention and every distribution in this repository carries a copy, so a contributor moving between packages runs the same three commands.
@@ -229,7 +231,8 @@ The three shell scripts are the family's convention and every distribution in th
 
 One subdirectory per external interface, each its own publishable distribution with its own version and its own exact dependency on the core.
 Two exist: `ops-cli/` and `ops-mcp/`, named `<family>-<service>` so a directory name reads the same as the service it ships.
-Neither contains operator behavior — every tool and every command is a projection of `Operator.run()` — and keeping them outside `lib/` is what lets the library install into a process that wants four aggregates and neither an MCP SDK nor an argument parser.
+Neither contains operator behavior; every tool and every command is a projection of `Operator.run()`.
+Keeping them outside `lib/` means installing the core alone does not install MCP or CLI dependencies.
 A third interface arrives as a sibling directory here rather than as an extra on the core distribution.
 
 ### Module-to-architecture mapping
@@ -283,7 +286,7 @@ lib/tests/
 │   └── test_deprecation.py          # the retained warning category and the absence of the removed surfaces
 ├── doubles/               # in-memory doubles for the data seam that record every boundary call
 ├── stubs/                 # litellm and sentence-transformers stand-ins, resolved for both pytest and Pyright
-├── fixtures/              # JSON reference documents, including the sealed reference-generator evidence
+├── fixtures/              # JSON reference documents, including reference-generator inputs
 └── installed/             # wheel and installed-package checks, importable by tests and runnable by hand
 ```
 

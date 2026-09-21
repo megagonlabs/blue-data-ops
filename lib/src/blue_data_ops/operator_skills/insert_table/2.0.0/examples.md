@@ -1,8 +1,8 @@
-# Insert-table check
+# Insert-table example
 
 Environment: base
 
-This check creates a temporary SQLite table, writes one row, and removes the database with its temporary directory.
+This example creates a temporary SQLite table, writes one row, and removes the database with its temporary directory.
 
 ```python
 import sqlite3

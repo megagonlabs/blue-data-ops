@@ -166,7 +166,6 @@ print(versioned_registry().resolve("avg@1.0.0").operator_id)   # avg@1.0.0
 ```
 
 Raw cards carry no tags and no invocation guidance, and the planner refuses them as planning authority.
-Building a registry is not the same as being allowed to plan with it.
 
 ## Tag discovery
 
@@ -245,7 +244,8 @@ No package in 3.0 carries level 4, so asking for it raises `OperatorSkillLoadErr
 
 ## Registry-backed database operations
 
-Four operators reach a real database through a `blue-data` registry: `create_database`, `create_table`, `insert_table`, and `data_discover`.
+Six operators use a `blue-data` registry.
+`create_database`, `create_table`, `insert_table`, and `data_discover` create, modify, or read registered data; `nl2bn` and `nl2sql` use the registry while generating and, when enabled, executing queries.
 Pass the seam in the call properties.
 
 ```python
@@ -485,6 +485,7 @@ A record bundle arrives as a file or on standard input, never as an argument, an
 Settings resolve through four tiers — command option, environment variable, profile, built-in default — and a stored pipeline runs with `blue-ops pipeline run`.
 See [cli.md](cli.md) for the command tree, the configuration parameters, and the ten exit codes.
 
-## Interfaces that are not built
+## Interfaces
 
-- **No REST API.** There is no HTTP service in this repository. [api.md](api.md) records where that boundary would sit.
+The repository provides the Python library, MCP adapter, and `blue-ops` command.
+It provides no REST API; [api.md](api.md) describes that boundary.
