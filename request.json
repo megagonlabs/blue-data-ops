@@ -1,0 +1,11 @@
+{
+  "goal": "average total of orders above 100",
+  "discovery_queries": [
+    {"text": "filter", "tags": ["capability-filter"]},
+    {"text": "average", "tags": ["capability-average"]}
+  ],
+  "operator_attributes": {
+    "select": {"operand_key": "total", "operand": ">", "operand_val": 100},
+    "avg": {"avg_key": "total", "output_key": "average_total"}
+  }
+}
