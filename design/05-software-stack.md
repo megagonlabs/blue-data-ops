@@ -211,7 +211,7 @@ The gates above are run locally, and [11-testing-strategy.md](11-testing-strateg
 `lib/tests/stubs/` holds deterministic fakes for `litellm` and `sentence_transformers`, resolved by Pyright through `extraPaths` and by pytest through `conftest.py`.
 `lib/tests/installed/` holds checks that run against built distributions rather than the source tree.
 
-`lib/tests/unit/test_examples.py` is the runnability gate for the example scripts: it executes the eight offline examples in a subprocess and syntax-checks the three provider-backed ones.
+`lib/tests/unit/test_examples.py` is the runnability gate for the example scripts: it executes the eight offline examples in a subprocess, syntax-checks the four provider-backed ones, and runs the OpenAI planner example in process with deterministic provider doubles.
 `test_readme_usage.py` and `test_operator_reference.py` keep the shipped READMEs and the generated reference consistent with the code.
 
 ---

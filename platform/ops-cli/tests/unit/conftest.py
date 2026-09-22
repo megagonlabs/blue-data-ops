@@ -8,7 +8,7 @@ through, so a test can hand a command a prepared registry or a prepared failure 
 reaching any operator.
 
 Nothing here contacts a provider or a data registry. No test writes a credential anywhere:
-the values planted by ``test_secret_canary`` are sentinels shaped like key material.
+the values set by ``test_secret_canary`` are sentinels shaped like key material.
 """
 
 from __future__ import annotations

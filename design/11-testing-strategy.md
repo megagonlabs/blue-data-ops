@@ -79,7 +79,7 @@ lib/tests/
 │   ├── data/                      # the registry seam and provider, against real blue-data sources
 │   ├── llm/                       # client, templating, provider resolution, usage and cost accounting
 │   ├── utils/                     # type parsing, JSON merge and query, UUID and string helpers
-│   ├── test_examples.py           # runs the offline example scripts, syntax-checks the provider-backed ones
+│   ├── test_examples.py           # runs offline examples and the double-backed planner example; syntax-checks provider scripts
 │   ├── test_operator_reference.py # asserts OPERATORS.md is byte-identical to the generator's output
 │   ├── test_readme_usage.py       # executes the marked code fences in the shipped READMEs
 │   └── test_deprecation.py        # the retained warning category and the absence of the removed surfaces
@@ -237,7 +237,7 @@ Beyond the fences, it asserts specific sentences and install commands are presen
 The generated file is never hand-edited.
 The same module checks that the generator inputs still match their recorded digests, that a modified input document fails validation, and that `--check` reports a stale file without rewriting it.
 
-**`test_examples.py`** runs each offline example script in a subprocess and asserts a zero exit and non-empty output, compiles each provider-backed script without running it, and cross-checks `coverage.json` against the operator IDs the scripts actually name in their source.
+**`test_examples.py`** runs each offline example script in a subprocess and asserts a zero exit and non-empty output, compiles each provider-backed script, runs the OpenAI planner example in process with deterministic provider doubles, and cross-checks `coverage.json` against the operator IDs the scripts actually name in their source.
 It also asserts that the offline and provider-backed lists together account for every runnable script in the tree, so a new example cannot be added without being classified.
 
 These three are the runnability check for [`examples/README.md`](../examples/README.md) and the drift check for the package READMEs.
@@ -329,7 +329,8 @@ The suite does not cover the following areas.
 - **Nothing is automated.**
   With no CI, a passing suite means someone ran it on one machine with one set of installed versions.
 - **No live provider is ever called.**
-  The three provider-backed examples are compiled, not executed, and no test asserts anything about a real model's output.
+  Three provider-backed examples are compiled only; the OpenAI planner example runs against deterministic provider doubles.
+  No test asserts anything about a real model's output.
   A prompt change that degrades a real response is invisible to this suite.
 - **No replay tier exists.**
   `pytest-recording` is a declared dependency with no cassettes behind it, so there is nothing between the deterministic stubs and a live call.

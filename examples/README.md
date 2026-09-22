@@ -7,8 +7,8 @@ and have no captured output.
 
 Run every command from the directory containing the main README, after the installation steps in the [library README](../lib/README.md).
 
-Two of these scripts import the shared SQLite helper [`_sqlite_demo.py`](_sqlite_demo.py), which sits at the root of this directory rather than inside a category.
-Python puts only a script's own directory on the import path, so those two commands add the examples root with `PYTHONPATH`.
+Three of these scripts import the shared SQLite helper [`_sqlite_demo.py`](_sqlite_demo.py), which sits at the root of this directory rather than inside a category.
+Python puts only a script's own directory on the import path, so those three commands add the examples root with `PYTHONPATH`.
 
 ## quickstart/ — the shortest program that produces a result, one per install profile
 
@@ -162,12 +162,41 @@ python examples/integration-demos/embedding_planner.py
 
 Captured output: [`embedding_planner.output.txt`](integration-demos/embedding_planner.output.txt)
 
+### Live discovery, LLM planning, and NL2SQL — [`openai_planner_sqlite.py`](integration-demos/openai_planner_sqlite.py)
+
+Builds an embedding index over all 33 active operator cards and creates a temporary ten-row SQLite database through Blue's real registry and source.
+Tag discovery first finds the three query-head operators: `nl2bn`, `nl2llm`, and `nl2sql`.
+Embedding discovery then ranks the full active catalog against the question.
+`OpenAIPlanGenerator`, not a rule or fixed template, receives the combined discovered catalog and chooses the plan.
+The NL2SQL attributes in the request constrain its database address if the model selects it; they do not force that selection.
+For the default question, the expected selection is `nl2sql@3.0.0`, which generates a `SELECT` and executes it against the temporary database.
+This is an NL2SQL demonstration, so the command exits nonzero if the planner selects another operator.
+
+The script prints the active allowlist, tag matches, embedding ranking, combined discovery snapshot, model-visible read-only candidates, selected steps, preflight result, and query result.
+It makes four outbound calls: one batch for the operator documents, one for the question embedding, one for the plan, and one inside NL2SQL for SQL generation.
+The embedding cache prevents the planner from sending the same question embedding twice.
+The planner provider receives the question, operator metadata, caller-constrained NL2SQL address, and a registry-derived schema snapshot, but no database rows.
+NL2SQL separately sends the question and its current registry-derived schema to its configured model.
+That inner schema currently includes the `orders` entity but not its separately registered columns, so the default count query deliberately needs no column names.
+A shared column-aware projection is required before this example can claim broader source-backed coverage.
+
+```bash
+export OPENAI_API_KEY=<your-key>
+PYTHONPATH=examples python examples/integration-demos/openai_planner_sqlite.py \
+  --question "How many orders are there?" \
+  --planner-model gpt-4o \
+  --embedding-model text-embedding-3-small \
+  --nl2sql-model gpt-4o-mini
+```
+
+**Requires:** the `openai` and `llm` extras and `OPENAI_API_KEY`
+
 
 ## Shared files
 
 | File | Purpose |
 |---|---|
-| [`_sqlite_demo.py`](_sqlite_demo.py) | Builds the ten-row `orders` database and returns it as a registered `RegistrySeam`. Imported by the two SQLite scripts; not an example on its own. |
+| [`_sqlite_demo.py`](_sqlite_demo.py) | Builds the ten-row `orders` database and returns it as a registered `RegistrySeam`. Imported by the three SQLite scripts; not an example on its own. |
 | [`coverage.json`](coverage.json) | Maps each runnable example to the operator IDs it uses and lists tag axes covered by the generated reference. |
 | `<script>.output.txt` | What that script printed to standard output on a real run, captured beside it. One per offline script, eight in all. |
 
@@ -194,4 +223,5 @@ Standard error is not part of the captured result. For `operator_outcomes.py`, r
 | [`feature-demos/nl2sql_sqlite.py`](feature-demos/nl2sql_sqlite.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |
 | [`feature-demos/semantic_filter.py`](feature-demos/semantic_filter.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |
 | [`integration-demos/embedding_planner.py`](integration-demos/embedding_planner.py) | base install | [yes](integration-demos/embedding_planner.output.txt) |
+| [`integration-demos/openai_planner_sqlite.py`](integration-demos/openai_planner_sqlite.py) | `openai` and `llm` extras, `OPENAI_API_KEY` | no — providers answer |
 | [`_sqlite_demo.py`](_sqlite_demo.py) | base install | not a script of its own |

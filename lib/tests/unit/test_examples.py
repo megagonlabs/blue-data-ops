@@ -3,13 +3,18 @@ from __future__ import annotations
 import ast
 import json
 import os
+import runpy
 import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
+from blue_data_ops.llm import LLMClient
 from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import OperatorCard, active_registry, versioned_registry
 
@@ -30,6 +35,7 @@ OPTIONAL_EXAMPLES = (
     "feature-demos/nl2llm.py",
     "feature-demos/nl2sql_sqlite.py",
     "feature-demos/semantic_filter.py",
+    "integration-demos/openai_planner_sqlite.py",
 )
 SKILL_DISCOVERY_EXAMPLE = "feature-demos/operator_skill_discovery.py"
 SKILL_INELIGIBLE_OPERATOR_ID = "avg@1.0.0"
@@ -136,6 +142,124 @@ def test_offline_example_runs_from_lib(name: str) -> None:
 def test_optional_example_is_valid_python(name: str) -> None:
     source = (EXAMPLES / name).read_text(encoding="utf-8")
     compile(source, str(EXAMPLES / name), "exec")
+
+
+class _EmbeddingEndpoint:
+    def __init__(self) -> None:
+        self.requests: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> Any:
+        self.requests.append(kwargs)
+        texts = kwargs["input"]
+        vectors = [
+            SimpleNamespace(index=index, embedding=[1.0, float(index + 1)])
+            for index, _ in enumerate(texts)
+        ]
+        return SimpleNamespace(data=vectors)
+
+
+class _PlannerEndpoint:
+    def __init__(self) -> None:
+        self.requests: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> Any:
+        self.requests.append(kwargs)
+        payload: dict[str, Any] = {
+            "candidates": [
+                {
+                    "label": "sqlite-plan",
+                    "steps": [
+                        {
+                            "step_id": "query",
+                            "operator_id": "nl2sql@3.0.0",
+                            "attributes_json": "{}",
+                            "depends_on": [],
+                            "label": None,
+                        }
+                    ],
+                }
+            ]
+        }
+        part = SimpleNamespace(type="output_text", text=json.dumps(payload))
+        return SimpleNamespace(status="completed", output=[SimpleNamespace(content=[part])])
+
+
+class _PlannerExampleClient:
+    def __init__(self) -> None:
+        self.embeddings = _EmbeddingEndpoint()
+        self.responses = _PlannerEndpoint()
+
+    def with_options(self, **_: Any) -> _PlannerExampleClient:
+        return self
+
+
+class _NL2SQLClient(LLMClient):
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any] | None] = []
+
+    def execute_api_call(
+        self,
+        input: Any,
+        properties: dict[str, Any] | None = None,
+        additional_data: dict[str, Any] | None = None,
+    ) -> Any:
+        del input, properties
+        self.calls.append(additional_data)
+        return {"query": "SELECT COUNT(*) AS order_count FROM orders"}
+
+
+def test_openai_planner_example_discovers_plans_and_executes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "path", [str(EXAMPLES), *sys.path])
+    namespace = runpy.run_path(str(EXAMPLES / "integration-demos/openai_planner_sqlite.py"))
+    run_example = namespace["run_example"]
+    client = _PlannerExampleClient()
+    nl2sql_client = _NL2SQLClient()
+
+    with TemporaryDirectory(prefix="blue-data-ops-test-") as directory:
+        result = run_example(
+            "How many orders are there?",
+            directory=directory,
+            planner_model="planner-test-model",
+            embedding_model="embedding-test-model",
+            nl2sql_model="nl2sql-test-model",
+            openai_client=client,
+            nl2sql_client=nl2sql_client,
+        )
+
+    run = result.planner_run
+    active_ids = tuple(card.operator_id for card in active_registry().list_cards())
+    assert run.planning.request.allowed_operator_ids == active_ids
+    assert set(run.planning.discovery.operator_ids) == set(active_ids)
+    assert result.tag_operator_ids == ("nl2bn@3.0.0", "nl2llm@3.0.0", "nl2sql@3.0.0")
+    assert set(result.embedding_operator_ids) == set(active_ids)
+    assert [step.operator_id for step in run.planning.selected.steps] == ["nl2sql@3.0.0"]
+    assert run.execution.output_data == [[{"order_count": 10}]]
+    assert run.execution.succeeded
+    assert result.embedding_provider_calls == 2
+    assert [len(request["input"]) for request in client.embeddings.requests] == [33, 1]
+    request = json.loads(client.responses.requests[0]["input"][0]["content"])
+    model_ids = [card["operator_id"] for card in request["operators"]]
+    assert model_ids == list(result.model_candidate_operator_ids)
+    assert "nl2sql@3.0.0" in model_ids
+    side_effect_ids = {
+        "create_database@2.0.0",
+        "create_table@2.0.0",
+        "insert_table@3.0.0",
+    }
+    assert set(model_ids) == set(active_ids) - side_effect_ids
+    assert "data_context" in request
+    assert request["data_context"]["provenance"]["raw_rows"] == 0
+    planner_entities = request["data_context"]["schema"]["entities"]
+    assert [attribute["name"] for attribute in planner_entities[0]["attributes"]] == [
+        "id",
+        "region",
+        "total",
+    ]
+    assert len(nl2sql_client.calls) == 1
+    assert nl2sql_client.calls[0] is not None
+    assert '"name": "orders"' in nl2sql_client.calls[0]["schema"]
 
 
 def test_the_offline_partition_covers_every_offline_example() -> None:

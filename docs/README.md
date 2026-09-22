@@ -7,7 +7,7 @@
 | [quickstart.md](quickstart.md) | Get an operator, a pipeline, and the planner running in the next five minutes |
 | [installation.md](installation.md) | Install the library, the MCP adapter, or the `blue-ops` command from a source checkout or a built wheel, with every optional extra |
 | [features.md](features.md) | See what the library can do, at a glance, with a short example per feature |
-| [examples/](../examples/README.md) | Run something — eleven whole programs, grouped into a first working result, one capability in depth, and two subsystems wired together |
+| [examples/](../examples/README.md) | Run something — twelve whole programs, grouped into a first working result, one capability in depth, and two subsystems wired together |
 
 ## Using it
 
