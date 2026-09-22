@@ -135,6 +135,7 @@ def test_sqlite_returned_source_private_protocol(tmp_path: Path) -> None:
     connected = seam.connect_source("sqlite_src")
     assert connected is source  # registered sources are returned directly
 
+    connected.create_database("smoke")
     db_connection = connected._db_connect("smoke")
     cursor = db_connection.cursor()
     cursor.execute("CREATE TABLE t (a INTEGER, b TEXT)")

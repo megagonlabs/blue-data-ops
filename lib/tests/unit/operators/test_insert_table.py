@@ -221,6 +221,7 @@ def test_sqlite_end_to_end(op: InsertTableOperator, tmp_path: Path) -> None:
     )
     seam.register_source(source)
 
+    source.create_database("db")
     setup = source._db_connect("db")  # pyright: ignore[reportPrivateUsage]
     setup.cursor().execute('CREATE TABLE "t" ("a" INTEGER, "b" TEXT)')
     setup.commit()

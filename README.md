@@ -59,11 +59,23 @@ Optional extras pull the heavier dependencies only when you want those operators
 
 ## Quick start
 
-From the directory that holds `blue-data/` and `blue-data-ops/`, create an environment and run the library's installer:
+From the directory that holds `blue-data/` and `blue-data-ops/`, create and activate either a standard virtual environment:
 
 ```bash
 python -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
+```
+
+or a Conda environment. If Conda says the shell is not initialized, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to this directory:
+
+```bash
+conda create --name blue-data-ops python=3.12 pip
+conda activate blue-data-ops
+```
+
+With either environment active, run the library's installer:
+
+```bash
 ./blue-data-ops/lib/scripts/install.sh
 ```
 
@@ -76,7 +88,7 @@ python -m pip install -e "./blue-data-ops/lib[dev]"
 ```
 
 The MCP server and the `blue-ops` command are separate packages, each with its own `scripts/install.sh`.
-[docs/installation.md](docs/installation.md) covers every path.
+[docs/installation.md](docs/installation.md) covers the package-specific installation paths.
 
 Check the install from the library directory, then come back up and run the first example:
 
