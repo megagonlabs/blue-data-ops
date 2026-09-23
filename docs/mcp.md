@@ -306,6 +306,9 @@ operator error instead of being removed and retried. The caller can then choose 
 or send the call again without that setting. Deployment routing and the model allowlist still apply;
 tool properties cannot choose a provider or credential.
 
+See [Choosing a model for an LLM operator](llm-settings.md) for the same settings through
+Python and CLI, plus an offline precedence example.
+
 Each published attribute carries its description, its JSON Schema `type` where core's declared type has a faithful one, and an `enum` where core's own validator rejects every value outside a fixed set.
 Two attributes publish no type because core resolves their declared type to `Any` and would accept anything: `ops_select`'s `operand_val` and `ops_semantic_filter`'s `return_idx`.
 An attribute core declares required appears in the `attributes` object's `required` list.

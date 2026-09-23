@@ -1,0 +1,4 @@
+direct: model=direct-model, effort=low
+invocation: model=call-model, effort=high
+pipeline: model=pipeline-model, effort=medium
+operator: model=node-model, effort=cleared

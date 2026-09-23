@@ -7,7 +7,7 @@
 | [quickstart.md](quickstart.md) | Get an operator, a pipeline, and the planner running in the next five minutes |
 | [installation.md](installation.md) | Install the library, the MCP adapter, or the `blue-ops` command from a source checkout or a built wheel, with every optional extra |
 | [features.md](features.md) | See what the library can do, at a glance, with a short example per feature |
-| [examples/](../examples/README.md) | Run something — twelve whole programs, grouped into a first working result, one capability in depth, and two subsystems wired together |
+| [examples/](../examples/README.md) | Run thirteen whole programs, grouped by task |
 
 ## Using it
 
@@ -15,6 +15,7 @@
 |---|---|
 | [guide.md](guide.md) | Work through the Python library task by task — execution, error handling, discovery, registry-backed tables, pipelines, planning, migration from 2.x |
 | [api-reference.md](api-reference.md) | Look up an exact export, method signature, or result type |
+| [llm-settings.md](llm-settings.md) | Choose a model and reasoning effort for one LLM operator or a pipeline, from Python, CLI, or MCP |
 | [mcp.md](mcp.md) | Serve the 33 operators as MCP tools to an MCP client |
 | [cli.md](cli.md) | Run an operator, search the catalog, or run a stored pipeline from a shell, with `blue-ops` |
 | [api.md](api.md) | REST API — not built; the page says where that boundary would go if it were |

@@ -467,6 +467,9 @@ When `--model` and a generic model property appear together, the dedicated flag 
 `llm.model` supplied on its own suppresses the profile or built-in model default, so the settings
 footer names the model that reaches the operator.
 
+See [Choosing a model for an LLM operator](../../docs/llm-settings.md) for the same settings
+through Python and MCP, plus an offline precedence example.
+
 ## Operator resources
 
 Most operators ship a reviewed package: a guide at level 2, and worked examples at level 3.

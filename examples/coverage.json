@@ -9,6 +9,7 @@
     "feature-demos/operator_skill_discovery.py": [],
     "feature-demos/operator_skill_integrations.py": [],
     "feature-demos/operator_outcomes.py": ["insert_table@3.0.0", "avg@3.0.0"],
+    "feature-demos/llm_settings.py": ["nl2llm@3.0.0"],
     "feature-demos/nl2llm.py": ["nl2llm@3.0.0"],
     "feature-demos/nl2sql_sqlite.py": ["nl2sql@3.0.0"],
     "feature-demos/semantic_filter.py": ["semantic_filter@3.0.0"],

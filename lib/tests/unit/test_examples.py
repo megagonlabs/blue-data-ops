@@ -30,6 +30,7 @@ OFFLINE_EXAMPLES = (
     "feature-demos/operator_skill_discovery.py",
     "feature-demos/operator_skill_integrations.py",
     "feature-demos/operator_outcomes.py",
+    "feature-demos/llm_settings.py",
 )
 OPTIONAL_EXAMPLES = (
     "feature-demos/nl2llm.py",
@@ -136,6 +137,15 @@ def test_offline_example_runs_from_lib(name: str) -> None:
     result = _run_example(name)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip()
+
+
+def test_llm_settings_example_shows_each_precedence_layer() -> None:
+    name = "feature-demos/llm_settings.py"
+    result = _run_example(name)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == (
+        EXAMPLES / "feature-demos/llm_settings.output.txt"
+    ).read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("name", OPTIONAL_EXAMPLES)
@@ -275,6 +285,7 @@ def test_the_offline_partition_covers_every_offline_example() -> None:
         "feature-demos/operator_skill_discovery.py",
         "feature-demos/operator_skill_integrations.py",
         "feature-demos/operator_outcomes.py",
+        "feature-demos/llm_settings.py",
     }
 
 

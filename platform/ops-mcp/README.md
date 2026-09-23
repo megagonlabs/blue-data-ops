@@ -286,6 +286,9 @@ operator error instead of being removed and retried. The caller can then choose 
 or send the call again without that setting. Deployment routing and the model allowlist still apply;
 tool properties cannot choose a provider or credential.
 
+See [Choosing a model for an LLM operator](../../docs/llm-settings.md) for the same settings
+through Python and CLI, plus an offline precedence example.
+
 `platform.name` together with `data_registry.name` is the only way to supply a registry over the protocol.
 Core also reads a `data_registry` key, but only when its value is a live `RegistrySeam` or `DataRegistry` instance, and a JSON request cannot carry a Python object.
 Core's `resolve_registry` falls through every JSON-representable value to the two naming keys, so a string or an object sent under `data_registry` is ignored, resolution returns `None`, and the tool returns its contained empty result with nothing to say why.

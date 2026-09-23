@@ -102,6 +102,19 @@ python examples/feature-demos/operator_outcomes.py
 
 Captured output: [`operator_outcomes.output.txt`](feature-demos/operator_outcomes.output.txt), with the timing scrub below applied.
 
+### Model and effort precedence (offline) — [`llm_settings.py`](feature-demos/llm_settings.py)
+
+Runs `nl2llm` with a recording client to show direct-call, invocation, stored-pipeline, and
+operator-node settings. It makes no provider request, and the model names are placeholders.
+
+```bash
+python examples/feature-demos/llm_settings.py
+```
+
+Captured output: [`llm_settings.output.txt`](feature-demos/llm_settings.output.txt)
+
+**Requires:** the `llm` extra. See [LLM settings](../docs/llm-settings.md) for CLI and MCP calls.
+
 
 ### Provider-backed scripts
 
@@ -198,7 +211,7 @@ PYTHONPATH=examples python examples/integration-demos/openai_planner_sqlite.py \
 |---|---|
 | [`_sqlite_demo.py`](_sqlite_demo.py) | Builds the ten-row `orders` database and returns it as a registered `RegistrySeam`. Imported by the three SQLite scripts; not an example on its own. |
 | [`coverage.json`](coverage.json) | Maps each runnable example to the operator IDs it uses and lists tag axes covered by the generated reference. |
-| `<script>.output.txt` | What that script printed to standard output on a real run, captured beside it. One per offline script, eight in all. |
+| `<script>.output.txt` | What that script printed to standard output on a real run, captured beside it. One per offline script, nine in all. |
 
 The generated [operator reference](../lib/OPERATORS.md) is the source of truth for per-operator metadata and tags.
 
@@ -219,6 +232,7 @@ Standard error is not part of the captured result. For `operator_outcomes.py`, r
 | [`feature-demos/operator_skill_discovery.py`](feature-demos/operator_skill_discovery.py) | base install | [yes](feature-demos/operator_skill_discovery.output.txt) |
 | [`feature-demos/operator_skill_integrations.py`](feature-demos/operator_skill_integrations.py) | base install | [yes](feature-demos/operator_skill_integrations.output.txt) |
 | [`feature-demos/operator_outcomes.py`](feature-demos/operator_outcomes.py) | base install | [yes, timings scrubbed](feature-demos/operator_outcomes.output.txt) |
+| [`feature-demos/llm_settings.py`](feature-demos/llm_settings.py) | `llm` extra; no credential | [yes](feature-demos/llm_settings.output.txt) |
 | [`feature-demos/nl2llm.py`](feature-demos/nl2llm.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |
 | [`feature-demos/nl2sql_sqlite.py`](feature-demos/nl2sql_sqlite.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |
 | [`feature-demos/semantic_filter.py`](feature-demos/semantic_filter.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |

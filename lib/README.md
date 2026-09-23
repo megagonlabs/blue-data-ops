@@ -230,6 +230,9 @@ existing node, invocation, stored-pipeline order. Provider routing and the deplo
 still apply after those layers are merged. LLM precedence also applies when one layer uses a neutral
 `llm.*` key and another uses the namespace selected by `service_prefix`.
 
+For a credential-free precedence example and Python, CLI, and MCP settings, see
+[Choosing a model for an LLM operator](../docs/llm-settings.md).
+
 The source-checkout file `examples/feature-demos/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
 
 ### Discovery
