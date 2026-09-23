@@ -502,7 +502,8 @@ It records one `UsageRecord` per call — model, prompt and completion tokens, c
 Controls are properties: `llm.cache`, `llm.cache_dir` (default `.llm_cache`), `llm.max_parallel` (default 8), and `llm.rate_limit`.
 A caller may inject a configured client through `properties["llm_client"]` to reuse one across calls; without one, the default lifetime is construct-per-call with nothing shared.
 
-`LLMError` wraps transport and provider failures and rejected adapter configuration, carrying `message`, `code`, and `provider_error`.
+`LLMError` wraps transport and provider failures and rejected adapter configuration, carrying
+`message`, `code`, `provider_error`, and `retryable`.
 Templating failures before the provider boundary are not wrapped and propagate as they are.
 This client is the operator-level LLM seam; the plan generator's OpenAI seam is separate, and nothing else in the package imports that SDK.
 

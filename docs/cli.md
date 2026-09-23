@@ -60,7 +60,7 @@ blue-ops [--version] [-h|--help] [--profile NAME]
 │   ├── inspect OPERATOR_ID [--catalog] [--format]
 │   ├── run OPERATOR_ID [--input-file PATH] [--attribute KEY=VALUE]... [--attributes-file PATH]
 │   │     [--property KEY=VALUE]... [--properties-file PATH] [--timeout SECONDS] [--model NAME]
-│   │     [--catalog] [--format] [--log] [--log-limit N]
+│   │     [--reasoning-effort LEVEL] [--catalog] [--format] [--log] [--log-limit N]
 │   └── resource
 │       ├── list [--catalog] [--format]
 │       ├── inspect OPERATOR_ID [--catalog] [--format]
@@ -73,7 +73,8 @@ blue-ops [--version] [-h|--help] [--profile NAME]
 │   ├── list [--format]
 │   ├── inspect NAME [--catalog] [--format]
 │   ├── remove NAME [--confirm]
-│   └── run NAME --input-file PATH [--catalog] [--format] [--log] [--log-limit N]
+│   └── run NAME --input-file PATH [--model NAME] [--reasoning-effort LEVEL]
+│         [--catalog] [--format] [--log] [--log-limit N]
 └── metadata
     └── inspect [--catalog] [--format]
 ```
@@ -324,6 +325,37 @@ Ordinary attribute names are untouched: `key`, `argmax_key`, `sum_key` and `part
 
 The footer names each setting this invocation applied and the tier it came from.
 `--timeout` sets `execution.timeout_seconds` and `--model` sets `openai.model`; both fall back through the environment and the profile like everything else.
+`--reasoning-effort` sets `llm.reasoning_effort` only for the current run and has no default.
+
+Use the dedicated flags with any LLM-backed operator. `nl2llm` consumes no input records:
+
+```bash
+blue-ops operator run nl2llm@3.0.0 \
+  --attribute 'query=Return three product categories as JSON objects.' \
+  --model gpt-5-mini --reasoning-effort low
+```
+
+`workspaces.json`:
+
+```json
+[[{"name": "alpha", "summary": "quiet workspace"}]]
+```
+
+Pass that bundle to `semantic_filter`:
+
+```bash
+blue-ops operator run semantic_filter@3.0.0 --input-file workspaces.json \
+  --attribute 'filter_conditions={"summary":"suited to focused work"}' \
+  --model gpt-5-mini --reasoning-effort low
+```
+
+Leave out `--reasoning-effort` for a model that does not offer it. If the flag is present and the
+provider rejects that generation setting, the run fails once with a suggestion to remove the setting
+or choose a compatible model. The CLI does not silently retry without it. The same controls are
+available as `--property llm.model=...` and `--property llm.reasoning_effort=...`.
+When `--model` and a generic model property appear together, the dedicated flag wins. A generic
+`llm.model` supplied on its own suppresses the profile or built-in model default, so the settings
+footer names the model that reaches the operator.
 
 ## Operator resources
 
@@ -411,8 +443,77 @@ blue-ops pipeline run nightly --input-file orders.json
 ┡━━━━━━━╇━━━━━━━━━━━━━━━┩
 │ 0     │ 167.5         │
 └───────┴───────────────┘
-settings: openai.model=gpt-4o (default)
+invocation defaults: openai.model=gpt-4o (default)
 ```
+
+`pipeline run` also accepts `--model` and `--reasoning-effort`. They are invocation defaults for
+LLM-backed nodes. A value stored in the pipeline overrides that default, and a value on one operator
+node overrides the pipeline value. Deployment provider routing and the model allowlist still apply
+after those layers are merged. A node can set `llm.reasoning_effort` to `null` in an imported pipeline
+record to clear an inherited effort for a model that does not support it.
+The `--model` on `pipeline add --planner openai` selects the planning model instead; it does not set
+the models used later by operator nodes.
+
+This stored pipeline sets a pipeline model and effort, then selects another model on its LLM node
+and clears the inherited effort there.
+
+`llm-pipeline.json`:
+
+```json
+{
+  "id": "llm-example",
+  "label": "LLM override and effort clearing",
+  "type": "DATA_PIPELINE",
+  "nodes": {
+    "input": {
+      "id": "input", "label": "records", "type": "INPUT", "prev": [],
+      "next": ["generate"], "properties": {}, "values": {}, "statuses": {},
+      "value": null, "provenance": "$.llm-example"
+    },
+    "generate": {
+      "id": "generate", "label": "generate", "type": "OPERATOR", "prev": ["input"],
+      "next": ["output"],
+      "properties": {"llm.model": "gpt-4o-mini", "llm.reasoning_effort": null},
+      "values": {}, "statuses": {}, "OPERATOR": "llm-operator",
+      "provenance": "$.llm-example"
+    },
+    "output": {
+      "id": "output", "label": "result", "type": "OUTPUT", "prev": ["generate"],
+      "next": [], "properties": {}, "values": {}, "statuses": {},
+      "value": null, "provenance": "$.llm-example"
+    }
+  },
+  "map": {"records": "input", "generate": "generate", "result": "output"},
+  "entities": {
+    "OPERATOR": {
+      "llm-operator": {
+        "id": "llm-operator", "label": null, "type": "OPERATOR",
+        "properties": {"llm.model": "gpt-4o-mini", "llm.reasoning_effort": null},
+        "nodes": ["generate"], "operator_id": "nl2llm@3.0.0",
+        "attributes": {"query": "Return an empty JSON array."}
+      }
+    }
+  },
+  "properties": {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "medium"},
+  "provenance": "$", "input": "input", "output": "output", "attributes": {}
+}
+```
+
+`llm-input.json`:
+
+```json
+[[]]
+```
+
+```bash
+blue-ops pipeline import llm-example --pipeline-file llm-pipeline.json
+blue-ops pipeline run llm-example --input-file llm-input.json --model gpt-4o --reasoning-effort high
+```
+
+The run's `--model` and `--reasoning-effort` are only invocation defaults. The stored pipeline model
+overrides the first, the node model overrides the stored model, and the node's `null` effort clears
+both the stored and invocation values. In JSON output, `settings.scope` is
+`"invocation_defaults"`; `settings.applied` and `settings.source` describe only those CLI defaults.
 
 **A run never writes to the store.**
 Executing a pipeline records what happened on the plan it is handed, so the copy that runs is in memory and the one on disk is left alone.

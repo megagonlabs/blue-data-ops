@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -70,6 +71,44 @@ def test_accepted_llm_override_wins() -> None:
     assert litellm.calls[-1]["model"] == "gpt-4o-mini"
 
 
+def test_neutral_reasoning_effort_wins_over_the_prefixed_value() -> None:
+    client = LLMClient(
+        "test",
+        {
+            **OP_PROPS,
+            "openai.reasoning_effort": "high",
+            "llm.reasoning_effort": "low",
+        },
+    )
+    client.execute_api_call({}, additional_data={})
+    assert litellm.calls[-1]["reasoning_effort"] == "low"
+
+
+def test_omitted_reasoning_effort_is_not_added_to_the_provider_call() -> None:
+    client = LLMClient("test", OP_PROPS)
+    client.execute_api_call({}, additional_data={})
+    assert "reasoning_effort" not in litellm.calls[-1]
+
+
+def test_neutral_null_reasoning_effort_clears_an_inherited_value() -> None:
+    client = LLMClient(
+        "test",
+        {
+            **OP_PROPS,
+            "openai.reasoning_effort": "high",
+            "llm.reasoning_effort": None,
+        },
+    )
+    client.execute_api_call({}, additional_data={})
+    assert "reasoning_effort" not in litellm.calls[-1]
+
+
+def test_neutral_reasoning_effort_reaches_the_async_provider_call() -> None:
+    client = LLMClient("test", {**OP_PROPS, "llm.reasoning_effort": "medium"})
+    asyncio.run(client.aexecute_api_call({}, additional_data={}))
+    assert litellm.calls[-1]["reasoning_effort"] == "medium"
+
+
 def test_no_model_is_an_error() -> None:
     props = {k: v for k, v in OP_PROPS.items() if k != "openai.model"}
     client = LLMClient("test", props)
@@ -98,6 +137,77 @@ def test_provider_error_exhausts_retries() -> None:
     litellm.fail_next.extend([RuntimeError("x")] * 3)
     with pytest.raises(LLMError, match="x"):
         client.execute_api_call({}, additional_data={})
+
+
+def test_unsupported_generation_parameter_is_safe_and_not_retried() -> None:
+    client = LLMClient("test", {**OP_PROPS, "llm.reasoning_effort": "high"})
+    private_detail = "provider-private-unsupported-detail"
+    litellm.fail_next.append(litellm.UnsupportedParamsError(private_detail))
+
+    with pytest.raises(LLMError) as raised:
+        client.execute_api_call({}, additional_data={})
+
+    assert raised.value.code == "unsupported_parameter"
+    assert raised.value.retryable is False
+    assert private_detail not in str(raised.value)
+    assert len(litellm.calls) == 1
+
+
+def test_server_unsupported_generation_parameter_is_safe_and_not_retried() -> None:
+    client = LLMClient("test", {**OP_PROPS, "llm.reasoning_effort": "high"})
+    private_detail = "provider-private-server-detail"
+    litellm.fail_next.append(
+        litellm.BadRequestError(
+            private_detail,
+            body={
+                "error": {
+                    "message": private_detail,
+                    "type": "invalid_request_error",
+                    "param": "reasoning_effort",
+                    "code": "unsupported_parameter",
+                }
+            },
+        )
+    )
+
+    with pytest.raises(LLMError) as raised:
+        client.execute_api_call({}, additional_data={})
+
+    assert raised.value.code == "unsupported_parameter"
+    assert raised.value.retryable is False
+    assert private_detail not in str(raised.value)
+    assert len(litellm.calls) == 1
+
+
+def test_other_bad_request_codes_keep_the_ordinary_retry_policy() -> None:
+    client = LLMClient("test", {**OP_PROPS, "llm.reasoning_effort": "high"})
+    failures = [
+        litellm.BadRequestError(
+            "other bad request",
+            body={"error": {"code": "invalid_request_error"}},
+        )
+        for _ in range(3)
+    ]
+    litellm.fail_next.extend(failures)
+
+    with pytest.raises(LLMError) as raised:
+        client.execute_api_call({}, additional_data={})
+
+    assert raised.value.code == "provider_error"
+    assert raised.value.retryable is True
+    assert len(litellm.calls) == 3
+
+
+def test_async_unsupported_generation_parameter_is_not_retried() -> None:
+    client = LLMClient("test", {**OP_PROPS, "llm.reasoning_effort": "high"})
+    litellm.fail_next.append(litellm.UnsupportedParamsError("private async detail"))
+
+    with pytest.raises(LLMError) as raised:
+        asyncio.run(client.aexecute_api_call({}, additional_data={}))
+
+    assert raised.value.code == "unsupported_parameter"
+    assert raised.value.retryable is False
+    assert len(litellm.calls) == 1
 
 
 def test_usage_ledger_accumulates() -> None:

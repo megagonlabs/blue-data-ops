@@ -172,7 +172,57 @@ Every failure path raises `EmbeddingDiscoveryError` with a stable `reason`, so a
 
 ---
 
-## Swapping the LLM provider
+## Configuring LLM-backed operators
+
+Pass model and effort choices in the same `properties` mapping as the rest of an operator call.
+The neutral names do not select a provider:
+
+```python
+from blue_data_ops.operators import active_registry
+
+registry = active_registry()
+llm_properties = {
+    "llm.model": "gpt-5-mini",
+    "llm.reasoning_effort": "low",
+}
+
+generated, _, generated_meta = registry.resolve("nl2llm@3.0.0").run(
+    [[]],
+    {"query": "Return three product categories as JSON objects."},
+    llm_properties,
+)
+
+filtered, _, filtered_meta = registry.resolve("semantic_filter@3.0.0").run(
+    [[{"name": "alpha", "summary": "quiet workspace"}]],
+    {"filter_conditions": {"summary": "suited to focused work"}},
+    llm_properties,
+)
+
+assert generated_meta.errors == []
+assert filtered_meta.errors == []
+```
+
+Leave out `llm.reasoning_effort` for a model that does not implement it. The client then sends no
+effort parameter. In a pipeline that inherits an effort value, set `llm.reasoning_effort` to `None`
+on a higher-precedence operator node to clear it. If an explicit generation setting is unsupported,
+the operator returns one non-retryable `EXECUTION_FAILED` record with no provider details in its
+message; it does not silently remove the setting and retry a different request.
+
+The LLM aliases can be set at several pipeline layers. An operator node wins over stored pipeline
+values, stored pipeline values win over the LLM defaults passed to `PipelineExecutor.execute`, and
+those invocation values win over the operator's built-in defaults. This order also holds when one
+layer uses the legacy `openai.*` spelling and another uses `llm.*`. Other execution properties keep
+the existing node, invocation, stored-pipeline order. Deployment provider routing and the deployment
+model allowlist are enforced after the merge, so none of these layers can redirect a request to
+another provider.
+
+`PipelinePlanner.run(..., properties=llm_properties)` supplies the invocation defaults for the
+operators in a generated pipeline. `PlanStep` does not carry per-node properties, so a generated
+step cannot select its own model or effort; use an explicitly authored `DataPipeline` when one node
+needs a different setting. The model used by `OpenAIPlanGenerator` to create the plan is a separate
+configuration from the models used by the data operators that execute it.
+
+### Replacing the client or provider
 
 The eight provider-backed operators — `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators — do not construct a client of their own.
 Each calls `resolve_llm_client(merged_properties)`, and that function takes the first path that works: an `LLMClient` injected at `properties["llm_client"]`, then a provider if the caller passed one, then a fresh client built from the same properties.
@@ -206,14 +256,14 @@ There are three depths to choose from.
 
 | Depth | What you supply | Reaches a built-in operator | Use it when |
 |---|---|---|---|
-| Configuration | `properties` such as `{"openai.model": "gpt-4o-mini"}` on the call | yes | A different model or different limits, same transport |
+| Configuration | `properties` such as `{"llm.model": "gpt-4o-mini"}` on the call | yes | A different model or different limits, same transport |
 | A client | Your own object at `properties["llm_client"]` | yes | Replacing the transport, recording every call, or serving canned responses in a test |
 | A provider | An `LLMClientProvider`, or the shipped `CachingLLMClientProvider` | only through your own `resolve_llm_client` call | Controlling client lifetime, sharing one client and its usage ledger, or picking a client per config |
 
 An injected client is used exactly as given, which makes it the seam a test uses: nothing reaches a provider and nothing needs a credential.
 A real client reports `cost` only for exactly one priced attempt, so an injected client omits the cost fields rather than guessing at them.
 
-The default client is LiteLLM-backed and accepts a closed set of `llm.*` overrides: `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`.
+The default client is LiteLLM-backed and accepts a closed set of `llm.*` overrides: `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`.
 An unrecognized `llm.*` key raises `LLMError` with code `bad_override` rather than being forwarded to the provider.
 A key outside the generation set — one that would choose the provider, the endpoint, the project, tenant or region, or supply a credential — raises `LLMError` with code `reserved_field`, and so does `mock_response` or `mock_timeout`, which would replace the provider's answer with the caller's own text.
 `model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`.

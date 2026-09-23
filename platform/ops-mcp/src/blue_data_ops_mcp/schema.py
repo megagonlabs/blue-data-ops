@@ -34,8 +34,9 @@ PROPERTIES_DESCRIPTION = (
     "`service_prefix`; and the two provider namespaces, `openai.*` and `llm.*`, both of which "
     "are closed sets. `openai.*` accepts the generation parameters and nothing else: the "
     "provider, endpoint, project, tenant, region and credential are the deployment's, not the "
-    "caller's, and a property naming one of them is refused rather than ignored. `model` picks "
-    "a model within the deployment's provider; a provider-qualified name such as "
+    "caller's, and a property naming one of them is refused rather than ignored. `llm.model` "
+    "picks a model within the deployment's provider, and `llm.reasoning_effort` optionally "
+    "requests an effort level from models that support it; a provider-qualified name such as "
     "`vertex_ai/gemini-2.5-pro` is refused, and a deployment may narrow the set further."
 )
 

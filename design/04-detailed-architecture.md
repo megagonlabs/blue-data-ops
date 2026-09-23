@@ -172,7 +172,10 @@ A planner holding an index checks that `index.registry is registry` at construct
 4. Topologically sort the nodes. A cycle is a `PipelineError`.
 5. Confirm every node lies on a path from the declared input and on a path to the declared output, by walking forward from the input and backward from the output.
 6. For each operator node in topological order: reject a node whose status is already executing, executed, or failed; read its operator entity; require a string `operator_id`, a mapping `attributes`, and a mapping `properties`; resolve the pinned ID against the executor's registry; deep-copy the attributes.
-7. Layer the properties: plan properties first, then the caller's per-call properties, then the node entity's own properties. The node's own settings win.
+7. Layer ordinary properties from stored plan to caller invocation to node entity, preserving the
+   existing invocation-over-plan behavior for execution seams. For the LLM aliases, layer caller
+   invocation, stored plan, then node entity so stored model and effort values override invocation
+   defaults and the node's own LLM settings win over both.
 
 `preflight()` returns the node order and the resolved operator IDs, having run nothing.
 
@@ -343,7 +346,9 @@ Row counts are per-batch, and a batch whose cursor does not report one drops the
 5. Call kwargs are assembled. Only the documented `llm.*` override keys are accepted, and an unknown one is an `LLMError` with code `bad_override`. The four control keys are consumed here and never forwarded. Two dispatch-only fields, `api` and `service_url`, are stripped after every merge, because they are operator defaults rather than caller intent. A field on any namespace that would set a provider endpoint or a credential, or that would substitute the provider's answer, is refused with code `reserved_field` before the cache key is built. A missing model is an `LLMError` with code `no_model`.
 6. With caching enabled, the cache key is the canonically serialized kwargs. A hit records usage with zero tokens and zero cost and returns immediately. The cache is keyed per directory, so a per-call `cache_dir` override selects its own isolated cache.
 7. Rate limiting sleeps under a lock to hold the configured minimum interval between calls.
-8. The provider call runs through LiteLLM under `tenacity`, retrying an `LLMError` up to three attempts with exponential backoff and re-raising the last one.
+8. The provider call runs through LiteLLM under `tenacity`, retrying a retryable `LLMError` up to
+   three attempts with exponential backoff and re-raising the last one. A LiteLLM parameter
+   rejection or a provider 400 with structured code `unsupported_parameter` is non-retryable.
 9. The response is materialized into a payload dictionary, cached when caching is on, and recorded as one `UsageRecord` — model, token counts, cost, end-to-end latency including retries, and the cache-hit flag.
 10. `extract_output(payload, merged)` reads the configured output path with JSONPath, applies the configured strip and transformation steps, applies an output template, and casts the result.
 

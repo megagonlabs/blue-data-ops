@@ -279,7 +279,32 @@ Every tool accepts the same three open arguments:
 
 - required `input_data`: a list of record groups, where each group is a list of record objects;
 - optional `attributes`: an open object of operator arguments, defaulting to a fresh empty object;
-- optional `properties`: an open object or `null` carrying execution and backend settings. The recognized keys are `execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, `ops_cluster`, and `ops_sklearn_estimator` and without which `ops_sklearn_estimator` does not run at all; `platform.name` together with `data_registry.name`, which the six registry-backed tools need before they return anything but an empty result; `service_prefix`; and the two provider namespaces, `openai.*` and `llm.*`, both closed. `llm.*` takes `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel` and `rate_limit`. `openai.*` takes the generation parameters of the provider call and nothing else. Which provider answers, at which endpoint, in which project, tenant or region, and under which credential are the deployment's to set, from its own environment; a property naming any of them is refused with `reserved_field` rather than quietly dropped, because a dropped routing override would change who answered and say nothing.
+- optional `properties`: an open object or `null` carrying execution and backend settings. The recognized keys are `execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, `ops_cluster`, and `ops_sklearn_estimator` and without which `ops_sklearn_estimator` does not run at all; `platform.name` together with `data_registry.name`, which the six registry-backed tools need before they return anything but an empty result; `service_prefix`; and the two provider namespaces, `openai.*` and `llm.*`, both closed. `llm.*` takes `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel` and `rate_limit`. `openai.*` takes the generation parameters of the provider call and nothing else. Which provider answers, at which endpoint, in which project, tenant or region, and under which credential are the deployment's to set, from its own environment; a property naming any of them is refused with `reserved_field` rather than quietly dropped, because a dropped routing override would change who answered and say nothing.
+
+Use the neutral property names when selecting a model or effort for one tool call. These are the
+arguments objects for `ops_nl2llm` and `ops_semantic_filter`:
+
+```json
+{
+  "input_data": [[]],
+  "attributes": {"query": "Return three product categories as JSON objects."},
+  "properties": {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "low"}
+}
+```
+
+```json
+{
+  "input_data": [[{"name": "alpha", "summary": "quiet workspace"}]],
+  "attributes": {"filter_conditions": {"summary": "suited to focused work"}},
+  "properties": {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "low"}
+}
+```
+
+Omit `llm.reasoning_effort` when the selected model does not offer it. A `null` value is treated as
+absent rather than sent to the provider. An explicit unsupported setting produces a non-retryable
+operator error instead of being removed and retried. The caller can then choose a compatible model
+or send the call again without that setting. Deployment routing and the model allowlist still apply;
+tool properties cannot choose a provider or credential.
 
 Each published attribute carries its description, its JSON Schema `type` where core's declared type has a faithful one, and an `enum` where core's own validator rejects every value outside a fixed set.
 Two attributes publish no type because core resolves their declared type to `Any` and would accept anything: `ops_select`'s `operand_val` and `ops_semantic_filter`'s `return_idx`.

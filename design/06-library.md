@@ -471,7 +471,7 @@ Only `name@<MAJOR.MINOR.PATCH>` is accepted, so a serialized plan stays determin
 | `execute` | `(pipeline, input_data, properties=None) -> PipelineRun` |
 
 Both share one `_prepare()` step, so a graph that preflights clean will reach its first operator.
-`_prepare()` checks node records and edge reciprocity, requires exactly one declared input and one declared output, topologically sorts, requires every node to lie on a path from the input and to the output, rejects a node that has already started, resolves each pinned ID, deep-copies the attributes, and layers the properties as plan then call then node entity.
+`_prepare()` checks node records and edge reciprocity, requires exactly one declared input and one declared output, topologically sorts, requires every node to lie on a path from the input and to the output, rejects a node that has already started, resolves each pinned ID, and deep-copies the attributes. Ordinary properties retain stored-plan, invocation, then node precedence. LLM aliases use invocation, stored-plan, then node precedence.
 
 Execution aggregates each node's predecessor outputs in predecessor order, calls `run()`, records a `NodeRun`, and stops at the first node whose metadata carries errors, marking the remaining nodes failed.
 An exception escaping `run()` is still caught and turned into a synthetic `FAILED` / `EXECUTION_FAILED` record, so the executor's contract holds even if an operator's does not.
@@ -714,7 +714,7 @@ The client's own properties are merged under the call's, so a per-call value win
 
 | Constant | Contents |
 |---|---|
-| `_ACCEPTED_LLM_KEYS` | `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel`, `rate_limit` |
+| `_ACCEPTED_LLM_KEYS` | `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel`, `rate_limit` |
 | `_CONTROL_KEYS` | `cache`, `cache_dir`, `max_parallel`, `rate_limit` — consumed by the client, never forwarded |
 | `_RESERVED_FIELDS` | `api`, `service_url` — dispatch-only operator defaults, stripped after every merge rather than refused |
 | `_GENERATION_FIELDS` | the closed set a prefixed property may set, `_SIGNATURE_GENERATION_FIELDS` and `_KWARGS_GENERATION_FIELDS` together — anything outside it raises `reserved_field` rather than being forwarded |
@@ -730,7 +730,10 @@ A slash is not itself a provider prefix: an identifier such as `accounts/firewor
 The two refusals share a code and carry different messages: one says the endpoint and the key come from the environment the deployment runs in, the other says a result carries what the provider answered rather than what the caller sent.
 Caching is off unless `llm.cache` is set, keyed per `cache_dir` so a per-call override selects its own isolated cache, with the canonically serialized call kwargs as the key.
 Rate limiting holds a minimum interval under a lock.
-The provider call carries a `tenacity` retry: `LLMError` only, three attempts, exponential backoff, re-raising the last.
+The provider call carries a `tenacity` retry for retryable `LLMError` instances: three attempts,
+exponential backoff, re-raising the last. LiteLLM's `UnsupportedParamsError`, and a provider
+`BadRequestError` whose structured body has code `unsupported_parameter`, become a non-retryable
+`unsupported_parameter` error because repeating the same rejected request cannot repair it.
 
 `_record()` writes one `UsageRecord` per call, cache hits included, with end-to-end latency that spans retries.
 `_safe_int()` makes accounting total: any inconvertible token value — a junk string, an infinity, a `Decimal('NaN')`, an arbitrary object — counts as zero rather than raising inside a cost calculation.
@@ -774,7 +777,8 @@ Jinja2 is imported inside the function.
 
 ## `llm/errors.py` — the provider error type
 
-`LLMError(message, code=None, provider_error=None)` is raised for transport failures, malformed responses, and rejected adapter configuration.
+`LLMError(message, code=None, provider_error=None, *, retryable=True)` is raised for transport
+failures, malformed responses, and rejected adapter configuration.
 
 The wrapping boundary is stated in the module: provider exceptions and malformed responses are wrapped here by the client, and templating errors — a substitution `TypeError`, a JSONPath miss — stay raw because they happen before the provider boundary.
 

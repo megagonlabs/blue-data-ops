@@ -19,6 +19,34 @@ from blue_data_ops.operators.types import (
 from blue_data_ops.plan.pipeline import DataPipeline, Entity, Node
 from blue_data_ops.plan.types import EntityType, NodeType, Status
 
+_LAYERED_LLM_ALIASES = ("model", "stream", "max_tokens", "temperature", "reasoning_effort")
+
+
+def _merge_property_layers(
+    call_properties: Properties,
+    plan_properties: Properties,
+    node_properties: Properties,
+) -> Properties:
+    """Keep generic call precedence while layering LLM aliases low to high."""
+    merged: Properties = dict(plan_properties)
+    merged.update(call_properties)
+    merged.update(node_properties)
+
+    service_prefix = "openai"
+    for layer in (call_properties, plan_properties, node_properties):
+        service_prefix = str(layer.get("service_prefix", service_prefix))
+        for field in _LAYERED_LLM_ALIASES:
+            prefixed = f"{service_prefix}.{field}"
+            neutral = f"llm.{field}"
+            if prefixed in layer or neutral in layer:
+                merged.pop(prefixed, None)
+                merged.pop(neutral, None)
+                if prefixed in layer:
+                    merged[prefixed] = layer[prefixed]
+                if neutral in layer:
+                    merged[neutral] = layer[neutral]
+    return merged
+
 
 class PipelineError(ValueError):
     """The pipeline cannot be executed safely."""
@@ -243,9 +271,11 @@ class PipelineExecutor:
             raise PipelineError(
                 f"operator node {node_id!r} attributes could not be copied"
             ) from None
-        active_properties: Properties = dict(plan_properties)
-        active_properties.update(call_properties)
-        active_properties.update(cast(Properties, entity_properties))
+        active_properties = _merge_property_layers(
+            call_properties,
+            plan_properties,
+            cast(Properties, entity_properties),
+        )
         return _PreparedNode(
             node_id=node_id,
             operator_id=operator_id,

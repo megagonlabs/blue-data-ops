@@ -154,6 +154,11 @@ async def test_every_container_parameter_is_described() -> None:
             assert entry["description"] or entry["description"] == ""
 
 
+def test_property_description_names_neutral_model_and_effort_controls() -> None:
+    assert "`llm.model`" in PROPERTIES_DESCRIPTION
+    assert "`llm.reasoning_effort`" in PROPERTIES_DESCRIPTION
+
+
 async def test_published_required_matches_core_across_the_default_selection() -> None:
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     tightened = 0

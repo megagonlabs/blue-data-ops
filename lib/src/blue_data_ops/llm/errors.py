@@ -11,9 +11,15 @@ class LLMError(Exception):
     # misses) remain raw because they occur before the provider boundary.
 
     def __init__(
-        self, message: str, code: str | None = None, provider_error: Any | None = None
+        self,
+        message: str,
+        code: str | None = None,
+        provider_error: Any | None = None,
+        *,
+        retryable: bool = True,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
         self.provider_error = provider_error
+        self.retryable = retryable

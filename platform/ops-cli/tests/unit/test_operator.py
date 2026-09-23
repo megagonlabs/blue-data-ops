@@ -73,6 +73,25 @@ class Broken(Operator):
         raise RuntimeError("the operator could not finish")
 
 
+class PropertyEcho(Echo):
+    """Record the call properties before returning the input."""
+
+    name: ClassVar[str] = "property_echo"
+
+    def __init__(self) -> None:
+        self.seen_properties: dict[str, Any] | None = None
+        super().__init__()
+
+    def apply(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+    ) -> DataBundle:
+        self.seen_properties = dict(properties or {})
+        return super().apply(input_data, attributes, properties)
+
+
 def doubles() -> OperatorRegistry:
     registry = OperatorRegistry()
     registry.register(Echo(), "1.0.0", ("domain-text", "accepts-none", "produces-data"))
@@ -538,6 +557,112 @@ def test_the_applied_settings_are_published_with_the_tier_each_came_from(
     assert settings["applied"]["execution.timeout_seconds"] == 5.0
     assert settings["source"]["execution.timeout_seconds"] == "flag"
     assert settings["source"]["openai.model"] == "default"
+
+
+def test_model_and_reasoning_effort_flags_reach_the_operator(
+    runner: CliRunner, install_catalog: Any
+) -> None:
+    operator = PropertyEcho()
+    registry = doubles()
+    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    install_catalog(registry)
+
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "property_echo@1.0.0",
+            "--model",
+            "gpt-5-mini",
+            "--reasoning-effort",
+            "high",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert operator.seen_properties is not None
+    assert operator.seen_properties["openai.model"] == "gpt-5-mini"
+    assert operator.seen_properties["llm.reasoning_effort"] == "high"
+    settings = body(result.stdout)["settings"]
+    assert settings["source"]["openai.model"] == "flag"
+    assert settings["source"]["llm.reasoning_effort"] == "flag"
+
+
+def test_dedicated_model_flag_overrides_the_generic_alias(
+    runner: CliRunner, install_catalog: Any
+) -> None:
+    operator = PropertyEcho()
+    registry = doubles()
+    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    install_catalog(registry)
+
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "property_echo@1.0.0",
+            "--property",
+            "llm.model=property-model",
+            "--property",
+            "llm.reasoning_effort=medium",
+            "--model",
+            "flag-model",
+            "--reasoning-effort",
+            "high",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert operator.seen_properties is not None
+    assert operator.seen_properties["openai.model"] == "flag-model"
+    assert "llm.model" not in operator.seen_properties
+    assert operator.seen_properties["llm.reasoning_effort"] == "high"
+    settings = body(result.stdout)["settings"]
+    assert settings["applied"]["openai.model"] == "flag-model"
+    assert settings["source"]["openai.model"] == "flag"
+    assert settings["applied"]["llm.reasoning_effort"] == "high"
+    assert settings["source"]["llm.reasoning_effort"] == "flag"
+
+
+def test_generic_neutral_model_suppresses_the_profile_default(
+    runner: CliRunner, install_catalog: Any
+) -> None:
+    operator = PropertyEcho()
+    registry = doubles()
+    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    install_catalog(registry)
+
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "property_echo@1.0.0",
+            "--property",
+            "llm.model=property-model",
+            "--property",
+            "llm.reasoning_effort=low",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert operator.seen_properties is not None
+    assert operator.seen_properties["llm.model"] == "property-model"
+    assert "openai.model" not in operator.seen_properties
+    assert operator.seen_properties["llm.reasoning_effort"] == "low"
+    settings = body(result.stdout)["settings"]
+    assert settings["applied"]["llm.model"] == "property-model"
+    assert settings["source"]["llm.model"] == "flag"
+    assert settings["applied"]["llm.reasoning_effort"] == "low"
+    assert settings["source"]["llm.reasoning_effort"] == "flag"
 
 
 def test_the_table_footer_names_the_same_settings(runner: CliRunner, tmp_path: Path) -> None:

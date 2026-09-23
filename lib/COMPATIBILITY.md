@@ -72,6 +72,18 @@ Operator entities store only pinned `operator_id` values in `name@<MAJOR.MINOR.P
 
 `PipelineExecutor` is the package-local replacement for the smallest in-process part of Blue's `DataPlanner`: it validates a materialized graph, aggregates predecessor output, resolves exact operator IDs, calls `run()`, and updates node status and value. It does not reproduce Blue's Redis/pubsub synchronization, service clients, remote routing, recursive subplan merge, retry, or replanning.
 
+### Pipeline property precedence
+
+Ordinary property layers keep their existing precedence: stored pipeline, current invocation, then
+the individual operator node. Operator defaults remain below all three.
+
+The model-generation aliases are the exception. For those keys, the current invocation is the
+lowest layer, the stored pipeline is next, and the individual operator node is highest. Move an LLM
+value that must vary per execution out of the stored pipeline. Put it on a node when that operator
+must differ from the pipeline-wide value. The neutral `llm.*` keys and the namespace selected by
+`service_prefix` follow this LLM-specific order. Invocation-supplied execution seams such as
+`execution.timeout_seconds` and `data_registry` continue to override stored pipeline values.
+
 ## Planning boundaries
 
 `PipelinePlanner` builds a compiled `DataPipeline` from a goal. It is not a local port of Blue's `DataPlanner`: it plans once and stops. There is no retry, replanning after a failed node, remote dispatch, or automatic choice among multiple alternatives under the default selector. A caller that wants a different plan builds a new `PlanningRequest`.

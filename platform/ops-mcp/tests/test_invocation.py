@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
-from typing import Any, ClassVar
+from pathlib import Path
+from typing import Any, ClassVar, cast
 
+import litellm
 import pytest
 from blue_data_ops.operators import AttributeSpec, ExecMeta, Operator, OperatorRegistry
 from mcp.server.fastmcp import FastMCP
@@ -24,6 +27,12 @@ BAD_ARGUMENTS: list[dict[str, Any]] = [
     {"input_data": [{"not": "a group"}]},
     {"input_data": [[]], "properties": []},
 ]
+README = Path(__file__).resolve().parents[1] / "README.md"
+LLM_CALL_FENCE = re.compile(
+    r"<!-- blue-data-ops-mcp-test: llm-(?P<name>[\w-]+)-call -->\n"
+    r"```json\n(?P<payload>.*?)\n```",
+    re.DOTALL,
+)
 
 
 async def _call(server: FastMCP[Any], name: str, arguments: dict[str, Any]) -> Any:
@@ -63,6 +72,49 @@ async def test_success_direct_and_in_memory_protocol_agree() -> None:
     assert json.loads(result.content[0].text) == direct
     assert direct["output_data"] == [[{"id": 1, "score": 8}]]
     assert direct["exec_meta"]["is_empty"] is False
+
+
+async def test_documented_llm_calls_execute_through_the_published_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class OfflineResponse:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": self.content}}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+                "model": "offline-model",
+            }
+
+    def offline_completion(**kwargs: Any) -> OfflineResponse:
+        raw_messages: object = kwargs.get("messages")
+        messages = (
+            cast("list[dict[str, Any]]", raw_messages) if isinstance(raw_messages, list) else []
+        )
+        prompt = str(messages[0].get("content", "")) if messages else ""
+        return OfflineResponse("true" if "only a boolean value" in prompt else "[]")
+
+    def offline_cost(**kwargs: Any) -> float:
+        del kwargs
+        return 0.0
+
+    monkeypatch.setattr(litellm, "completion", offline_completion)
+    monkeypatch.setattr(litellm, "completion_cost", offline_cost)
+    examples = {
+        match.group("name"): cast(dict[str, Any], json.loads(match.group("payload")))
+        for match in LLM_CALL_FENCE.finditer(README.read_text(encoding="utf-8"))
+    }
+    assert set(examples) == {"nl2llm", "semantic-filter"}
+    server = create_server()
+    for example_name, tool_name in (
+        ("nl2llm", "ops_nl2llm"),
+        ("semantic-filter", "ops_semantic_filter"),
+    ):
+        result = await _call(server, tool_name, examples[example_name])
+        assert result.isError is False
+        assert _errors(result) == []
 
 
 @pytest.mark.parametrize(
@@ -256,6 +308,41 @@ async def test_primary_dispatches_only_to_run_once() -> None:
     assert result.isError is False
     assert operator.run_calls == 1
     assert result.structuredContent["output_data"] == [[{"ok": True}]]
+
+
+class PropertySpy(Operator):
+    name: ClassVar[str] = "property_spy"
+    description: ClassVar[str] = "Record the properties passed by the adapter."
+    attributes: ClassVar[dict[str, AttributeSpec]] = {}
+
+    def __init__(self) -> None:
+        self.seen: dict[str, Any] | None = None
+        super().__init__()
+
+    def apply(
+        self,
+        input_data: list[list[dict[str, Any]]],
+        attributes: dict[str, Any],
+        properties: dict[str, Any] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        del attributes
+        self.seen = dict(properties or {})
+        return input_data
+
+
+async def test_model_and_reasoning_effort_properties_reach_the_operator() -> None:
+    operator = PropertySpy()
+    result = await _call(
+        _single_server(operator),
+        "ops_property_spy",
+        {
+            "input_data": [[]],
+            "properties": {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "high"},
+        },
+    )
+
+    assert result.isError is False
+    assert operator.seen == {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "high"}
 
 
 class NoCallOperator(Operator):

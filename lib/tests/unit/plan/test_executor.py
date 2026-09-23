@@ -4,6 +4,7 @@ import copy
 from collections.abc import Callable
 from typing import Any, ClassVar, cast
 
+import litellm
 import pytest
 
 from blue_data_ops.operators import (
@@ -11,6 +12,7 @@ from blue_data_ops.operators import (
     Operator,
     OperatorRegistry,
     ValidationResult,
+    active_registry,
     versioned_registry,
 )
 from blue_data_ops.operators.types import Attributes, DataBundle, Properties
@@ -316,10 +318,10 @@ def test_operator_mutation_does_not_reach_caller_input() -> None:
     assert run.output_data == [[{"x": 1, "changed": True}]]
 
 
-def test_property_precedence_is_plan_then_call_then_node() -> None:
+def test_generic_property_precedence_is_plan_then_call_then_node() -> None:
     operator = _RecordPropertiesOperator()
     registry = _local_registry(operator)
-    pipeline = DataPipeline(properties={"shared": "plan", "plan": 1})
+    pipeline = DataPipeline(properties={"shared": "plan", "layer": "plan", "plan": 1})
     source = pipeline.define_input()
     action = pipeline.define_operator(
         "record_properties@2.0.0",
@@ -334,15 +336,189 @@ def test_property_precedence_is_plan_then_call_then_node() -> None:
     PipelineExecutor(registry).execute(
         pipeline,
         [[{"x": 1}]],
-        {"shared": "call", "call": 2},
+        {"shared": "call", "layer": "call", "call": 2},
     )
 
     assert operator.seen == {
         "shared": "node",
+        "layer": "call",
         "plan": 1,
         "call": 2,
         "node": 3,
     }
+
+
+def test_invocation_data_registry_overrides_stored_pipeline_registry() -> None:
+    operator = _RecordPropertiesOperator()
+    registry = _local_registry(operator)
+    stored_registry = object()
+    invocation_registry = object()
+    pipeline = DataPipeline(properties={"data_registry": stored_registry})
+    source = pipeline.define_input()
+    action = pipeline.define_operator("record_properties@2.0.0")
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    PipelineExecutor(registry).execute(
+        pipeline,
+        [[{"x": 1}]],
+        {"data_registry": invocation_registry},
+    )
+
+    assert operator.seen is not None
+    assert operator.seen["data_registry"] is invocation_registry
+
+
+def test_llm_aliases_follow_node_then_plan_then_call_precedence() -> None:
+    operator = _RecordPropertiesOperator()
+    registry = _local_registry(operator)
+    pipeline = DataPipeline(
+        properties={"openai.model": "plan-model", "llm.reasoning_effort": "medium"}
+    )
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "record_properties@2.0.0",
+        properties={"openai.reasoning_effort": "high"},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    PipelineExecutor(registry).execute(
+        pipeline,
+        [[{"x": 1}]],
+        {"llm.model": "call-model", "llm.reasoning_effort": "low"},
+    )
+
+    assert operator.seen is not None
+    assert operator.seen.get("openai.model") == "plan-model"
+    assert "llm.model" not in operator.seen
+    assert operator.seen.get("openai.reasoning_effort") == "high"
+    assert "llm.reasoning_effort" not in operator.seen
+
+
+def test_custom_service_prefix_aliases_follow_the_same_precedence() -> None:
+    operator = _RecordPropertiesOperator()
+    registry = _local_registry(operator)
+    pipeline = DataPipeline(
+        properties={"vertex.model": "plan-model", "vertex.reasoning_effort": "medium"}
+    )
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "record_properties@2.0.0",
+        properties={"llm.reasoning_effort": "high"},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    PipelineExecutor(registry).execute(
+        pipeline,
+        [[{"x": 1}]],
+        {
+            "service_prefix": "vertex",
+            "llm.model": "call-model",
+            "llm.reasoning_effort": "low",
+        },
+    )
+
+    assert operator.seen is not None
+    assert operator.seen.get("vertex.model") == "plan-model"
+    assert "llm.model" not in operator.seen
+    assert operator.seen.get("llm.reasoning_effort") == "high"
+    assert "vertex.reasoning_effort" not in operator.seen
+
+
+def test_stored_pipeline_effort_reaches_the_provider_over_the_invocation_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    litellm.calls.clear()
+    litellm.fail_next.clear()
+
+    class Response:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "[]"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                "model": "gpt-4o",
+            }
+
+    def completion(**kwargs: Any) -> Response:
+        litellm.calls.append(kwargs)
+        return Response()
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    pipeline = DataPipeline(properties={"llm.reasoning_effort": "medium"})
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "nl2llm@3.0.0",
+        attributes={"query": "Return an empty JSON array."},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    run = PipelineExecutor(active_registry()).execute(
+        pipeline,
+        [[]],
+        {"llm.reasoning_effort": "low"},
+    )
+
+    assert run.succeeded
+    assert len(litellm.calls) == 1
+    assert litellm.calls[0]["reasoning_effort"] == "medium"
+
+
+def test_node_null_clears_inherited_effort_before_the_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    litellm.calls.clear()
+    litellm.fail_next.clear()
+
+    class Response:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "[]"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                "model": "gpt-4o",
+            }
+
+    def completion(**kwargs: Any) -> Response:
+        litellm.calls.append(kwargs)
+        return Response()
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    pipeline = DataPipeline(properties={"openai.reasoning_effort": "medium"})
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "nl2llm@3.0.0",
+        attributes={"query": "Return an empty JSON array."},
+        properties={"llm.reasoning_effort": None},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    run = PipelineExecutor(active_registry()).execute(
+        pipeline,
+        [[]],
+        {"llm.reasoning_effort": "low"},
+    )
+
+    assert run.succeeded
+    assert len(litellm.calls) == 1
+    assert "reasoning_effort" not in litellm.calls[0]
 
 
 def _missing_output(plan: DataPipeline) -> None:

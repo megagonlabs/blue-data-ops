@@ -10,6 +10,7 @@ from copy import deepcopy
 from math import isfinite
 from typing import Any, ClassVar, ParamSpec, TypeVar, cast
 
+from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.operators._metadata import (
     definitions_from_specs,
     enrich_attribute_signature,
@@ -40,6 +41,7 @@ _check_type = validate_parameter_type
 
 _INVALID_TIMEOUT_SUGGESTION = "execution.timeout_seconds must be a finite number greater than zero"
 _MISSING_LLM_SUGGESTION = "Install blue-data-ops[llm] on Python 3.11 or later."
+_UNSUPPORTED_LLM_SETTING_SUGGESTION = "Remove the unsupported setting or choose a compatible model."
 _LLM_EXTRA_MODULES = frozenset({"diskcache", "jinja2", "litellm"})
 _OPERATOR_ID_OVERRIDE: ContextVar[tuple[int, str] | None] = ContextVar(
     "blue_data_ops_operator_id_override",
@@ -190,6 +192,15 @@ def _invalid_timeout_error(operator_id: str) -> ErrorRecord:
 
 
 def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
+    if isinstance(exception, LLMError) and exception.code == "unsupported_parameter":
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            "model rejected a requested generation setting",
+            suggestion=_UNSUPPORTED_LLM_SETTING_SUGGESTION,
+        )
     missing = exception
     if not isinstance(missing, ModuleNotFoundError):
         missing = exception.__cause__

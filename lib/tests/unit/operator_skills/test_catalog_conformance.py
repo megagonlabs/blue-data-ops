@@ -541,7 +541,7 @@ def resolve_registry(properties):
     "resolve_llm_client": """
 _ACCEPTED_LLM_KEYS = {
     "cache", "cache_dir", "max_parallel", "max_tokens", "model", "rate_limit", "stream",
-    "temperature"
+    "temperature", "reasoning_effort"
 }
 def resolve_llm_client(properties):
     properties.get("llm_client")

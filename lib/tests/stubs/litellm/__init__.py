@@ -173,6 +173,18 @@ calls: list[dict[str, Any]] = []
 fail_next: list[Exception] = []  # tests push exceptions to simulate provider failures
 
 
+class BadRequestError(Exception):
+    """A provider rejected a request after LiteLLM sent it."""
+
+    def __init__(self, message: str, *, body: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.body = body
+
+
+class UnsupportedParamsError(BadRequestError):
+    """The provider adapter rejected an explicit generation parameter."""
+
+
 class _Response:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload

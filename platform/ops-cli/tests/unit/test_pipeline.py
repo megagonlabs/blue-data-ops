@@ -507,9 +507,47 @@ def test_run_reports_the_settings_it_applied(
     runner: CliRunner, stored: Path, orders_file: str
 ) -> None:
     result = runner.invoke(
-        cli, ["pipeline", "run", "nightly", "--input-file", orders_file, "--format", "json"]
+        cli,
+        [
+            "pipeline",
+            "run",
+            "nightly",
+            "--input-file",
+            orders_file,
+            "--model",
+            "gpt-5-mini",
+            "--reasoning-effort",
+            "medium",
+            "--format",
+            "json",
+        ],
     )
-    assert body(result.stdout)["settings"]["source"]["openai.model"] == "default"
+    settings = body(result.stdout)["settings"]
+    assert settings["scope"] == "invocation_defaults"
+    assert settings["source"]["openai.model"] == "flag"
+    assert settings["applied"]["openai.model"] == "gpt-5-mini"
+    assert settings["source"]["llm.reasoning_effort"] == "flag"
+    assert settings["applied"]["llm.reasoning_effort"] == "medium"
+
+    human = runner.invoke(
+        cli,
+        [
+            "pipeline",
+            "run",
+            "nightly",
+            "--input-file",
+            orders_file,
+            "--model",
+            "gpt-5-mini",
+            "--reasoning-effort",
+            "medium",
+        ],
+    )
+    assert human.exit_code == 0, human.output
+    assert "invocation defaults:" in human.stdout
+    assert "openai.model=gpt-5-mini (flag)" in human.stdout
+    assert "llm.reasoning_effort=medium (flag)" in human.stdout
+    assert "settings:" not in human.stdout
 
 
 def test_pipelines_belong_to_the_profile_that_stored_them(runner: CliRunner, stored: Path) -> None:

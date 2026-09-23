@@ -333,6 +333,11 @@ def operator_inspect(
     show_default="the profile's BLUE_DATA_LLM_MODEL, else gpt-4o",
     help="Model the language-model operators call.",
 )
+@click.option(
+    "--reasoning-effort",
+    default=None,
+    help="Reasoning effort for this call. Omit it for models without this setting.",
+)
 @config.catalog_option
 @config.format_option
 @config.log_options
@@ -347,6 +352,7 @@ def operator_run(
     properties_file: str | None,
     timeout: float | None,
     model: str | None,
+    reasoning_effort: str | None,
     catalog_name: str | None,
     output_format: str | None,
     log: bool,
@@ -388,13 +394,29 @@ def operator_run(
         )
         if applied_timeout is not None:
             call_properties["execution.timeout_seconds"] = applied_timeout
-        applied_model = settings.take(
-            "openai.model",
-            model if model is not None else call_properties.get("openai.model"),
-            "BLUE_DATA_LLM_MODEL",
-        )
-        if applied_model is not None:
-            call_properties["openai.model"] = applied_model
+        if model is not None:
+            call_properties.pop("llm.model", None)
+            applied_model = settings.take("openai.model", model, "BLUE_DATA_LLM_MODEL")
+            if applied_model is not None:
+                call_properties["openai.model"] = applied_model
+        elif "llm.model" in call_properties:
+            call_properties.pop("openai.model", None)
+            neutral_model = call_properties["llm.model"]
+            settings.take("llm.model", neutral_model)
+        else:
+            applied_model = settings.take(
+                "openai.model",
+                call_properties.get("openai.model"),
+                "BLUE_DATA_LLM_MODEL",
+            )
+            if applied_model is not None:
+                call_properties["openai.model"] = applied_model
+        if reasoning_effort is not None:
+            applied_effort = settings.take("llm.reasoning_effort", reasoning_effort)
+            call_properties["llm.reasoning_effort"] = applied_effort
+        elif "llm.reasoning_effort" in call_properties:
+            neutral_effort = call_properties["llm.reasoning_effort"]
+            settings.take("llm.reasoning_effort", neutral_effort)
 
         if config.requires_data_registry(card):
             # Built only for a card that says it needs one. The library would otherwise

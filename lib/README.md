@@ -185,26 +185,52 @@ You may inject a raw `DataRegistry`; `resolve_registry()` wraps it. Without an i
 
 `sklearn_estimator` accepts any case-insensitive class name returned by `sklearn.utils.all_estimators()`. It trains one in-memory estimator from the first input group, then writes predictions, cluster labels, or transformed vectors to each record. Set `properties.algorithm` and `attributes.vector_key`; classifiers and regressors also require `attributes.label_key`. The fitted model is not persisted.
 
-`nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators send requests through LiteLLM. Configure the model through call properties; the default is `openai.model: gpt-4o`. `classify` and `sklearn_estimator` use NumPy and scikit-learn. Registry-backed operators use the `blue-data` seam.
+`nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators send requests through LiteLLM. Configure
+the model and, where supported, reasoning effort through call properties. The default model is
+`openai.model: gpt-4o`. `classify` and `sklearn_estimator` use NumPy and scikit-learn.
+Registry-backed operators use the `blue-data` seam.
 
-This short `nl2llm` call uses a live provider:
+These `nl2llm` and `semantic_filter` calls use a live provider:
 
 ```python
 from blue_data_ops.operators import active_registry
 
-operator = active_registry().resolve("nl2llm@3.0.0")
-output, _, meta = operator.run(
+registry = active_registry()
+llm_properties = {
+    "llm.model": "gpt-5-mini",
+    "llm.reasoning_effort": "low",
+}
+
+output, _, meta = registry.resolve("nl2llm@3.0.0").run(
     [[]],
     {
         "query": "Return two example products",
         "attrs": [{"name": "name", "type": "string"}],
     },
-    {"openai.model": "gpt-4o-mini"},
+    llm_properties,
+)
+filtered, _, filter_meta = registry.resolve("semantic_filter@3.0.0").run(
+    [[{"name": "alpha", "summary": "quiet workspace"}]],
+    {"filter_conditions": {"summary": "suited to focused work"}},
+    llm_properties,
 )
 assert meta.errors == []
+assert filter_meta.errors == []
 ```
 
-Install `[llm]` and configure the provider credential before running it. The source-checkout file `examples/feature-demos/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
+Install `[llm]` and configure the provider credential before running it. Omit
+`llm.reasoning_effort` for a model that does not offer that setting. A `None` value clears an
+inherited effort rather than reaching the provider. If a provider rejects an explicit generation
+setting, the operator returns a non-retryable error without provider details; it does not remove the
+setting and retry a different request.
+
+For the LLM aliases, an operator node overrides stored pipeline values, and stored pipeline values
+override the LLM defaults passed for the current execution. Other execution properties keep the
+existing node, invocation, stored-pipeline order. Provider routing and the deployment model allowlist
+still apply after those layers are merged. LLM precedence also applies when one layer uses a neutral
+`llm.*` key and another uses the namespace selected by `service_prefix`.
+
+The source-checkout file `examples/feature-demos/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
 
 ### Discovery
 
@@ -310,6 +336,42 @@ The generated `OPERATORS.md` file in source checkouts and source distributions b
 ## Pipelines and planning
 
 `DataPipeline` is a serializable graph record. `PipelineExecutor` preflights exact IDs, graph structure, attributes, and reachability before execution. It executes nodes in stable topological order and stops at the first structured operator failure.
+
+This example writes an importable pipeline with model and effort defaults. The operator node selects
+another model and clears the inherited effort for a model that does not support it.
+
+<!-- blue-data-ops-test: llm-pipeline-serialization -->
+```python
+import json
+from pathlib import Path
+
+from blue_data_ops.plan import DataPipeline
+
+llm_plan = DataPipeline(
+    label="LLM override and effort clearing",
+    properties={"llm.model": "gpt-5-mini", "llm.reasoning_effort": "medium"},
+)
+source = llm_plan.define_input("records")
+generate = llm_plan.define_operator(
+    "nl2llm@3.0.0",
+    label="generate",
+    attributes={"query": "Return an empty JSON array."},
+    properties={"llm.model": "gpt-4o-mini", "llm.reasoning_effort": None},
+)
+result = llm_plan.define_output("result")
+llm_plan.set_plan_input(source)
+llm_plan.set_plan_output(result)
+llm_plan.connect_nodes(source, generate)
+llm_plan.connect_nodes(generate, result)
+
+Path("llm-pipeline.json").write_text(
+    json.dumps(llm_plan.to_dict(), indent=2) + "\n",
+    encoding="utf-8",
+)
+```
+
+Import and run `llm-pipeline.json` with the commands in the CLI guide. LLM defaults passed to
+`PipelineExecutor.execute()` sit below the stored pipeline and node LLM values in the same order.
 
 <!-- blue-data-ops-test: pipeline-execution -->
 ```python

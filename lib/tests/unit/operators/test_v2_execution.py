@@ -6,6 +6,7 @@ from dataclasses import asdict
 from threading import Event
 from typing import Any, cast
 
+import litellm
 import pytest
 
 import blue_data_ops.operators.operator as operator_module
@@ -30,6 +31,7 @@ from blue_data_ops.operators import (
     Operator,
     OperatorRegistry,
     Properties,
+    active_registry,
 )
 from blue_data_ops.operators.operator import apply_defaults
 
@@ -415,6 +417,48 @@ def test_an_unrelated_missing_module_keeps_the_generic_contained_failure() -> No
     assert error.code is ErrorCode.EXECUTION_FAILED
     assert error.message == "operator execution failed"
     assert error.suggestion is None
+
+
+def test_an_unsupported_llm_setting_is_actionable_without_provider_detail() -> None:
+    private_detail = "provider-private-unsupported-detail"
+    litellm.calls.clear()
+    litellm.fail_next.clear()
+    litellm.fail_next.append(
+        litellm.BadRequestError(
+            private_detail,
+            body={
+                "error": {
+                    "message": private_detail,
+                    "param": "reasoning_effort",
+                    "code": "unsupported_parameter",
+                }
+            },
+        )
+    )
+    try:
+        _, _, meta = (
+            active_registry()
+            .resolve("nl2llm@3.0.0")
+            .run(
+                [[]],
+                {"query": "Return an empty JSON array."},
+                {"llm.reasoning_effort": "high"},
+            )
+        )
+    finally:
+        litellm.fail_next.clear()
+
+    [error] = meta.errors
+    assert error.category is ErrorCategory.FAILED
+    assert error.code is ErrorCode.EXECUTION_FAILED
+    assert error.stage is ErrorStage.EXECUTE
+    assert error.message == "model rejected a requested generation setting"
+    assert error.retryable is False
+    assert error.suggestion == "Remove the unsupported setting or choose a compatible model."
+    assert private_detail not in str(error)
+    assert len(litellm.calls) == 1
+    assert "cost" not in meta.traces
+    assert "cost_basis" not in meta.traces
 
 
 def test_successful_empty_preserves_fresh_output_attributes() -> None:

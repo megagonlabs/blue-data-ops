@@ -5,6 +5,28 @@ Notable changes per release, newest first.
 This repository publishes three distributions and versions each independently, so an entry names which of them moved and what a caller of that one has to do.
 The rules are in [design/12-deployment-ops.md](design/12-deployment-ops.md#1-versioning); an operator card's own `@MAJOR.MINOR.PATCH` is a fourth axis and moves with neither.
 
+## Unreleased
+
+**Added**
+
+- LLM-backed operators accept the provider-neutral `llm.reasoning_effort` call property. The CLI
+  exposes it as `--reasoning-effort` for individual operator and stored-pipeline runs, and the
+  library, CLI, and MCP guides show model and effort selection for `nl2llm` and `semantic_filter`.
+  Omission sends no effort setting. A higher-precedence layer may use `null` to clear an inherited
+  value.
+
+**Changed**
+
+- **LLM pipeline controls now resolve node, stored pipeline, invocation, then operator default.**
+  This order covers the model-generation aliases, including model and reasoning effort. Other
+  execution properties keep their existing node, invocation, stored-pipeline order, so a stored
+  pipeline cannot replace an invocation-supplied `execution.timeout_seconds` or `data_registry`.
+  **Migration:** move an LLM value that must vary per execution out of the stored pipeline, or set
+  it on the individual node when that node must differ from the rest of the pipeline.
+- A provider rejection with structured error code `unsupported_parameter` is non-retryable and is
+  returned as a contained operator error without provider details. Other provider failures keep the
+  existing retry policy.
+
 ## blue-data-ops 3.1.0, blue-data-ops-mcp 1.0.0, blue-data-ops-cli 1.0.0 — released
 
 This release adds the `blue-ops` command, renames the MCP tool surface, publishes the schema constraints already enforced by the library, and fixes provider routing and discovery-secret masking.

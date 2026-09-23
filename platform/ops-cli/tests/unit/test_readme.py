@@ -13,11 +13,14 @@ rather than from a copy kept in this test.
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from pathlib import Path
+from typing import Any, cast
 
 import click
+import litellm
 import pytest
 from click.testing import CliRunner
 
@@ -120,6 +123,33 @@ def test_every_command_in_the_readme_runs(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """In order, against a throwaway home, because the examples build on each other."""
+
+    class OfflineResponse:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": self.content}}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+
+    def offline_completion(**kwargs: Any) -> OfflineResponse:
+        raw_messages: Any = kwargs.get("messages")
+        messages = (
+            cast("list[dict[str, Any]]", raw_messages) if isinstance(raw_messages, list) else []
+        )
+        prompt = str(messages[0].get("content", "")) if messages else ""
+        if "only a boolean value" in prompt:
+            return OfflineResponse("true")
+        return OfflineResponse('[{"category": "sample"}]')
+
+    def offline_cost(**kwargs: Any) -> float:
+        del kwargs
+        return 0.0
+
+    monkeypatch.setattr(litellm, "completion", offline_completion)
+    monkeypatch.setattr(litellm, "completion_cost", offline_cost)
     commands = documented_commands()
     assert len(commands) > 30, "the README lost its examples"
     monkeypatch.chdir(tmp_path)
@@ -131,3 +161,70 @@ def test_every_command_in_the_readme_runs(
             f"`blue-ops {' '.join(command)}` exits {result.exit_code}\n"
             f"{result.stderr}\n{result.stdout}"
         )
+
+
+def test_documented_llm_pipeline_preserves_layers_and_clears_effort(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class OfflineResponse:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "[]"}}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+
+    def offline_completion(**kwargs: Any) -> OfflineResponse:
+        calls.append(kwargs)
+        return OfflineResponse()
+
+    def offline_cost(**kwargs: Any) -> float:
+        del kwargs
+        return 0.0
+
+    monkeypatch.setattr(litellm, "completion", offline_completion)
+    monkeypatch.setattr(litellm, "completion_cost", offline_cost)
+    monkeypatch.chdir(tmp_path)
+    files = documented_files()
+    for name in ("llm-pipeline.json", "llm-input.json"):
+        (tmp_path / name).write_text(files[name], encoding="utf-8")
+
+    record = cast("dict[str, Any]", json.loads(files["llm-pipeline.json"]))
+    assert record["properties"] == {
+        "llm.model": "gpt-5-mini",
+        "llm.reasoning_effort": "medium",
+    }
+    operator = next(iter(cast("dict[str, Any]", record["entities"])["OPERATOR"].values()))
+    assert operator["properties"] == {
+        "llm.model": "gpt-4o-mini",
+        "llm.reasoning_effort": None,
+    }
+
+    imported = runner.invoke(
+        cli,
+        ["pipeline", "import", "llm-example", "--pipeline-file", "llm-pipeline.json"],
+    )
+    assert imported.exit_code == config.EXIT_OK, imported.output
+    result = runner.invoke(
+        cli,
+        [
+            "pipeline",
+            "run",
+            "llm-example",
+            "--input-file",
+            "llm-input.json",
+            "--model",
+            "gpt-4o",
+            "--reasoning-effort",
+            "high",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == config.EXIT_OK, result.output
+    assert len(calls) == 1
+    assert calls[0]["model"] == "gpt-4o-mini"
+    assert "reasoning_effort" not in calls[0]
+    payload = json.loads(result.stdout)
+    assert payload["settings"]["scope"] == "invocation_defaults"

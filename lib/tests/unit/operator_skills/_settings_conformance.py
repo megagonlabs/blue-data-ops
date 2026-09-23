@@ -62,6 +62,7 @@ _REVIEWED_LLM_KEYS = frozenset(
         "max_tokens",
         "model",
         "rate_limit",
+        "reasoning_effort",
         "stream",
         "temperature",
     }

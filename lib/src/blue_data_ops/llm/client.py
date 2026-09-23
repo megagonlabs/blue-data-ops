@@ -11,7 +11,7 @@ from math import isfinite
 from numbers import Real
 from typing import Any, cast
 
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.llm.templating import build_message, extract_output
@@ -26,6 +26,7 @@ _ACCEPTED_LLM_KEYS = {
     "cache_dir",
     "max_parallel",
     "rate_limit",
+    "reasoning_effort",
 }
 # Adapter-control keys: consumed by the client, never forwarded to the provider.
 _CONTROL_KEYS = {"cache", "cache_dir", "max_parallel", "rate_limit"}
@@ -118,6 +119,47 @@ _KWARGS_GENERATION_FIELDS = frozenset(
 )
 
 _GENERATION_FIELDS = _SIGNATURE_GENERATION_FIELDS | _KWARGS_GENERATION_FIELDS
+_UNSUPPORTED_PARAMETER_MESSAGE = "model rejected a requested generation setting"
+
+
+def _retryable_llm_error(exception: BaseException) -> bool:
+    return isinstance(exception, LLMError) and exception.retryable
+
+
+def _structured_provider_error_code(exception: Exception) -> str | None:
+    try:
+        body = getattr(exception, "body", None)
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    body_fields = cast(dict[str, object], body)
+    raw_error = body_fields.get("error", body_fields)
+    if not isinstance(raw_error, dict):
+        return None
+    error_fields = cast(dict[str, object], raw_error)
+    code = error_fields.get("code")
+    return code if isinstance(code, str) else None
+
+
+def _provider_error(
+    exception: Exception,
+    unsupported_type: type[Exception],
+    bad_request_type: type[Exception],
+) -> LLMError:
+    unsupported = isinstance(exception, unsupported_type) or (
+        isinstance(exception, bad_request_type)
+        and _structured_provider_error_code(exception) == "unsupported_parameter"
+    )
+    if unsupported:
+        return LLMError(
+            _UNSUPPORTED_PARAMETER_MESSAGE,
+            code="unsupported_parameter",
+            provider_error=exception,
+            retryable=False,
+        )
+    return LLMError(str(exception), code="provider_error", provider_error=exception)
+
 
 # Which provider answers is the deployment's, and it is read from the process environment
 # because that is the one channel a caller cannot reach: on the MCP adapter `properties` is
@@ -451,7 +493,9 @@ class LLMClient:
                         f"{sorted('llm.' + k for k in _ACCEPTED_LLM_KEYS)}",
                         code="bad_override",
                     )
-                if short not in _CONTROL_KEYS:
+                if short == "reasoning_effort" and value is None:
+                    kwargs.pop(short, None)
+                elif short not in _CONTROL_KEYS:
                     kwargs[short] = value
 
         # Remove transport-resolution fields after every override has been merged.
@@ -567,7 +611,7 @@ class LLMClient:
         self.ledger.add(record)
 
     @retry(
-        retry=retry_if_exception_type(LLMError),
+        retry=retry_if_exception(_retryable_llm_error),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.1, max=2),
         reraise=True,
@@ -578,11 +622,15 @@ class LLMClient:
         try:
             response: Any = litellm.completion(**kwargs)
         except Exception as e:  # transport boundary: wrap provider errors
-            raise LLMError(str(e), code="provider_error", provider_error=e) from e
+            raise _provider_error(
+                e,
+                litellm.UnsupportedParamsError,
+                litellm.BadRequestError,
+            ) from e
         return self._materialize(response)
 
     @retry(
-        retry=retry_if_exception_type(LLMError),
+        retry=retry_if_exception(_retryable_llm_error),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.1, max=2),
         reraise=True,
@@ -596,11 +644,15 @@ class LLMClient:
         try:
             response: Any = litellm.completion(**kwargs)
         except Exception as e:
-            raise LLMError(str(e), code="provider_error", provider_error=e) from e
+            raise _provider_error(
+                e,
+                litellm.UnsupportedParamsError,
+                litellm.BadRequestError,
+            ) from e
         return self._materialize_observed(response, observation)
 
     @retry(
-        retry=retry_if_exception_type(LLMError),
+        retry=retry_if_exception(_retryable_llm_error),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.1, max=2),
         reraise=True,
@@ -611,7 +663,11 @@ class LLMClient:
         try:
             response: Any = await litellm.acompletion(**kwargs)
         except Exception as e:
-            raise LLMError(str(e), code="provider_error", provider_error=e) from e
+            raise _provider_error(
+                e,
+                litellm.UnsupportedParamsError,
+                litellm.BadRequestError,
+            ) from e
         return self._materialize(response)
 
     def _materialize(self, response: Any) -> tuple[dict[str, Any], float]:

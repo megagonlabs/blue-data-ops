@@ -914,6 +914,17 @@ def pipeline_remove(obj: dict[str, Any], name: str, confirm: bool) -> None:
     type=click.Path(exists=True, dir_okay=False, allow_dash=True, path_type=str),
     help="JSON file holding the record groups to run on; - reads standard input.",
 )
+@click.option(
+    "--model",
+    default=None,
+    show_default="the profile's BLUE_DATA_LLM_MODEL, else gpt-4o",
+    help="Default model for language-model operator nodes in this run.",
+)
+@click.option(
+    "--reasoning-effort",
+    default=None,
+    help="Default reasoning effort for language-model operator nodes in this run.",
+)
 @config.catalog_option
 @config.format_option
 @config.log_options
@@ -922,6 +933,8 @@ def pipeline_run(
     obj: dict[str, Any],
     name: str,
     input_file: str,
+    model: str | None,
+    reasoning_effort: str | None,
     catalog_name: str | None,
     output_format: str | None,
     log: bool,
@@ -956,9 +969,12 @@ def pipeline_run(
         timeout = settings.take("execution.timeout_seconds", None, "BLUE_DATA_OPS_TIMEOUT")
         if timeout is not None:
             properties["execution.timeout_seconds"] = timeout
-        model = settings.take("openai.model", None, "BLUE_DATA_LLM_MODEL")
-        if model is not None:
-            properties["openai.model"] = model
+        applied_model = settings.take("openai.model", model, "BLUE_DATA_LLM_MODEL")
+        if applied_model is not None:
+            properties["openai.model"] = applied_model
+        applied_effort = settings.take("llm.reasoning_effort", reasoning_effort)
+        if applied_effort is not None:
+            properties["llm.reasoning_effort"] = applied_effort
         properties.update(registry_properties(preflight.operator_ids, registry, reporter))
 
         started = time.monotonic()
@@ -1013,13 +1029,18 @@ def pipeline_run(
                 "failed_node_id": run.failed_node_id,
                 "node_runs": node_runs,
                 "elapsed_seconds": elapsed,
-                "settings": settings.envelope(),
+                "settings": {
+                    **settings.envelope(),
+                    "scope": "invocation_defaults",
+                },
             },
             sentences=(
                 f"{name} ran {len(run.node_runs)} node(s) in {elapsed}s and returned "
                 f"{sum(len(group) for group in run.output_data)} record(s).",
             ),
-            notes=(settings.footer(),),
+            notes=(
+                settings.footer().replace("settings:", "invocation defaults:", 1),
+            ),
             title=f"pipeline: {name}",
             empty=f"(no records — {name} returned an empty bundle)",
         )

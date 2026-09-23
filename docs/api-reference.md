@@ -384,14 +384,15 @@ The module imports without the `[llm]` extra; LiteLLM is imported lazily at the 
 | `LLMClient(name, properties=None)` | class | Builds a templated request and executes it. `execute_api_call(input, properties=None, additional_data=None)` is synchronous; `aexecute_api_call(...)` is the async form with bounded concurrency |
 | `UsageRecord` | dataclass | `model`, `prompt_tokens`, `completion_tokens`, `cost`, `latency_seconds`, `cache_hit` |
 | `UsageLedger` | class | `records`, `add(record)`, and the `total_cost` and `total_tokens` properties. One record per call, cache hits included |
-| `LLMError` | exception | Transport failures and rejected adapter configuration. Carries `message`, `code`, `provider_error` |
+| `LLMError` | exception | Transport failures and rejected adapter configuration. Carries `message`, `code`, `provider_error`, `retryable` |
 | `LLMClientProvider` | abstract class | `get_client(properties) -> LLMClient` |
 | `CachingLLMClientProvider` | class | Opt-in per-config client reuse; the cache's lifetime belongs to whoever holds the provider |
 | `resolve_llm_client(properties, provider=None)` | function | An injected `properties["llm_client"]`, then the provider, then a fresh client |
 
 The default lifetime is one client per invocation rather than a module-level singleton.
 Built-in operators call `resolve_llm_client` without a provider, so inside an operator call the reachable seam is `properties["llm_client"]`.
-Accepted `llm.*` override keys are `model`, `stream`, `max_tokens`, `temperature`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`; an unknown one raises `LLMError` with code `bad_override`.
+Accepted `llm.*` override keys are `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`; an unknown one raises `LLMError` with code `bad_override`.
+`llm.reasoning_effort=None` removes an inherited effort value instead of forwarding `None`.
 The last four are consumed by the client and never forwarded to the provider.
 A prefixed namespace admits the generation parameters and nothing else.
 A property outside that set — `api_key`, `api_base`, `base_url`, `custom_llm_provider`, the Vertex and Bedrock selectors, and every other routing or identity field — raises `LLMError` with code `reserved_field`, as does one that would substitute the provider's answer, `mock_response` or `mock_timeout`.

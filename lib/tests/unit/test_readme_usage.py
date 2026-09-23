@@ -75,12 +75,16 @@ def _marked_readme_fences() -> dict[str, str]:
     return fences
 
 
-def _execute(source: str) -> None:
+def _execute(source: str) -> dict[str, object]:
     namespace: dict[str, object] = {}
     exec(compile(source, "<shipped-readme-fence>", "exec"), namespace)
+    return namespace
 
 
-def test_all_marked_shipped_readme_fences_execute() -> None:
+def test_all_marked_shipped_readme_fences_execute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     for source in _marked_readme_fences().values():
         _execute(source)
 
@@ -114,6 +118,38 @@ def test_readme_select_example() -> None:
     assert output == [[{"name": "b", "score": 9}]]
     assert "operand_key" in operator.attributes
     assert operator.validate(data, {}) is False
+
+
+def test_readme_documents_per_operator_model_and_effort_controls() -> None:
+    readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'registry.resolve("nl2llm@3.0.0")' in readme
+    assert 'registry.resolve("semantic_filter@3.0.0")' in readme
+    assert '"llm.model": "gpt-5-mini"' in readme
+    assert '"llm.reasoning_effort": "low"' in readme
+    assert "Omit\n`llm.reasoning_effort`" in readme
+    assert "operator node overrides stored pipeline values" in readme
+    assert "Other execution properties keep the\nexisting node, invocation" in readme
+
+
+def test_readme_serializes_the_documented_llm_pipeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    source = _marked_readme_fences()["llm-pipeline-serialization"]
+    _execute(source)
+
+    record = json.loads((tmp_path / "llm-pipeline.json").read_text(encoding="utf-8"))
+    assert record["properties"] == {
+        "llm.model": "gpt-5-mini",
+        "llm.reasoning_effort": "medium",
+    }
+    operator = next(iter(record["entities"]["OPERATOR"].values()))
+    assert operator["operator_id"] == "nl2llm@3.0.0"
+    assert operator["properties"] == {
+        "llm.model": "gpt-4o-mini",
+        "llm.reasoning_effort": None,
+    }
 
 
 def test_root_readme_has_a_complete_source_install_and_mcp_route() -> None:
