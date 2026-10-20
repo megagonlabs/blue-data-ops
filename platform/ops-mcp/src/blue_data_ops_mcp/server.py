@@ -60,7 +60,7 @@ def create_server(
     )
     # FastMCP takes no version argument, and the server it builds reports the MCP SDK's own
     # version when it has none of its own. Every release of this package would then tell a
-    # client 1.27.2, while 1.0.0 and 0.12.0 serve different tool sets.
+    # client its SDK version, while 1.0.0 and 0.12.0 serve different tool sets.
     server._mcp_server.version = __version__  # pyright: ignore[reportPrivateUsage]
     register_snapshot(server, snapshot)
     return server

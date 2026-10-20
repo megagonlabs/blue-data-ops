@@ -132,7 +132,7 @@ python -m pip install ./platform/ops-mcp
 
 `platform/ops-mcp/scripts/install.sh` runs those three steps through the library's own installer, and adds the dev extras on top.
 
-The adapter pins `mcp==1.27.2` and `pydantic>=2.11,<3` on top of the core's dependencies.
+The adapter requires `mcp>=1.28.1,<2` and `pydantic>=2.11,<3` on top of the core's dependencies.
 It serves 33 primary tools, the same selection the core's `active_registry()` returns, each named `ops_` plus its operator name.
 Installing it puts one command on `PATH`, `blue-data-ops-mcp`, which serves on the loopback defaults; [mcp.md](mcp.md) covers the rest.
 

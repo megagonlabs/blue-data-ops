@@ -45,7 +45,7 @@ The repository carries no Git tags, so a release is identified by its commit and
 | Package | Path | Version | Console script | Runtime dependencies |
 |---|---|---|---|---|
 | `blue-data-ops` | `lib/` | `3.1.0` | none | `blue-data>=0.1.0`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng`, `tenacity` |
-| `blue-data-ops-mcp` | `platform/ops-mcp/` | `1.0.0` | `blue-data-ops-mcp` | `blue-data-ops==3.1.0`, `mcp==1.27.2`, `pydantic>=2.11,<3` |
+| `blue-data-ops-mcp` | `platform/ops-mcp/` | `1.0.0` | `blue-data-ops-mcp` | `blue-data-ops==3.1.0`, `mcp>=1.28.1,<2`, `pydantic>=2.11,<3` |
 | `blue-data-ops-cli` | `platform/ops-cli/` | `1.0.0` | `blue-ops` | `blue-data-ops[ml,vector,llm]==3.1.0`, `click>=8.0`, `rich>=13.0` |
 
 Each package's own README is the source of truth for installing and using it: [`lib/README.md`](../lib/README.md), [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and [`platform/ops-cli/README.md`](../platform/ops-cli/README.md).
@@ -336,7 +336,7 @@ The repository does not automate the following operations.
 - **No deploy script.**
   `scripts/{build,install,publish}.sh` wrap the commands in sections 3, 4, and 5 and add nothing to them; nothing invokes them, and nothing deploys.
 - **No dependency lock file.**
-  Version constraints are the only pinning, and two of them are exact by design: `jsonmerge==1.9.2` in the core and `mcp==1.27.2` in the adapter.
+  Version constraints are the only pinning, and one of them is exact by design: `jsonmerge==1.9.2` in the core; the adapter bounds `mcp>=1.28.1,<2`.
 - **No process supervision recipe.**
   The MCP server is started by the commands in section 6 and supervised by whatever the operator already uses.
 

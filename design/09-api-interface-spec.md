@@ -729,7 +729,7 @@ Acceptance for execution grants no planning authority and authorizes no write; t
 
 ### 2.7 Version pairing
 
-The adapter pins the core exactly, `blue-data-ops==3.1.0`, alongside `mcp==1.27.2` and `pydantic>=2.11,<3`.
+The adapter pins the core exactly, `blue-data-ops==3.1.0`, alongside `mcp>=1.28.1,<2` and `pydantic>=2.11,<3`.
 One environment therefore holds one verified pair, and the core and the adapter are updated together.
 The MCP initialization response's `serverInfo.version` is this package's own version, `1.0.0`, set on the server after `FastMCP` builds it because `FastMCP` takes no version argument and otherwise reports the SDK's.
 The same string is `blue_data_ops_mcp.__version__` and what package metadata returns, and each tool's operator version is in its `_meta`, moving independently of it.

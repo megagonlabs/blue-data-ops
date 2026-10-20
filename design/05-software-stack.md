@@ -145,7 +145,7 @@ Credentials are read by the provider library from its own environment variables;
 
 | Concern | Choice |
 |---|---|
-| Protocol library | `mcp`, pinned `==1.27.2` |
+| Protocol library | `mcp`, bounded `>=1.28.1,<2` |
 | Server class | `mcp.server.fastmcp.FastMCP` |
 | Transport | streamable HTTP, stateful, default `127.0.0.1:8000/mcp` |
 | Result modelling | `pydantic`, pinned `>=2.11,<3` |
@@ -245,7 +245,7 @@ They wrap `python -m build`, `pip install -e`, and `twine upload`; none of them 
 | `jsonmerge` | `==1.9.2` | PyPI | Blue-compatible JSON object merge |
 | `jsonpath-ng` | unpinned | PyPI | JSONPath query and set, LLM output extraction |
 | `tenacity` | unpinned | PyPI | retry for provider calls; imported at module import time |
-| `mcp` | `==1.27.2` | PyPI | MCP server SDK — `platform/ops-mcp/` only |
+| `mcp` | `>=1.28.1,<2` | PyPI | MCP server SDK — `platform/ops-mcp/` only |
 | `click` | `>=8.0` | PyPI | command parsing — `platform/ops-cli/` only |
 | `rich` | `>=13.0` | PyPI | table and console rendering — `platform/ops-cli/` only |
 | `numpy` | unpinned | PyPI | `ml` and `vector` extras |
