@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 # The core pin is exact and names the core release this adapter was verified against.
 dependencies = [
-    "blue-data-ops==3.1.0",
+    "blue-data-ops==1.0.0",
+    "blue-data[server]>=1.0.0",
     "mcp>=1.28.1,<2",
     "pydantic>=2.11,<3",
 ]

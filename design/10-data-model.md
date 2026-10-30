@@ -151,7 +151,7 @@ The runtime reads these across operators:
 | `platform.name`, `data_registry.name` | `str` | the two construction keys used when nothing is injected |
 | `llm_client` | `LLMClient` | an injected client, so a call reuses one instead of constructing per call |
 | `llm.cache`, `llm.cache_dir`, `llm.max_parallel`, `llm.rate_limit` | client controls | response caching, bounded concurrency, and rate limiting |
-| `openai.model` | `str` | the model for an LLM operator; the class default is `gpt-4o` |
+| `openai.model` | `str` | the model for an LLM operator; the class default is `gpt-6-luna` |
 | `algorithm` | `str` | the estimator or clustering algorithm for the ML operators |
 
 A class may pin its own defaults through a class-level `PROPERTIES` mapping, deep-copied into each instance.
@@ -217,11 +217,11 @@ The two are distinguished by `is_empty`, not by the data.
 | `operator_id` | `str` | the exact operator, pinned. An unregistered instance reports `name@2.0.0`. |
 | `stage` | `ErrorStage` | where in the boundary it happened |
 | `message` | `str` | a fixed short phrase, not interpolated from caller or provider text |
-| `retryable` | `bool` | `False` in every record the package produces today |
+| `retryable` | `bool` | Fixed advice from an owned reason, or an intentional custom author; it does not add retries |
 | `suggestion` | `str \| None` | the corrective hint, where one exists |
 
 `message` is deliberately fixed.
-Caller values, provider exception text, response bodies, and credentials are never interpolated into a record, so a record's text does not change when a dependency rewords an exception.
+Built-in diagnostics do not interpolate caller values, provider exception text, response bodies or credentials. `OperatorExecutionError` deliberately publishes validated author-selected constants; its constructor cannot determine whether an author supplied dynamic private text. See [the trusted-author contract](../docs/extending.md#intentional-public-execution-diagnostics).
 
 ### 3.3 The closed error vocabulary
 

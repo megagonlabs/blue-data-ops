@@ -22,9 +22,7 @@ class RecordingClient(LLMClient):
         return [{"name": "example"}]
 
 
-def pipeline(
-    pipeline_properties: dict[str, Any], node_properties: dict[str, Any]
-) -> DataPipeline:
+def pipeline(pipeline_properties: dict[str, Any], node_properties: dict[str, Any]) -> DataPipeline:
     plan = DataPipeline(label="LLM settings", properties=pipeline_properties)
     source = plan.define_input("records")
     generate = plan.define_operator(

@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
+import blue_data_ops.operators.data_discover_operator as discover_module
 import litellm
 import pytest
 from blue_data_ops.operators import AttributeSpec, ExecMeta, Operator, OperatorRegistry
@@ -72,6 +73,54 @@ async def test_success_direct_and_in_memory_protocol_agree() -> None:
     assert json.loads(result.content[0].text) == direct
     assert direct["output_data"] == [[{"id": 1, "score": 8}]]
     assert direct["exec_meta"]["is_empty"] is False
+
+
+async def test_data_discover_tool_returns_only_catalog_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from blue_data_ops.operators import versioned_registry
+
+    class LocalSearch:
+        def search_records_hierarchical(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            return [{"name": "jobs_db", "id": "/source/jobs_db", "scope": "/"}]
+
+        def get_record(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {
+                "description": "hidden-marker",
+                "properties": {"kind": "sql", "connection": {"password": "hidden-marker"}},
+                "metadata": {"note": "hidden-marker"},
+            }
+
+    def local_registry(_root: object) -> LocalSearch:
+        return LocalSearch()
+
+    monkeypatch.setattr(discover_module, "resolve_registry", local_registry)
+    from blue_data.registry.data_registry import DataRegistry
+
+    server = create_server(
+        registry=versioned_registry(),
+        data_registry=DataRegistry(),
+        operator_ids=("data_discover@2.0.0",),
+    )
+    result = await _call(
+        server,
+        "ops_data_discover",
+        {"input_data": [[]], "attributes": {"search_query": "jobs", "approximate": False}},
+    )
+    assert result.isError is False
+    assert _errors(result) == []
+    assert result.structuredContent["output_data"] == [
+        [
+            {
+                "type": "source",
+                "name": "jobs_db",
+                "id": "/source/jobs_db",
+                "scope": "/",
+                "properties": {"kind": "sql"},
+            }
+        ]
+    ]
+    assert "hidden-marker" not in result.content[0].text
 
 
 async def test_documented_llm_calls_execute_through_the_published_tools(

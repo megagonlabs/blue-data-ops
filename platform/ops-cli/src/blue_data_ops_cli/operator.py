@@ -15,13 +15,23 @@ two behaviours. The README argues it again where a user reads it.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 import click
-from blue_data_ops.operators import DataBundle, ExecMeta, OperatorCard
+from blue_data_ops.llm.errors import LLMError
+from blue_data_ops.operators import DataBundle, ExecMeta, Operator, OperatorCard
+from blue_data_ops.operators._nl2bn_outcome import NL2BNOutcomeOperator
+from blue_data_ops.operators._nl2sql_outcome import NL2SQLOutcomeOperator
+from blue_data_ops.operators.nl2bn_operator import NL2BNOperator
+from blue_data_ops.operators.nl2sql_operator import NL2SQLOperator
+from blue_data_ops.operators.operator import (
+    _execution_error,  # pyright: ignore[reportPrivateUsage]
+    _VersionBoundOperator,  # pyright: ignore[reportPrivateUsage]
+)
 
 from blue_data_ops_cli import config, formats, records
 from blue_data_ops_cli.catalog import announce_resolution, axis_of, resolve_card, taxonomy
+from blue_data_ops_cli.mask import MASK, mask
 from blue_data_ops_cli.resource import resource_group
 
 ACCEPTS_NONE = "accepts-none"
@@ -34,6 +44,52 @@ containing it.
 
 DISCOVERY_LIMIT = 20
 """``DiscoveryQuery.limit``'s own default, so the two cannot drift."""
+
+
+def _llm_admission(
+    operator: Operator, attributes: dict[str, Any], properties: dict[str, Any]
+) -> bool:
+    implementation = operator
+    while type(implementation) is _VersionBoundOperator:
+        implementation = implementation._target  # pyright: ignore[reportPrivateUsage]
+    sql = type(implementation) in (NL2SQLOperator, NL2SQLOutcomeOperator)
+    bn = type(implementation) in (NL2BNOperator, NL2BNOutcomeOperator)
+    if not (sql or bn):
+        return False
+    try:
+        if sql:
+            preflight = getattr(implementation, "_preflight_execution", None)
+            if not callable(preflight):
+                raise LLMError(
+                    "SQL preflight unavailable", code="sql_execution_unavailable", retryable=False
+                )
+            bound_execution = preflight(attributes, properties)
+            if type(bound_execution) is not bool:
+                raise LLMError(
+                    "SQL preflight invalid", code="sql_execution_unavailable", retryable=False
+                )
+            return bound_execution
+        from blue_data_ops.llm.client import validate_llm_caller_controls
+
+        validate_llm_caller_controls(
+            properties,
+            service_prefix=str(
+                cast(NL2BNOperator, implementation).DEFAULT_PROPERTIES.get(
+                    "service_prefix", "openai"
+                )
+            ),
+        )
+    except Exception as error:
+        if not isinstance(error, LLMError):
+            error = LLMError(
+                "preflight unavailable",
+                code="sql_execution_unavailable" if sql else "reserved_field",
+                retryable=False,
+            )
+        failure = config.execution_failure([_execution_error(operator.operator_id, error)])
+        assert failure is not None
+        raise failure from None
+    return False
 
 
 def domain_of(card: OperatorCard) -> str:
@@ -70,12 +126,30 @@ def error_payload(meta: ExecMeta) -> list[dict[str, Any]]:
             "code": record.code.value,
             "operator_id": record.operator_id,
             "stage": record.stage.value,
-            "message": record.message,
+            "message": mask(record.message),
             "retryable": record.retryable,
-            "suggestion": record.suggestion,
+            "suggestion": mask(record.suggestion) if record.suggestion is not None else None,
         }
         for record in meta.errors
     ]
+
+
+def masked_diagnostic(value: object) -> object:
+    """Mask diagnostic text and withhold unsupported value types."""
+    if isinstance(value, str):
+        return mask(value)
+    if isinstance(value, dict):
+        entries = cast(dict[object, object], value)
+        return {
+            mask(key) if isinstance(key, str) else key: masked_diagnostic(item)
+            for key, item in entries.items()
+        }
+    if isinstance(value, (list, tuple)):
+        items = cast(list[object] | tuple[object, ...], value)
+        return [masked_diagnostic(item) for item in items]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return MASK
 
 
 def bundle_table(bundle: DataBundle) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
@@ -322,15 +396,15 @@ def operator_inspect(
 )
 @click.option(
     "--timeout",
-    type=float,
+    type=config.PositiveFiniteFloat(),
     default=None,
     show_default="the profile's BLUE_DATA_OPS_TIMEOUT, else none",
-    help="Seconds this operator may take before the run is abandoned.",
+    help="Finite positive seconds this operator may take before the run is abandoned.",
 )
 @click.option(
     "--model",
     default=None,
-    show_default="the profile's BLUE_DATA_LLM_MODEL, else gpt-4o",
+    show_default="the profile's BLUE_DATA_LLM_MODEL, else gpt-6-luna",
     help="Model the language-model operators call.",
 )
 @click.option(
@@ -394,34 +468,41 @@ def operator_run(
         )
         if applied_timeout is not None:
             call_properties["execution.timeout_seconds"] = applied_timeout
-        if model is not None:
-            call_properties.pop("llm.model", None)
-            applied_model = settings.take("openai.model", model, "BLUE_DATA_LLM_MODEL")
-            if applied_model is not None:
-                call_properties["openai.model"] = applied_model
-        elif "llm.model" in call_properties:
-            call_properties.pop("openai.model", None)
-            neutral_model = call_properties["llm.model"]
-            settings.take("llm.model", neutral_model)
+        if not config.requires_llm(card):
+            if model is not None or reasoning_effort is not None:
+                raise config.CliError(
+                    config.USAGE,
+                    f"{card.operator_id} does not use --model or --reasoning-effort.",
+                )
         else:
-            applied_model = settings.take(
-                "openai.model",
-                call_properties.get("openai.model"),
-                "BLUE_DATA_LLM_MODEL",
-            )
-            if applied_model is not None:
-                call_properties["openai.model"] = applied_model
-        if reasoning_effort is not None:
-            applied_effort = settings.take("llm.reasoning_effort", reasoning_effort)
-            call_properties["llm.reasoning_effort"] = applied_effort
-        elif "llm.reasoning_effort" in call_properties:
-            neutral_effort = call_properties["llm.reasoning_effort"]
-            settings.take("llm.reasoning_effort", neutral_effort)
+            if model is not None:
+                call_properties.pop("llm.model", None)
+                applied_model = settings.take("openai.model", model, "BLUE_DATA_LLM_MODEL")
+                if applied_model is not None:
+                    call_properties["openai.model"] = applied_model
+            elif "llm.model" in call_properties:
+                call_properties.pop("openai.model", None)
+                neutral_model = call_properties["llm.model"]
+                settings.take("llm.model", neutral_model)
+            else:
+                applied_model = settings.take(
+                    "openai.model",
+                    call_properties.get("openai.model"),
+                    "BLUE_DATA_LLM_MODEL",
+                )
+                if applied_model is not None:
+                    call_properties["openai.model"] = applied_model
+            if reasoning_effort is not None:
+                applied_effort = settings.take("llm.reasoning_effort", reasoning_effort)
+                call_properties["llm.reasoning_effort"] = applied_effort
+            elif "llm.reasoning_effort" in call_properties:
+                neutral_effort = call_properties["llm.reasoning_effort"]
+                settings.take("llm.reasoning_effort", neutral_effort)
 
-        if config.requires_data_registry(card):
-            # Built only for a card that says it needs one. The library would otherwise
-            # construct a per-call in-memory registry and drop it when the process ends,
-            # which for a CLI means creating a database and immediately losing it.
+        bound_execution = _llm_admission(operator, call_attributes, call_properties)
+        if config.requires_data_registry(card) and not bound_execution:
+            # Registry metadata follows the configured memory/file/Redis backend;
+            # configured data-source writes can persist independently.
             call_properties["data_registry"] = config.build_registry_seam()
             if config.registry_is_ephemeral():
                 reporter.warn(
@@ -442,7 +523,7 @@ def operator_run(
             )
 
         started = time.monotonic()
-        with reporter.status(f"Running {card.operator_id}…"):
+        with config.execution_logging(reporter), reporter.status(f"Running {card.operator_id}…"):
             output_data, output_attributes, meta = operator.run(
                 bundle, call_attributes, call_properties
             )
@@ -479,7 +560,7 @@ def operator_run(
                 "operator_id": card.operator_id,
                 "is_empty": meta.is_empty,
                 "errors": error_payload(meta),
-                "traces": meta.traces,
+                "traces": masked_diagnostic(meta.traces),
                 "elapsed_seconds": elapsed,
                 "settings": settings.envelope(),
             },

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from typing import Any, cast
 
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from blue_data_ops.data.sql_errors import loaded_class
 from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.llm.templating import build_message, extract_output
 
@@ -119,7 +121,56 @@ _KWARGS_GENERATION_FIELDS = frozenset(
 )
 
 _GENERATION_FIELDS = _SIGNATURE_GENERATION_FIELDS | _KWARGS_GENERATION_FIELDS
-_UNSUPPORTED_PARAMETER_MESSAGE = "model rejected a requested generation setting"
+_UNSUPPORTED_PARAMETER_MESSAGE = (
+    "model rejected a requested generation setting; for temperature, set llm.temperature=null"
+)
+_SAMPLING_FIELDS = frozenset({"temperature", "top_p", "logprobs", "top_logprobs"})
+_DATED_MODEL_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+_ADAPTER_SAMPLING_GAP = frozenset({"gpt-6-sol", "gpt-6-luna"})
+_OPENAI_EFFORT_PASS_THROUGH = frozenset({"gpt-6-astra", "gpt-6-sol", "gpt-6-luna"})
+
+# A missing effort uses the model's default, which is not necessarily "none".
+# Unknown models retain existing operator defaults and are left to the adapter.
+# Sources: https://developers.openai.com/api/docs/guides/latest-model and the
+# corresponding model pages under https://developers.openai.com/api/docs/models/.
+_SAMPLING_POLICY: dict[str, tuple[str, str]] = {
+    "gpt-4o": ("allowed", "none"),
+    "gpt-4o-mini": ("allowed", "none"),
+    "gpt-4.1": ("allowed", "none"),
+    "gpt-4.1-mini": ("allowed", "none"),
+    "gpt-4.1-nano": ("allowed", "none"),
+    "gpt-4-turbo": ("allowed", "none"),
+    "gpt-5": ("never", "medium"),
+    "gpt-5-mini": ("never", "medium"),
+    "gpt-5-nano": ("never", "medium"),
+    "gpt-5.1": ("effort-none", "none"),
+    "gpt-5.2": ("effort-none", "none"),
+    "gpt-5.4": ("effort-none", "none"),
+    "gpt-5.5": ("effort-none", "medium"),
+    "gpt-5.6": ("effort-none", "medium"),
+    "gpt-5.6-sol": ("effort-none", "medium"),
+    "gpt-5.6-terra": ("effort-none", "medium"),
+    "gpt-5.6-luna": ("effort-none", "medium"),
+    "gpt-6-astra": ("never", "medium"),
+    "gpt-6-sol": ("effort-none", "medium"),
+    "gpt-6-luna": ("effort-none", "medium"),
+}
+
+
+def _sampling_policy(model: str) -> tuple[str, str] | None:
+    return _SAMPLING_POLICY.get(_DATED_MODEL_SUFFIX.sub("", model))
+
+
+def _sampling_allowed(model: str, effort: Any) -> bool | None:
+    policy = _sampling_policy(model)
+    if policy is None:
+        return None
+    mode, default_effort = policy
+    if mode == "allowed":
+        return True
+    if mode == "never":
+        return False
+    return (default_effort if effort is None else effort) == "none"
 
 
 def _retryable_llm_error(exception: BaseException) -> bool:
@@ -142,6 +193,84 @@ def _structured_provider_error_code(exception: Exception) -> str | None:
     return code if isinstance(code, str) else None
 
 
+_RETRY_PROVIDER_TYPES = (
+    "RateLimitError",
+    "Timeout",
+    "APIConnectionError",
+    "ServiceUnavailableError",
+    "InternalServerError",
+)
+
+
+def _real_provider_type(value: object, module: str, name: str) -> bool:
+    cls = loaded_class(module, name)
+    return cls is not None and any(
+        base is cls for base in type.__getattribute__(type(value), "__mro__")
+    )
+
+
+def _retry_provider_provenance(exception: Exception, expected: str) -> bool:
+    current: BaseException | None = exception
+    seen: set[int] = set()
+    for _ in range(8):
+        if current is None or id(current) in seen:
+            return False
+        seen.add(id(current))
+        ancestry = type.__getattribute__(type(current), "__mro__")
+        if any(base is local for base in ancestry for local in (KeyError, TypeError, ValueError)):
+            return False
+        if _real_provider_type(current, "httpx", "TimeoutException"):
+            return expected == "provider_timeout"
+        if _real_provider_type(current, "httpx", "NetworkError"):
+            return expected == "provider_connection"
+        lite_wrapper = any(
+            _real_provider_type(current, "litellm.exceptions", name)
+            for name in (
+                *_RETRY_PROVIDER_TYPES,
+                "BadGatewayError",
+                "AuthenticationError",
+                "NotFoundError",
+                "BadRequestError",
+                "PermissionDeniedError",
+                "UnprocessableEntityError",
+                "APIError",
+                "APIResponseValidationError",
+                "MockException",
+            )
+        ) or _real_provider_type(current, "litellm.llms.openai.common_utils", "OpenAIError")
+        if not lite_wrapper and _real_provider_type(current, "openai", "APIStatusError"):
+            # LiteLLM wrappers synthesize responses; only the originating SDK response counts.
+            fields = BaseException.__dict__["__dict__"].__get__(current)
+            response = fields.get("response")
+            if type(response) is not loaded_class("httpx", "Response"):
+                return False
+            try:
+                status = object.__getattribute__(response, "status_code")
+            except AttributeError:
+                return False
+            if type(status) is not int:
+                return False
+            if status == 429:
+                return expected == "provider_rate_limit"
+            return status in {500, 502, 503, 504} and expected == "provider_unavailable"
+        if not lite_wrapper and not _real_provider_type(current, "openai", "APIConnectionError"):
+            return False
+        cause = cast("BaseException | None", BaseException.__dict__["__cause__"].__get__(current))
+        suppressed = BaseException.__dict__["__suppress_context__"].__get__(current)
+        current = (
+            cause
+            if cause is not None
+            else (
+                None
+                if suppressed
+                else cast(
+                    "BaseException | None", BaseException.__dict__["__context__"].__get__(current)
+                )
+            )
+        )
+    return False
+
+
 def _provider_error(
     exception: Exception,
     unsupported_type: type[Exception],
@@ -149,16 +278,35 @@ def _provider_error(
 ) -> LLMError:
     unsupported = isinstance(exception, unsupported_type) or (
         isinstance(exception, bad_request_type)
-        and _structured_provider_error_code(exception) == "unsupported_parameter"
+        and _structured_provider_error_code(exception)
+        in {"unsupported_parameter", "unsupported_value"}
     )
-    if unsupported:
+    code = "provider_error"
+    for name, reason in (
+        ("ContextWindowExceededError", "provider_context"),
+        ("ContentPolicyViolationError", "provider_content"),
+        ("RateLimitError", "provider_rate_limit"),
+        ("Timeout", "provider_timeout"),
+        ("APIConnectionError", "provider_connection"),
+        ("ServiceUnavailableError", "provider_unavailable"),
+        ("InternalServerError", "provider_unavailable"),
+        ("AuthenticationError", "provider_credentials"),
+        ("NotFoundError", "provider_model_missing"),
+    ):
+        cls = loaded_class("litellm.exceptions", name)
+        if cls is not None and _real_provider_type(exception, "litellm.exceptions", name):
+            if name in _RETRY_PROVIDER_TYPES and not _retry_provider_provenance(exception, reason):
+                break
+            code = reason
+            break
+    if unsupported and code == "provider_error":
         return LLMError(
             _UNSUPPORTED_PARAMETER_MESSAGE,
             code="unsupported_parameter",
             provider_error=exception,
             retryable=False,
         )
-    return LLMError(str(exception), code="provider_error", provider_error=exception)
+    return LLMError(str(exception), code=code, provider_error=exception, retryable=not unsupported)
 
 
 # Which provider answers is the deployment's, and it is read from the process environment
@@ -203,6 +351,151 @@ def _deployment_provider() -> str:
     return os.environ.get(_PROVIDER_VAR, "").strip() or _DEFAULT_PROVIDER
 
 
+# Caller presence is forbidden even when the value matches a package default.
+RESERVED_OPERATOR_LLM_CONTROLS = frozenset(
+    {
+        "input_template",
+        "input_json",
+        "input_context",
+        "input_context_field",
+        "input_field",
+        "output_template",
+        "output_path",
+        "output_transformations",
+        "output_strip",
+        "output_cast",
+        "template_syntax",
+        "service_prefix",
+        "openai.api",
+        "openai.service_url",
+    }
+)
+_RESERVED_CONTROL_MESSAGE = "operator template and transport controls are reserved"
+# Fixed text: the caller's key is not repeated back in the error.
+_UNKNOWN_LLM_OVERRIDE_MESSAGE = "unsupported llm.* override; accepted: " + ", ".join(
+    sorted("llm." + key for key in _ACCEPTED_LLM_KEYS)
+)
+
+
+def validate_llm_caller_controls(
+    properties: dict[str, Any] | None, *, service_prefix: str = "openai"
+) -> None:
+    """Check original operator-call controls without resolving clients or providers."""
+    for key in properties or {}:
+        if key in RESERVED_OPERATOR_LLM_CONTROLS:
+            raise LLMError(_RESERVED_CONTROL_MESSAGE, code="reserved_field", retryable=False)
+        if key.startswith("llm."):
+            if key[4:] not in _ACCEPTED_LLM_KEYS:
+                raise LLMError(_UNKNOWN_LLM_OVERRIDE_MESSAGE, code="bad_override", retryable=False)
+        elif key.startswith(service_prefix + "."):
+            if key[len(service_prefix) + 1 :] not in _GENERATION_FIELDS:
+                raise LLMError(_RESERVED_CONTROL_MESSAGE, code="reserved_field", retryable=False)
+
+
+class _OperatorProperties(dict[str, Any]):
+    def __init__(self, values: dict[str, Any], inherited_temperature: bool) -> None:
+        super().__init__(values)
+        self.inherited_temperature = inherited_temperature
+
+    def copy(self) -> _OperatorProperties:
+        return _OperatorProperties(self, self.inherited_temperature)
+
+
+def _copy_operator_properties(properties: dict[str, Any] | None) -> dict[str, Any]:
+    if type(properties) is _OperatorProperties:
+        return _OperatorProperties(properties, properties.inherited_temperature)
+    return dict(properties or {})
+
+
+def _inherits_temperature(properties: dict[str, Any] | None) -> bool:
+    return type(properties) is _OperatorProperties and properties.inherited_temperature
+
+
+def prepare_llm_operator_properties(
+    merged: dict[str, Any], defaults: dict[str, Any], supplied: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Return an invocation copy without incompatible operator defaults."""
+    validate_llm_caller_controls(
+        supplied, service_prefix=str(defaults.get("service_prefix", "openai"))
+    )
+    caller = supplied or {}
+    merged = dict(merged)
+    # An injected client cannot supply another operator's output wrapper.
+    merged["output_template"] = defaults.get("output_template")
+    # An injected client can supply a neutral model/effort setting that wins over
+    # the operator's prefixed default when the client merges its own properties.
+    injected = merged.get("llm_client")
+    stored = vars(injected).get("properties") if isinstance(injected, LLMClient) else None
+    instance: dict[str, Any] = cast("dict[str, Any]", stored) if isinstance(stored, dict) else {}
+    prefix = str(merged.get("service_prefix", instance.get("service_prefix", "openai")))
+    for field in ("model", "stream", "max_tokens", "temperature", "reasoning_effort"):
+        prefixed = f"{prefix}.{field}"
+        neutral = f"llm.{field}"
+        if prefixed in caller and neutral in instance and neutral not in caller:
+            merged[neutral] = caller[prefixed]
+    for field in _GENERATION_FIELDS:
+        key = f"{prefix}.{field}"
+        if key in instance and key in defaults and key not in caller:
+            merged.pop(key, None)
+    effective = {**instance, **merged}
+    model = effective.get("llm.model", effective.get(f"{prefix}.model"))
+    if _deployment_provider() == "openai" and isinstance(model, str):
+        effort = effective.get("llm.reasoning_effort", effective.get(f"{prefix}.reasoning_effort"))
+        model_base = _DATED_MODEL_SUFFIX.sub("", model)
+        if _sampling_allowed(model, effort) is False or model_base in _ADAPTER_SAMPLING_GAP:
+            for field in _SAMPLING_FIELDS:
+                key = f"{prefix}.{field}"
+                if key in defaults and key not in caller and key not in instance:
+                    merged.pop(key, None)
+
+    # One explicit limit replaces lower-priority client and operator defaults.
+    native_limit = f"{prefix}.max_completion_tokens"
+    inherited_limit = f"{prefix}.max_tokens"
+    neutral_limit = "llm.max_tokens"
+    max_keys = (inherited_limit, neutral_limit)
+    caller_max = any(key in caller for key in max_keys)
+    if native_limit in caller and not caller_max:
+        for key in max_keys:
+            if key in instance:
+                merged[key] = None
+            elif key in defaults:
+                merged.pop(key, None)
+    elif caller_max and native_limit not in caller:
+        if native_limit in instance:
+            merged[native_limit] = None
+        elif native_limit in defaults:
+            merged.pop(native_limit, None)
+    elif not caller_max and native_limit not in caller:
+        stored_max = [key for key in max_keys if key in instance]
+        if native_limit in instance and stored_max:
+            native_copy = (
+                native_limit in defaults and instance[native_limit] == defaults[native_limit]
+            )
+            max_copies = [
+                key for key in stored_max if key in defaults and instance[key] == defaults[key]
+            ]
+            # A reused client may start with an operator's defaults. Only a
+            # copied cap gives way to a different cap stored on that client.
+            if native_copy and len(max_copies) < len(stored_max):
+                merged[native_limit] = None
+            elif not native_copy and len(max_copies) == len(stored_max):
+                for key in max_copies:
+                    merged[key] = None
+        elif native_limit in instance:
+            for key in max_keys:
+                if key in defaults:
+                    merged.pop(key, None)
+        elif stored_max and native_limit in defaults:
+            merged.pop(native_limit, None)
+    temperature_keys = ("llm.temperature", f"{prefix}.temperature")
+    inherited = (
+        f"{prefix}.temperature" in defaults
+        and not any(key in caller or key in instance for key in temperature_keys)
+        and merged.get(f"{prefix}.temperature") is not None
+    )
+    return _OperatorProperties(merged, inherited)
+
+
 def _deployment_models() -> frozenset[str]:
     """The models this deployment offers. Empty means it has not said."""
     return frozenset(os.environ.get(_ALLOWED_MODELS_VAR, "").replace(",", " ").split())
@@ -214,6 +507,9 @@ def _litellm_or_none() -> Any | None:
         import litellm
     except Exception:
         return None
+    # LiteLLM otherwise prints its exception help banner to stdout, breaking the
+    # CLI's one-JSON-object output on failed calls. This setting is process-wide.
+    setattr(litellm, "suppress_debug_info", True)
     return litellm
 
 
@@ -341,18 +637,19 @@ class UsageRecord:
 class _InvocationCostObservation:
     local_cache_hit: bool = False
     provider_attempts: int = 0
+    local_refusals: int = 0
     estimated_cost: float | None = None
 
     def complete_cost(self) -> float | None:
         if self.local_cache_hit and self.provider_attempts == 0:
             return 0.0
-        if self.provider_attempts == 1:
+        if self.provider_attempts - self.local_refusals == 1:
             return self.estimated_cost
         return None
 
 
 class UsageLedger:
-    """One record per execute_api_call (cache hits included, end-to-end latency)."""
+    """Returned usage per call; costs can be incomplete after failed retries."""
 
     def __init__(self) -> None:
         self.records: list[UsageRecord] = []
@@ -389,7 +686,7 @@ class LLMClient:
 
     def __init__(self, name: str, properties: dict[str, Any] | None = None) -> None:
         self.name = name
-        self.properties: dict[str, Any] = dict(properties or {})
+        self.properties: dict[str, Any] = _copy_operator_properties(properties)
         self.ledger = UsageLedger()
         self.last_usage: UsageRecord | None = None
         self._caches: dict[str, Any] = {}  # cache_dir -> diskcache.Cache
@@ -423,26 +720,63 @@ class LLMClient:
         observation: _InvocationCostObservation | None,
     ) -> Any:
         started = time.monotonic()
+        inherited = (
+            _inherits_temperature(properties)
+            if properties is not None
+            else _inherits_temperature(self.properties)
+        )
+        if properties is not None and type(properties) is not _OperatorProperties:
+            prefix = str(
+                properties.get("service_prefix", self.properties.get("service_prefix", "openai"))
+            )
+            inherited = _inherits_temperature(self.properties) and not any(
+                key in properties for key in ("llm.temperature", f"{prefix}.temperature")
+            )
         merged = {**self.properties, **(properties or {})}
         message = build_message(input, merged, additional_data, self.name.lower())
         kwargs = self._build_call_kwargs(message, merged)
 
         cache, cache_key = self._cache_lookup(merged, kwargs)
+        original_key = cache_key
+        alias_key = "operator-temperature-fallback:" + cache_key if cache_key is not None else None
+        if inherited and cache is not None and alias_key in cache:
+            effective = dict(kwargs)
+            effective.pop("temperature", None)
+            effective_key = json.dumps(effective, sort_keys=True, default=str)
+            if cache[alias_key] == effective_key and effective_key in cache:
+                kwargs = effective
+                cache_key = effective_key
         if cache is not None and cache_key in cache:
-            payload = cache[cache_key]
+            payload = self._materialize_payload(cache[cache_key])
             if observation is not None:
                 observation.local_cache_hit = True
             self._record(kwargs, payload, started, cache_hit=True)
+            self._reject_truncated(payload)
             return extract_output(payload, merged)
 
         self._apply_rate_limit(merged)
-        if observation is None:
-            payload, cost = self._call_provider(kwargs)
-        else:
-            payload, cost = self._call_provider_observed(kwargs, observation)
-        if cache is not None and cache_key is not None:
-            cache[cache_key] = payload
+        try:
+            if observation is None:
+                payload, cost = self._call_provider(kwargs)
+            else:
+                payload, cost = self._call_provider_observed(kwargs, observation)
+        except LLMError as error:
+            if not self._drop_rejected_temperature(error, kwargs, inherited):
+                raise
+            if observation is not None and self._local_temperature_refusal(error.provider_error):
+                observation.local_refusals += 1
+            self._apply_rate_limit(merged)
+            if observation is None:
+                payload, cost = self._call_provider(kwargs)
+            else:
+                payload, cost = self._call_provider_observed(kwargs, observation)
         self._record(kwargs, payload, started, cache_hit=False, cost=cost)
+        self._reject_truncated(payload)
+        if cache is not None and cache_key is not None:
+            cache_key = json.dumps(kwargs, sort_keys=True, default=str)
+            cache[cache_key] = payload
+            if inherited and alias_key is not None and original_key != cache_key:
+                cache[alias_key] = cache_key
         return extract_output(payload, merged)
 
     # ----------------------------------------------------------------- async --
@@ -453,26 +787,111 @@ class LLMClient:
         additional_data: dict[str, Any] | None = None,
     ) -> Any:
         started = time.monotonic()
+        inherited = (
+            _inherits_temperature(properties)
+            if properties is not None
+            else _inherits_temperature(self.properties)
+        )
+        if properties is not None and type(properties) is not _OperatorProperties:
+            prefix = str(
+                properties.get("service_prefix", self.properties.get("service_prefix", "openai"))
+            )
+            inherited = _inherits_temperature(self.properties) and not any(
+                key in properties for key in ("llm.temperature", f"{prefix}.temperature")
+            )
         merged = {**self.properties, **(properties or {})}
         message = build_message(input, merged, additional_data, self.name.lower())
         kwargs = self._build_call_kwargs(message, merged)
 
         cache, cache_key = self._cache_lookup(merged, kwargs)
+        original_key = cache_key
+        alias_key = "operator-temperature-fallback:" + cache_key if cache_key is not None else None
+        if inherited and cache is not None and alias_key in cache:
+            effective = dict(kwargs)
+            effective.pop("temperature", None)
+            effective_key = json.dumps(effective, sort_keys=True, default=str)
+            if cache[alias_key] == effective_key and effective_key in cache:
+                kwargs = effective
+                cache_key = effective_key
         if cache is not None and cache_key in cache:
-            payload = cache[cache_key]
+            payload = self._materialize_payload(cache[cache_key])
             self._record(kwargs, payload, started, cache_hit=True)
+            self._reject_truncated(payload)
             return extract_output(payload, merged)
 
         semaphore = self._resolve_semaphore(merged)
         async with semaphore:
             self._apply_rate_limit(merged)
-            payload, cost = await self._acall_provider(kwargs)
-        if cache is not None and cache_key is not None:
-            cache[cache_key] = payload
+            try:
+                payload, cost = await self._acall_provider(kwargs)
+            except LLMError as error:
+                if not self._drop_rejected_temperature(error, kwargs, inherited):
+                    raise
+                self._apply_rate_limit(merged)
+                payload, cost = await self._acall_provider(kwargs)
         self._record(kwargs, payload, started, cache_hit=False, cost=cost)
+        self._reject_truncated(payload)
+        if cache is not None and cache_key is not None:
+            cache_key = json.dumps(kwargs, sort_keys=True, default=str)
+            cache[cache_key] = payload
+            if inherited and alias_key is not None and original_key != cache_key:
+                cache[alias_key] = cache_key
         return extract_output(payload, merged)
 
     # ------------------------------------------------------------- internals --
+    @staticmethod
+    def _local_temperature_refusal(error: object) -> bool:
+        import litellm
+
+        if not isinstance(error, litellm.UnsupportedParamsError):
+            return False
+        # LiteLLM identifies locally rejected fields in a list or quoted parameter.
+        message = str(error)
+        return bool(
+            re.search(
+                r"(?:does not support|unsupported) (?:parameters|params):?\s*\['temperature'\]",
+                message,
+                re.IGNORECASE,
+            )
+            or re.search(
+                r"(?:doesn't support|don't support|does not support)\s+temperature=", message
+            )
+            or re.search(r"only supports temperature=1\b", message, re.IGNORECASE)
+            or re.search(
+                r"(?:does not support|unsupported parameter:)\s*['\"]temperature['\"]",
+                message,
+                re.IGNORECASE,
+            )
+        )
+
+    @classmethod
+    def _drop_rejected_temperature(
+        cls, error: LLMError, kwargs: dict[str, Any], inherited: bool
+    ) -> bool:
+        if not inherited or kwargs.get(_DISPATCH_FIELD) != "openai" or "temperature" not in kwargs:
+            return False
+        provider_error = error.provider_error
+        rejected = cls._local_temperature_refusal(provider_error)
+        if not rejected:
+            import litellm
+
+            if isinstance(provider_error, litellm.BadRequestError):
+                body = getattr(provider_error, "body", None)
+                fields: Any = (
+                    cast(dict[str, Any], body).get("error", body)
+                    if isinstance(body, dict)
+                    else None
+                )
+                rejected = bool(
+                    getattr(provider_error, "status_code", None) == 400
+                    and isinstance(fields, dict)
+                    and cast(dict[str, Any], fields).get("code") == "unsupported_value"
+                    and cast(dict[str, Any], fields).get("param") == "temperature"
+                )
+        if rejected:
+            kwargs.pop("temperature")
+        return rejected
+
     def _build_call_kwargs(
         self, message: dict[str, Any], properties: dict[str, Any]
     ) -> dict[str, Any]:
@@ -492,11 +911,23 @@ class LLMClient:
                         f"unknown adapter override '{key}' — accepted: "
                         f"{sorted('llm.' + k for k in _ACCEPTED_LLM_KEYS)}",
                         code="bad_override",
+                        retryable=False,
                     )
                 if short == "reasoning_effort" and value is None:
                     kwargs.pop(short, None)
                 elif short not in _CONTROL_KEYS:
                     kwargs[short] = value
+
+        # Null means no request argument, including when it came from the prefixed
+        # namespace rather than the neutral override.
+        for optional in (
+            *_SAMPLING_FIELDS,
+            "reasoning_effort",
+            "max_tokens",
+            "max_completion_tokens",
+        ):
+            if kwargs.get(optional) is None:
+                kwargs.pop(optional, None)
 
         # Remove transport-resolution fields after every override has been merged.
         for reserved in _RESERVED_FIELDS:
@@ -512,6 +943,7 @@ class LLMClient:
                 f"properties may not substitute the provider response: {substituted} — "
                 "a result carries what the provider answered, not what the caller sent",
                 code="reserved_field",
+                retryable=False,
             )
 
         refused = sorted(key for key in kwargs if key not in _GENERATION_FIELDS)
@@ -522,6 +954,7 @@ class LLMClient:
                 "credential come from the environment this deployment runs in; a call "
                 f"property may set {sorted(_GENERATION_FIELDS)}",
                 code="reserved_field",
+                retryable=False,
             )
 
         if not kwargs.get("model"):
@@ -540,8 +973,38 @@ class LLMClient:
                 code="model_not_allowed",
             )
         _refuse_a_model_that_dispatches_elsewhere(model, provider)
+        if "max_tokens" in kwargs and "max_completion_tokens" in kwargs:
+            raise LLMError(
+                "set either max_tokens or max_completion_tokens, not both",
+                code="conflicting_token_limits",
+                retryable=False,
+            )
+        if (
+            provider == "openai"
+            and _sampling_allowed(model, kwargs.get("reasoning_effort")) is False
+        ):
+            incompatible = sorted(_SAMPLING_FIELDS.intersection(kwargs))
+            if incompatible:
+                raise LLMError(
+                    f"model '{model}' does not accept {incompatible} at this reasoning effort",
+                    code="unsupported_parameter",
+                    retryable=False,
+                )
+        profile = _sampling_policy(model) if provider == "openai" else None
+        if profile is not None and profile[0] != "allowed":
+            if "max_tokens" in kwargs:
+                kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
         # After every refusal, so a caller can neither set this field nor reach it.
         kwargs[_DISPATCH_FIELD] = provider
+        if (
+            provider == "openai"
+            and _DATED_MODEL_SUFFIX.sub("", model) in _OPENAI_EFFORT_PASS_THROUGH
+            and "reasoning_effort" in kwargs
+        ):
+            # LiteLLM 1.98 predates GPT-6 parameter metadata. OpenAI accepts this
+            # setting; pass through only this known field for these known models.
+            # The hint is internal and cannot be supplied through call properties.
+            kwargs["allowed_openai_params"] = ["reasoning_effort"]
         return kwargs
 
     def _cache_lookup(
@@ -619,6 +1082,8 @@ class LLMClient:
     def _call_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
         import litellm  # lazy: the llm extra is optional; tests stub this module
 
+        setattr(litellm, "suppress_debug_info", True)
+
         try:
             response: Any = litellm.completion(**kwargs)
         except Exception as e:  # transport boundary: wrap provider errors
@@ -640,6 +1105,8 @@ class LLMClient:
     ) -> tuple[dict[str, Any], float]:
         import litellm
 
+        setattr(litellm, "suppress_debug_info", True)
+
         observation.provider_attempts += 1
         try:
             response: Any = litellm.completion(**kwargs)
@@ -659,6 +1126,8 @@ class LLMClient:
     )
     async def _acall_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
         import litellm  # lazy — same boundary as the sync path
+
+        setattr(litellm, "suppress_debug_info", True)
 
         try:
             response: Any = await litellm.acompletion(**kwargs)
@@ -689,7 +1158,9 @@ class LLMClient:
             raw: Any = response.model_dump() if hasattr(response, "model_dump") else response
         except Exception as e:
             raise LLMError(
-                "provider response could not be materialized", code="bad_response", provider_error=e
+                "provider response could not be materialized",
+                code="bad_response",
+                provider_error=e,
             ) from e
         raw_dict: dict[str, Any] | None = (
             cast("dict[str, Any]", raw) if isinstance(raw, dict) else None
@@ -701,6 +1172,19 @@ class LLMClient:
             )
         payload: dict[str, Any] = dict(raw)  # pyright: ignore[reportUnknownArgumentType]
         return payload
+
+    @staticmethod
+    def _reject_truncated(payload: dict[str, Any]) -> None:
+        if any(
+            isinstance(choice, dict)
+            and cast("dict[str, Any]", choice).get("finish_reason") == "length"
+            for choice in cast("list[Any]", payload["choices"])
+        ):
+            raise LLMError(
+                "model output was cut off by the completion-token limit",
+                code="truncated_response",
+                retryable=False,
+            )
 
     @staticmethod
     def _completion_cost(response: Any) -> float:

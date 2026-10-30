@@ -26,6 +26,9 @@ def _core_wheel(
     operator_ids: tuple[str, ...] = ("synthetic@2.0.0",),
     omit_examples: bool = False,
     symlink_examples: bool = False,
+    undeclared_non_code: bool = False,
+    relocated_non_code: bool = False,
+    symlink_fixed: bool = False,
 ) -> None:
     prefix = "blue_data_ops/operator_skills"
     guide = b"# Synthetic\n"
@@ -42,7 +45,22 @@ def _core_wheel(
         archive.writestr(
             "blue_data_ops-2.8.0.dist-info/METADATA", _metadata("blue-data-ops", "2.8.0")
         )
+        if symlink_fixed:
+            member = zipfile.ZipInfo("blue_data_ops/py.typed")
+            member.create_system = 3
+            member.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(member, b"target")
+        else:
+            archive.writestr("blue_data_ops/py.typed", b"")
+        archive.writestr("blue_data_ops/plan/_schemas/plan-candidates.schema.json", b"{}")
         archive.writestr(f"{prefix}/_index.json", json.dumps(index))
+        if undeclared_non_code:
+            archive.writestr("blue_data_ops/docs/undeclared.md", b"# Undeclared\n")
+        if relocated_non_code:
+            archive.writestr(
+                "blue_data_ops-2.8.0.data/purelib/blue_data_ops/docs/undeclared.md",
+                b"# Undeclared\n",
+            )
         for position, operator_id in enumerate(operator_ids):
             name, version = operator_id.split("@", 1)
             manifest = {
@@ -96,7 +114,17 @@ def test_release_gate_binds_wheels_resources_and_exact_core_pin(tmp_path: Path) 
     ) == ("synthetic@2.0.0",)
 
 
-@pytest.mark.parametrize("mutation", ("wrong-pin", "missing-resource", "symlink-resource"))
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "wrong-pin",
+        "missing-resource",
+        "symlink-resource",
+        "undeclared-non-code",
+        "relocated-non-code",
+        "symlink-fixed",
+    ),
+)
 def test_release_gate_mutations_turn_the_instrument_red(tmp_path: Path, mutation: str) -> None:
     core = tmp_path / "core.whl"
     mcp = tmp_path / "mcp.whl"
@@ -104,6 +132,9 @@ def test_release_gate_mutations_turn_the_instrument_red(tmp_path: Path, mutation
         core,
         omit_examples=mutation == "missing-resource",
         symlink_examples=mutation == "symlink-resource",
+        undeclared_non_code=mutation == "undeclared-non-code",
+        relocated_non_code=mutation == "relocated-non-code",
+        symlink_fixed=mutation == "symlink-fixed",
     )
     _mcp_wheel(mcp, "blue-data-ops==2.6.0" if mutation == "wrong-pin" else "blue-data-ops==2.8.0")
 

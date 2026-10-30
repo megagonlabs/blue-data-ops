@@ -1,7 +1,7 @@
 """Representative outcomes for the 32 retained v2 operators.
 
-Expectations come from ``tests/fixtures/v2_operator_outcomes.json``. Deterministic
-doubles replace external services, not operator bodies.
+Expectations come from ``tests/fixtures/operator_outcomes_current.json``.
+Deterministic doubles replace external services, not operator bodies.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from tests.unit.operators._outcome_test_helpers import (
 )
 
 _LIB = Path(__file__).resolve().parents[3]
-_FIXTURE_PATH = _LIB / "tests/fixtures/v2_operator_outcomes.json"
+_FIXTURE_PATH = _LIB / "tests/fixtures/operator_outcomes_current.json"
 
 _CODE = {code.name: code for code in ErrorCode}
 _STAGE = {stage.name: stage for stage in ErrorStage}

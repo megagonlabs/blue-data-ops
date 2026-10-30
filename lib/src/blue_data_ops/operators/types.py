@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 # A record is a JSON-like object, data is a list of records, and every operator
 # consumes and produces a list of data groups (`list[list[dict]]`).
@@ -102,3 +102,49 @@ class OperatorError(Exception):
 
 class OperatorValidationError(OperatorError):
     """Raised when operator attribute validation fails as a system error."""
+
+
+def _public_text(value: object) -> bool:
+    return type(value) is str and bool(value.strip()) and len(value) <= 512 and value.isprintable()
+
+
+def _valid_execution_carrier(value: object) -> bool:
+    if type(value) is not tuple:
+        return False
+    carrier = cast(tuple[object, ...], value)
+    return (
+        len(carrier) == 3
+        and _public_text(carrier[0])
+        and (carrier[1] is None or _public_text(carrier[1]))
+        and type(carrier[2]) is bool
+    )
+
+
+class OperatorExecutionError(OperatorError):
+    """Publish trusted author-selected diagnostic constants from a canonical body."""
+
+    __slots__ = ("__carrier",)
+
+    def __init__(
+        self, message: str, *, suggestion: str | None = None, retryable: bool = False
+    ) -> None:
+        carrier = (message, suggestion, retryable)
+        if not _valid_execution_carrier(carrier):
+            raise ValueError("invalid public execution diagnostic")
+        _EXECUTION_CARRIER.__set__(self, carrier)
+        OperatorError.__init__(self, message)
+
+
+_EXECUTION_CARRIER = OperatorExecutionError.__dict__["_OperatorExecutionError__carrier"]
+
+
+def execution_diagnostic(error: BaseException) -> tuple[str, str | None, bool] | None:
+    if not isinstance(error, OperatorExecutionError):
+        return None
+    try:
+        carrier: object = _EXECUTION_CARRIER.__get__(error, OperatorExecutionError)
+    except Exception:
+        return None
+    return (
+        cast(tuple[str, str | None, bool], carrier) if _valid_execution_carrier(carrier) else None
+    )

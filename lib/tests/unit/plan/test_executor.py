@@ -436,6 +436,188 @@ def test_custom_service_prefix_aliases_follow_the_same_precedence() -> None:
     assert "vertex.reasoning_effort" not in operator.seen
 
 
+@pytest.mark.parametrize("higher_layer", ["plan", "node"])
+@pytest.mark.parametrize(
+    ("lower_key", "higher_key"),
+    [
+        ("llm.max_tokens", "openai.max_completion_tokens"),
+        ("openai.max_tokens", "openai.max_completion_tokens"),
+        ("openai.max_completion_tokens", "llm.max_tokens"),
+        ("openai.max_completion_tokens", "openai.max_tokens"),
+    ],
+)
+def test_pipeline_token_caps_follow_layer_precedence(
+    higher_layer: str, lower_key: str, higher_key: str
+) -> None:
+    operator = _RecordPropertiesOperator()
+    registry = _local_registry(operator)
+    plan_properties = {higher_key: 8192} if higher_layer == "plan" else {lower_key: 1024}
+    node_properties = {higher_key: 8192} if higher_layer == "node" else {}
+    pipeline = DataPipeline(properties=plan_properties)
+    source = pipeline.define_input()
+    action = pipeline.define_operator("record_properties@2.0.0", properties=node_properties)
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    PipelineExecutor(registry).execute(pipeline, [[]], {lower_key: 512})
+
+    assert operator.seen is not None
+    assert operator.seen[higher_key] == 8192
+    remaining = set(operator.seen) - {higher_key}
+    assert not ({"llm.max_tokens", "openai.max_tokens", "openai.max_completion_tokens"} & remaining)
+
+
+def test_pipeline_preserves_same_node_two_cap_conflict() -> None:
+    operator = _RecordPropertiesOperator()
+    pipeline = DataPipeline()
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "record_properties@2.0.0",
+        properties={"llm.max_tokens": 1024, "openai.max_completion_tokens": 8192},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    PipelineExecutor(_local_registry(operator)).execute(pipeline, [[]])
+
+    assert operator.seen is not None
+    assert operator.seen["llm.max_tokens"] == 1024
+    assert operator.seen["openai.max_completion_tokens"] == 8192
+
+
+def test_custom_service_prefix_native_cap_replaces_neutral_plan_cap() -> None:
+    operator = _RecordPropertiesOperator()
+    pipeline = DataPipeline(properties={"llm.max_tokens": 1024})
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "record_properties@2.0.0", properties={"vertex.max_completion_tokens": 8192}
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    PipelineExecutor(_local_registry(operator)).execute(
+        pipeline, [[]], {"service_prefix": "vertex"}
+    )
+
+    assert operator.seen is not None
+    assert operator.seen["vertex.max_completion_tokens"] == 8192
+    assert "llm.max_tokens" not in operator.seen
+
+
+@pytest.mark.parametrize(
+    ("plan_key", "node_key"),
+    [
+        ("llm.max_tokens", "openai.max_completion_tokens"),
+        ("openai.max_completion_tokens", "llm.max_tokens"),
+    ],
+)
+@pytest.mark.parametrize("model", ["gpt-4o", "gpt-6-sol"])
+@pytest.mark.parametrize("node_limit", [8192, None])
+def test_pipeline_cross_name_cap_reaches_nl2llm(
+    monkeypatch: pytest.MonkeyPatch,
+    plan_key: str,
+    node_key: str,
+    model: str,
+    node_limit: int | None,
+) -> None:
+    litellm.calls.clear()
+    litellm.fail_next.clear()
+
+    class Response:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "[]"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                "model": model,
+            }
+
+    def completion(**kwargs: Any) -> Response:
+        litellm.calls.append(kwargs)
+        return Response()
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    pipeline = DataPipeline(properties={"llm.model": model, plan_key: 1024})
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "nl2llm@3.0.0",
+        attributes={"query": "Return an empty JSON array."},
+        properties={node_key: node_limit},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    run = PipelineExecutor(active_registry()).execute(pipeline, [[]])
+
+    assert run.succeeded
+    assert len(litellm.calls) == 1
+    sent_key = "max_completion_tokens" if model == "gpt-6-sol" else node_key.split(".")[-1]
+    if node_limit is None:
+        assert "max_tokens" not in litellm.calls[0]
+        assert "max_completion_tokens" not in litellm.calls[0]
+    else:
+        assert litellm.calls[0][sent_key] == node_limit
+    assert ("temperature" in litellm.calls[0]) is (model == "gpt-4o")
+
+
+def test_final_service_prefix_controls_cap_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    litellm.calls.clear()
+    litellm.fail_next.clear()
+
+    class Response:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "[]"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                "model": "gpt-4o",
+            }
+
+    def completion(**kwargs: Any) -> Response:
+        litellm.calls.append(kwargs)
+        return Response()
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    pipeline = DataPipeline(properties={"service_prefix": "openai"})
+    source = pipeline.define_input()
+    action = pipeline.define_operator(
+        "nl2llm@3.0.0",
+        attributes={"query": "Return an empty JSON array."},
+        properties={"llm.max_tokens": 1024},
+    )
+    output = pipeline.define_output()
+    pipeline.set_plan_input(source)
+    pipeline.set_plan_output(output)
+    pipeline.connect_nodes(source, action)
+    pipeline.connect_nodes(action, output)
+
+    run = PipelineExecutor(active_registry()).execute(
+        pipeline,
+        [[]],
+        {
+            "service_prefix": "acme",
+            "llm.model": "gpt-4o",
+            "acme.max_completion_tokens": 8192,
+        },
+    )
+
+    assert not run.succeeded
+    assert litellm.calls == []
+    assert run.node_runs[0].exec_meta.errors[0].code.value == "EXECUTION_FAILED"
+
+
 def test_stored_pipeline_effort_reaches_the_provider_over_the_invocation_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

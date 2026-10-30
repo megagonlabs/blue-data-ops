@@ -236,6 +236,29 @@ def test_sqlite_end_to_end(op: InsertTableOperator, tmp_path: Path) -> None:
     assert stored == [(1, "x"), (2, "y"), (3, "z")]
 
 
+def test_sqlite_quoted_identifiers(op: InsertTableOperator, tmp_path: Path) -> None:
+    seam = RegistrySeam(DataRegistry(name="quoted", rebuild=True))
+    source: Any = SQLiteDBSource(
+        "src",
+        properties={"connection": {"protocol": "sqlite", "database_directory": str(tmp_path)}},
+    )
+    seam.register_source(source)
+    source.create_database("db")
+    setup = source._db_connect("db")  # pyright: ignore[reportPrivateUsage]
+    setup.cursor().execute('CREATE TABLE "odd""name" ("col""name" TEXT)')
+    setup.commit()
+    source._db_disconnect(setup)  # pyright: ignore[reportPrivateUsage]
+
+    rows = [{'col"name': "value"}]
+    out = op.apply([rows], {**MINIMAL, "table": 'odd"name'}, {"data_registry": seam})
+    assert out == [rows]
+
+    check = source._db_connect("db")  # pyright: ignore[reportPrivateUsage]
+    stored = check.cursor().execute('SELECT "col""name" FROM "odd""name"').fetchall()
+    source._db_disconnect(check)  # pyright: ignore[reportPrivateUsage]
+    assert stored == [("value",)]
+
+
 # --- Validator behavior, including bool-as-int handling ---
 @pytest.mark.parametrize(
     "mutation,expected",

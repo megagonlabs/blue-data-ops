@@ -65,17 +65,24 @@ def _pages(tmp_path: Path) -> dict[str, str]:
     return indexed_example_pages(tmp_path)
 
 
-def test_fences_are_attributed_per_package_and_share_one_page_namespace(tmp_path: Path) -> None:
+def test_fences_are_attributed_per_package_and_share_one_page_namespace(
+    tmp_path: Path,
+) -> None:
     pages = _pages(tmp_path)
     extracted = validate_pages(pages)
 
     assert set(extracted) == set(pages)
-    assert [fence.language for fence in extracted["alpha@2.0.0"]] == ["python", "python"]
+    assert [fence.language for fence in extracted["alpha@2.0.0"]] == [
+        "python",
+        "python",
+    ]
     for operator_id, fences in extracted.items():
         execute_page(operator_id, fences)
 
 
-def test_removing_every_fence_from_one_package_turns_coverage_red(tmp_path: Path) -> None:
+def test_removing_every_fence_from_one_package_turns_coverage_red(
+    tmp_path: Path,
+) -> None:
     pages = _pages(tmp_path)
     pages["beta@2.0.0"] = "# Check\n\nEnvironment: ml\n\nNo executable fence.\n"
 
@@ -113,11 +120,14 @@ def test_a_changed_to_raise_block_turns_execution_red() -> None:
         execute_page("synthetic@2.0.0", fences)
 
 
-def test_live_fences_are_compiled_and_require_disclosure_wording() -> None:
+def test_live_fences_are_compiled_and_require_reader_warnings() -> None:
+    network = "Running this example may send requests over the network."
+    credentials = "A remote service may require credentials."
+    non_execution = "The test suite does not run this example."
+    notice = f"{network} {credentials} {non_execution}"
     page = (
-        "Environment: llm\n\nThe request body leaves the process. A credential is required. "
-        "This is not release evidence.\n\n"
-        "```python\nassert True\n```\n\n"
+        "Environment: llm\n\n```python\nassert True\n```\n\n"
+        f"{notice}\n\n"
         "```python live\nclient.call()\n```\n"
     )
     extracted = validate_pages({"synthetic@2.0.0": page})
@@ -125,13 +135,114 @@ def test_live_fences_are_compiled_and_require_disclosure_wording() -> None:
         "python",
         "python live",
     ]
+    execute_page("synthetic@2.0.0", extracted["synthetic@2.0.0"])
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="non-execution notice"):
+        validate_pages({"synthetic@2.0.0": page.replace(non_execution, "")})
+
+    validate_pages(
+        {"synthetic@2.0.0": page.replace(notice, f"{non_execution} {network} {credentials}")}
+    )
+
+    validate_pages(
+        {"synthetic@2.0.0": page.replace(notice, f"{credentials} {non_execution} {network}")}
+    )
+
+    with pytest.raises(AssertionError, match="network notice"):
         validate_pages(
             {
                 "synthetic@2.0.0": "Environment: llm\n\n"
                 "```python\nassert True\n```\n"
                 "```python live\nx = 1\n```\n"
+            }
+        )
+
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages({"synthetic@2.0.0": page.replace(network, "This example runs locally.")})
+
+    denials = (
+        "This example won't run automatically or download anything over the network.",
+        "The test suite does not run this example, nor does it download anything over the network.",
+        "The test suite does not run this example; "
+        "neither will it download anything over the network.",
+        "Nothing in this example sends data over the network.",
+        "None of its calls sends data over the network.",
+        "This example sends nothing over the network.",
+        "This example sends none of your data over the network.",
+    )
+    for denial in denials:
+        with pytest.raises(AssertionError, match="network notice"):
+            validate_pages({"synthetic@2.0.0": page.replace(network, denial)})
+
+    with pytest.raises(AssertionError, match="credential notice"):
+        validate_pages({"synthetic@2.0.0": page.replace(credentials, "The service is public.")})
+
+    with pytest.raises(AssertionError, match="credential notice"):
+        validate_pages(
+            {"synthetic@2.0.0": page.replace(credentials, "Nothing here requires credentials.")}
+        )
+
+    with pytest.raises(AssertionError, match="additional or altered"):
+        validate_pages({"synthetic@2.0.0": page.replace(notice, f"Nothing is sent. {notice}")})
+
+    code_only_network = page.replace(network, "This example runs locally.")
+    code_only_network = code_only_network.replace("client.call()", f"# {network}\nclient.call()")
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages({"synthetic@2.0.0": code_only_network})
+
+    distant_notice = page.replace("```python live", "Run the next example:\n\n```python live")
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages({"synthetic@2.0.0": distant_notice})
+
+    second_live_fence = page + "\nRun another example:\n\n```python live\nclient.call()\n```\n"
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages({"synthetic@2.0.0": second_live_fence})
+
+    adjacent_notice = page.replace("```\n\nRunning this", "```\nRunning this")
+    assert adjacent_notice != page
+    validate_pages({"synthetic@2.0.0": adjacent_notice})
+
+    code_adjacent = adjacent_notice.replace(
+        f"```python\nassert True\n```\n{network} ",
+        (f"```python\n# {network}\nassert True\n```\nThis example runs locally. "),
+    )
+    assert code_adjacent != adjacent_notice
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages({"synthetic@2.0.0": code_adjacent})
+
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages(
+            {
+                "synthetic@2.0.0": page.replace(
+                    network, "This example never sends requests over the network."
+                )
+            }
+        )
+
+    with pytest.raises(AssertionError, match="credential notice"):
+        validate_pages(
+            {
+                "synthetic@2.0.0": page.replace(
+                    credentials, "The service never requires credentials."
+                )
+            }
+        )
+
+    with pytest.raises(AssertionError, match="network notice"):
+        validate_pages(
+            {
+                "synthetic@2.0.0": page.replace(
+                    network, "This example doesn't send requests over the network."
+                )
+            }
+        )
+
+    with pytest.raises(AssertionError, match="credential notice"):
+        validate_pages(
+            {
+                "synthetic@2.0.0": page.replace(
+                    credentials, "The service doesn't require credentials."
+                )
             }
         )
 

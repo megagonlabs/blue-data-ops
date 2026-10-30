@@ -12,6 +12,8 @@ from typing import Any
 import litellm  # the deterministic stub
 import pytest
 
+from blue_data_ops.llm.errors import is_reply_failure
+
 blue_data = pytest.importorskip("blue_data")
 
 from blue_data_ops.data import RegistrySeam  # noqa: E402
@@ -361,8 +363,11 @@ def test_corrections_exhausted_raises(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _sequence_provider(monkeypatch, '{"target_state": "present"}')  # invalid forever
-    with pytest.raises(ValueError, match="Query validation failed after 2 correction attempts"):
+    with pytest.raises(
+        ValueError, match="model reply did not match the operator's output format"
+    ) as failure:
         op.apply(INPUT, dict(ATTRS), _props(seam))
+    assert is_reply_failure(failure.value)
     assert len(litellm.calls) == 3  # initial + max_corrections
     assert seam.calls_to("execute_query") == []
 
@@ -371,8 +376,11 @@ def test_max_corrections_zero_raises_immediately(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _sequence_provider(monkeypatch, '{"target_state": "present"}')
-    with pytest.raises(ValueError, match="Query validation failed after 0 correction attempts"):
+    with pytest.raises(
+        ValueError, match="model reply did not match the operator's output format"
+    ) as failure:
         op.apply(INPUT, {**ATTRS, "max_corrections": 0}, _props(seam))
+    assert is_reply_failure(failure.value)
     assert len(litellm.calls) == 1
 
 
@@ -428,6 +436,10 @@ def test_initial_invalid_json_cast_failure_enters_correction(
 def test_local_parse_non_decode_error_propagates(
     op: NL2BNOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    class TextBN(NL2BNOperator):
+        DEFAULT_PROPERTIES = {**NL2BNOperator.DEFAULT_PROPERTIES, "output_cast": "str"}
+
+    op = TextBN()
     # With output_cast overridden to str, the OPERATOR's own json.loads runs
     # on the raw response; a failure there that is NOT JSONDecodeError (deep nesting
     # => RecursionError) must PROPAGATE — upstream's outer catch sees only its
@@ -435,8 +447,20 @@ def test_local_parse_non_decode_error_propagates(
     # JSONDecodeError, so a local RecursionError escapes both. Pins the narrow scope.
     deep = "[" * 10_000 + "]" * 10_000
     _sequence_provider(monkeypatch, deep)
+    original_loads = json.loads
+    parse_attempts: list[str] = []
+
+    def fail_local_parse(value: Any, *args: Any, **kwargs: Any) -> Any:
+        if value == deep:
+            parse_attempts.append(value)
+            raise RecursionError("simulated local JSON parser failure")
+        return original_loads(value, *args, **kwargs)
+
+    # Python's JSON nesting limit changes; inject the exact non-decode failure.
+    monkeypatch.setattr(json, "loads", fail_local_parse)
     with pytest.raises(RecursionError):
-        op.apply(INPUT, dict(ATTRS), _props(seam, **{"output_cast": "str"}))
+        op.apply(INPUT, dict(ATTRS), _props(seam))
+    assert len(parse_attempts) == 1
     assert seam.calls_to("execute_query") == []
 
 
@@ -562,26 +586,19 @@ def test_rendered_prompt_full_equality(
 ) -> None:
     # Full-content equality: the rendered prompt equals the template with exactly
     # these three substitutions, then the adapter's trailing-newline trim.
-    from string import Template
-
-    from jinja2 import BaseLoader, Environment
-
-    from blue_data_ops.operators.nl2bn_operator import (
-        _PROMPT,  # pyright: ignore[reportPrivateUsage]
-        _resolve_schema_section,  # pyright: ignore[reportPrivateUsage]
-    )
+    import json
+    from pathlib import Path
 
     _sequence_provider(monkeypatch, VALID_RESPONSE)
     op.apply(INPUT, {**ATTRS, "context": "clinical"}, _props(seam))
     content = _prompt_of(0)
 
-    schema_section, _ = _resolve_schema_section("", seam, "bn_src", "default", "hepar2")
-    templated = Template(_PROMPT).safe_substitute(
-        question=ATTRS["question"], context="clinical", schema_section=schema_section
+    frozen = json.loads(
+        (Path(__file__).parents[2] / "fixtures/llm_benign_prompts.json").read_text()
     )
-    expected = Environment(loader=BaseLoader()).from_string(templated).render()
+    expected = frozen["nl2bn"]["prompt"]
     assert content == expected
-    assert not content.endswith("\n")
+    assert not expected.endswith("\n")
 
 
 # --- the 16-field defaults block pinned field-by-field ---
@@ -593,7 +610,7 @@ def test_default_properties_pinned_field_by_field() -> None:
     assert NL2BNOperator.DEFAULT_PROPERTIES == {
         "execute_query": True,
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 4096,
         "openai.temperature": 0,
@@ -605,8 +622,11 @@ def test_default_properties_pinned_field_by_field() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",

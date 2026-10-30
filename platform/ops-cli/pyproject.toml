@@ -14,7 +14,7 @@ requires-python = ">=3.11"
 # the same rule platform/ops-mcp follows. The three extras are the ones the active
 # operators need to load: ml, vector and llm.
 dependencies = [
-    "blue-data-ops[ml,vector,llm]==3.1.0",
+    "blue-data-ops[ml,vector,llm]==1.0.0",
     "click>=8.0",
     "rich>=13.0",
 ]
@@ -23,7 +23,7 @@ dependencies = [
 # Only the provider-backed planner needs the OpenAI SDK, so it stays an extra. Without
 # it the library reports GENERATOR_DEPENDENCY_MISSING, which this CLI publishes as
 # ERROR: CONFIG naming the extra.
-openai = ["blue-data-ops[openai]==3.1.0"]
+openai = ["blue-data-ops[openai]==1.0.0"]
 dev = [
     "build",
     "pyright",

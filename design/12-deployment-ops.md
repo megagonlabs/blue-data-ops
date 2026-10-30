@@ -10,9 +10,9 @@ Tests, builds, and publishing are run manually, sometimes through the scripts de
 All three are installed into a Python process — a caller's process for the library, one the operator starts for the MCP adapter, which serves streamable HTTP on a loopback address by default, and a shell's for the `blue-ops` command.
 
 Each distribution carries `scripts/{build,install,publish}.sh`.
-They run `python -m build`, `pip install -e`, and `twine upload dist/*`, with sibling-checkout resolution included where needed.
+They run the package build, editable install, and checked upload, with sibling-checkout resolution included where needed.
 Nothing invokes them automatically, and no `deploy.sh` exists.
-`lib/scripts/` also contains the two Python maintenance scripts described in [07-repo-organization.md](07-repo-organization.md).
+`lib/scripts/` also contains the three Python maintenance scripts described in [07-repo-organization.md](07-repo-organization.md).
 
 ---
 
@@ -44,9 +44,9 @@ The repository carries no Git tags, so a release is identified by its commit and
 
 | Package | Path | Version | Console script | Runtime dependencies |
 |---|---|---|---|---|
-| `blue-data-ops` | `lib/` | `3.1.0` | none | `blue-data>=0.1.0`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng`, `tenacity` |
-| `blue-data-ops-mcp` | `platform/ops-mcp/` | `1.0.0` | `blue-data-ops-mcp` | `blue-data-ops==3.1.0`, `mcp>=1.28.1,<2`, `pydantic>=2.11,<3` |
-| `blue-data-ops-cli` | `platform/ops-cli/` | `1.0.0` | `blue-ops` | `blue-data-ops[ml,vector,llm]==3.1.0`, `click>=8.0`, `rich>=13.0` |
+| `blue-data-ops` | `lib/` | `1.0.0` | none | `blue-data>=1.0.0`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng`, `tenacity` |
+| `blue-data-ops-mcp` | `platform/ops-mcp/` | `1.0.0` | `blue-data-ops-mcp` | `blue-data-ops==1.0.0`, `blue-data[server]>=1.0.0`, `mcp>=1.28.1,<2`, `pydantic>=2.11,<3` |
+| `blue-data-ops-cli` | `platform/ops-cli/` | `1.0.0` | `blue-ops` | `blue-data-ops[ml,vector,llm]==1.0.0`, `click>=8.0`, `rich>=13.0` |
 
 Each package's own README is the source of truth for installing and using it: [`lib/README.md`](../lib/README.md), [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and [`platform/ops-cli/README.md`](../platform/ops-cli/README.md).
 
@@ -59,8 +59,8 @@ A core specification change could otherwise alter either interface contract with
 Upgrading the core therefore requires an interface release, and each pair is verified together.
 
 The three `[project]` blocks are minimal — `name`, `version`, `description`, `readme`, `requires-python`, and `dependencies`.
-None declares a license field, an author, a classifier, or a project URL, although the repository carries a `LICENSE` at its root. That root file also sits outside every package's build root, so a built wheel carries neither the licence text nor a licence identifier.
-A publishing workflow that needs those metadata fields has to add them.
+None declares a license expression, an author, a classifier, or a project URL. Each package has a `LICENSE` in its build root; its wheel carries that text and a `License-File: LICENSE` metadata field.
+A publishing workflow that needs a license expression or the other metadata fields has to add them.
 
 The core's optional extras:
 
@@ -92,7 +92,7 @@ Each package's `scripts/install.sh` does that resolution: the library's installs
 Create and activate either a standard virtual environment:
 
 ```bash
-python -m venv blue-data-ops/lib/.venv
+python3.12 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
 ```
 
@@ -112,27 +112,27 @@ Then run the installer with either environment active:
 The same thing by hand, which is what to do when `blue-data` is somewhere `BLUE_DATA_PATH` would have to name:
 
 ```bash
-python -m pip install -e ./blue-data/lib
-python -m pip install -e "./blue-data-ops/lib[dev]"
+python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
+python -m pip install -e "./blue-data-ops/lib[dev]" "blue-data-ops==1.0.0"
 ```
 
 Against a configured artifact index, install the built distributions instead:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.1.0" \
+  "blue-data-ops[ml,vector,llm]==1.0.0" \
   "blue-data-ops-mcp==1.0.0" \
   "blue-data-ops-cli==1.0.0"
 ```
 
-That index must also serve `blue-data>=0.1.0`.
+That index must also serve `blue-data>=1.0.0`.
 `PIP_INDEX_URL` is named in the READMEs as the variable to set; no index URL is configured anywhere in this repository, and none should be committed.
 
 ---
 
 ## 4. Building
 
-Both packages use the same backend, declared identically:
+All three packages use the same backend, declared identically:
 
 ```toml
 [build-system]
@@ -141,18 +141,27 @@ build-backend = "setuptools.build_meta"
 ```
 
 Build each from its own directory, with the `dev` extra installed for `build`.
-Each package's `scripts/build.sh` is this command and nothing else:
+Each package's `scripts/build.sh` clears its own `build/` and `dist/` before running `python -m build` from the package root:
 
 ```bash
 cd lib
-python -m build
+./scripts/build.sh
 
 cd ../platform/ops-mcp
-python -m build
+./scripts/build.sh
 
 cd ../ops-cli
-python -m build
+./scripts/build.sh
 ```
+
+The library wrapper checks every wheel member against the expected `.py`, `.json`, `.md` and `py.typed` files in the `src/` working tree, excluding `__pycache__`.
+It rejects duplicates, noncanonical names, outside members and undeclared package files of any suffix, and compares expected bytes.
+Package directory records must be parents of expected files; current dist-info directory records must be parents of actual metadata files.
+All three checkers validate member names before exempting current metadata; adapter membership and directory rules otherwise stay the same.
+The core publish wrapper reads pyproject metadata and selects the current pair, then runs the guard before Twine check or upload.
+A direct `python -m build --wheel` neither cleans nor runs the guard and can still carry stale files; run the checker or use the release wrapper.
+The guard compares with the working tree rather than Git HEAD. Dist-info contents, RECORD and entry points remain unvalidated; this adds no general sdist-contamination guarantee.
+Cleanup leaves `*.egg-info` alone. Wheel lookup and the allowed metadata prefix assume a canonical version in `pyproject.toml`.
 
 `[tool.setuptools.packages.find] where = ["src"]` is what makes the `src/` layout work, and it is why a wheel contains the package and nothing above it.
 
@@ -173,10 +182,10 @@ Those five patterns are the reason a wheel-only install can still load a resourc
 Adding a resource directory without adding its pattern here produces a wheel that imports fine and fails at first read, which is exactly the failure the built-artifact checks in [11-testing-strategy.md](11-testing-strategy.md) exist to catch.
 The adapter's `package-data` declares `py.typed` alone, and the command's declares `py.typed` and `profile_spec.json`, which is the configuration parameter list every `blue-ops profile` command reads.
 
-**Files in the source distribution but not the wheel** come from `lib/MANIFEST.in`: `COMPATIBILITY.md`, `OPERATORS.md`, three named test fixtures — two of which are reference-generator inputs — and `scripts/`, both the Python tools and the three shell scripts.
+**Files in the source distribution but not the wheel** come from `lib/MANIFEST.in`: `COMPATIBILITY.md`, `OPERATORS.md`, three named test fixtures — two of which are reference-generator inputs — and `scripts/`, with its Python tools and three shell scripts.
 A source checkout and an extracted source distribution therefore both carry the reference material and the generator; a wheel does not.
 [`lib/README.md`](../lib/README.md) states that difference for users and tells a wheel-only reader to fetch the matching source distribution.
-Neither interface package has a `MANIFEST.in`.
+Both interface packages have a `MANIFEST.in` for their shipped source files.
 
 A wheel does expose its package README through distribution metadata, which is why [`lib/README.md`](../lib/README.md) links no file that only the source distribution carries.
 A test enforces that.
@@ -187,16 +196,18 @@ A test enforces that.
 
 `twine` is a `dev` extra of every package and is the intended upload tool, wrapped by each one's `scripts/publish.sh`.
 The repository has no publishing CI job or configured package registry.
+Each publish script requires `TWINE_REPOSITORY_URL`, checks the current version's wheel and source distribution with `twine check`, and uploads only those two files.
+The library script also runs the wheel guard described above before Twine check and upload.
 
 The pre-publish sequence, all of it manual:
 
 1. Run all three test suites on each supported interpreter, per [11-testing-strategy.md](11-testing-strategy.md).
 2. Run `ruff format --check`, `ruff check`, and `pyright` in each package directory, per [08-coding-style.md](08-coding-style.md).
 3. Run `cd lib && python scripts/generate_operator_reference.py --check`, so a stale `OPERATORS.md` stops the release instead of shipping.
-4. Build each distribution with `python -m build`, or `scripts/build.sh`.
+4. Build each distribution with its `scripts/build.sh`.
 5. Run the built-artifact check over the wheels together, which verifies the versions, the exact core pin, and every resource package digest.
 6. Add a `CHANGELOG.md` entry naming each distribution whose version moved and what a caller has to do about it.
-7. Upload with `twine`, or `scripts/publish.sh`, against whichever index the operator is publishing to.
+7. Set `TWINE_REPOSITORY_URL` to the intended index and run `scripts/publish.sh` from each package.
 
 Steps 3 and 5 are specific to this repository and are not part of `pytest`.
 
@@ -225,8 +236,8 @@ The defaults, from `create_server()`:
 | Setting | Default | Note |
 |---|---|---|
 | Transport | `streamable-http` | Not stdio; the server is an HTTP listener |
-| Host | `127.0.0.1` | Loopback. Binding elsewhere is an explicit argument |
-| Port | `8000` | |
+| Host | `127.0.0.1` | Loopback; environment or explicit argument may override |
+| Port | `8010` | `BLUE_DATA_OPS_MCP_PORT` or explicit argument |
 | Path | `/mcp` | |
 | Session state | stateful | `stateless_http=False` |
 | Response encoding | SSE rather than plain JSON | `json_response=False` |
@@ -235,12 +246,12 @@ Two tests in the adapter suite assert those settings and the transport `serve()`
 
 The MCP adapter serves streamable HTTP; the rest of the Blue Data family speaks stdio.
 Long CPU- and provider-bound calls run on worker threads, keeping the event loop responsive while multiple calls remain in flight.
-Stateful HTTP sessions also support cancellation of a running call.
+Stateful HTTP sessions use the same cancellation boundary tested with the in-memory transport. With the tested Python MCP 1.30.0, local awaiter cancellation and client-side timeouts do not send `notifications/cancelled`. An explicit notification received after the handler enters `DeploymentRegistry.run()` removes a call still waiting for admission from the queue, and it does not execute. An immediate notification sent before the handler starts can be lost. Active work may finish and persist effects; a code 0 `Request cancelled` response is not proof of non-execution. Check backend effects before retrying a cancelled or timed-out write. Cancellation provides no atomic rollback. Whether a worker can be terminated depends on the product and worker implementation; this product does not promise it. There is no automatic retry.
 A client-spawned stdio process would tie the server lifetime to one client and would not preserve the current cross-session concurrency model.
 Changing transports would break existing deployments. The adapter has served streamable HTTP since `0.1.0`.
 
 Passing `operator_ids` replaces the default 33-tool selection with an exact pinned subset, and an empty tuple serves nothing.
-[`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is the source of truth for the adapter's setup, tool contract, and migration notes; [`docs/mcp.md`](../docs/mcp.md) is a synced copy of it.
+[`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) is the complete guide to the adapter's setup, tool contract, and migration notes; [`docs/mcp.md`](../docs/mcp.md) covers its usage within the documentation set.
 
 Operationally this is a supervised process: no health endpoint, no readiness check, and no metrics path exist for a supervisor to poll.
 A supervisor watches the process and the port.
@@ -250,7 +261,8 @@ A supervisor watches the process and the port.
 ## 7. Configuration
 
 **Almost every knob is a key in the `properties` mapping passed to a call**, which keeps configuration per invocation rather than per process and keeps the library from depending on ambient state.
-The adapter reads no environment variable at all.
+The adapter reads `BLUE_DATA_OPS_MCP_HOST`, `BLUE_DATA_OPS_MCP_PORT`,
+`BLUE_DATA_OPS_MCP_KEY` and `BLUE_DATA_OPS_MCP_AUTH_DISABLED` through the shared HTTP policy.
 
 The core reads exactly two, and they are the deliberate exception: `BLUE_DATA_LLM_PROVIDER` and `BLUE_DATA_LLM_ALLOWED_MODELS`, both in `llm/client.py`.
 They decide which provider a call is dispatched to, and a caller cannot reach them — on the adapter, `properties` is a tool argument, so anything configurable there is configurable by whoever calls the tool.
@@ -336,9 +348,13 @@ The repository does not automate the following operations.
 - **No deploy script.**
   `scripts/{build,install,publish}.sh` wrap the commands in sections 3, 4, and 5 and add nothing to them; nothing invokes them, and nothing deploys.
 - **No dependency lock file.**
-  Version constraints are the only pinning, and one of them is exact by design: `jsonmerge==1.9.2` in the core; the adapter bounds `mcp>=1.28.1,<2`.
+  Version constraints are the only pinning. Core requires `jsonmerge==1.9.2`, each adapter pins core exactly, and the MCP adapter bounds `mcp>=1.28.1,<2`.
 - **No process supervision recipe.**
   The MCP server is started by the commands in section 6 and supervised by whatever the operator already uses.
 
 The library is installed rather than deployed.
 Long-running MCP deployments need process supervision and release automation beyond what this repository provides.
+
+HTTP requires the shared API key by default on both streamable HTTP and SSE.
+See the [HTTP bind, authentication and mounted lifespan contract](../docs/mcp.md#http-authentication-and-bind-settings)
+for environment overrides, the explicit no-key opt-out and the SDK Host/Origin limits.

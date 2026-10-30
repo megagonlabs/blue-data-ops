@@ -115,18 +115,18 @@ def test_output_template() -> None:
     assert extract_output(payload, props) == "wrapped(core)"
 
 
-def test_jinja_placeholders_render() -> None:
-    # Template substitution runs before Jinja; unknown Jinja names become empty.
+def test_jinja_placeholders_remain_literal() -> None:
+    # Jinja syntax is literal template text.
     props = {**BASE, "input_template": "{{ input }} {{ missing }}"}
     message = build_message("X", props, {})
-    assert message["messages"][0]["content"] == "X "
+    assert message["messages"][0]["content"] == "{{ input }} {{ missing }}"
 
 
-def test_recursive_substitution_resolves_chains() -> None:
-    # Repetition resolves $a -> "$b" -> "done" before stopping.
+def test_substitution_does_not_reparse_inserted_values() -> None:
+    # Inserted dollar placeholders are data.
     props = {**BASE, "input_template": "$a", "a": "$b", "b": "done"}
     message = build_message("X", props, {})
-    assert message["messages"][0]["content"] == "done"
+    assert message["messages"][0]["content"] == "$b"
 
 
 def test_output_template_jinja() -> None:
@@ -135,7 +135,7 @@ def test_output_template_jinja() -> None:
         "output_path": "$.choices[0].message.content",
         "output_template": "wrapped({{ output }})",
     }
-    assert extract_output(payload, props) == "wrapped(core)"
+    assert extract_output(payload, props) == "wrapped({{ output }})"
 
 
 def test_json_set_old_index_surface() -> None:

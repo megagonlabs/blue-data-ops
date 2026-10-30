@@ -761,12 +761,11 @@ The cache's lifetime belongs to whoever created the provider.
 
 | Function | Role |
 |---|---|
-| `safe_substitute(template, **kwargs)` | applies `string.Template` then Jinja repeatedly until the result is stable |
+| `safe_substitute(template, **kwargs)` | applies `string.Template.safe_substitute` once; inserted values and Jinja syntax remain literal |
 | `build_message(input_data, properties, additional_data=None, default_prefix="")` | builds the request message, rejecting duplicate substitution keys |
 | `extract_output(payload, properties)` | reads the configured output path, then strips, transforms, templates, and casts |
 
-`safe_substitute` recurses because a `Template` pass preserves unknown `$names` while the following Jinja pass renders `{{ }}` placeholders and empties unknown names; repetition resolves a chain such as `$a` → `"$b"` → `"done"`.
-Jinja2 is imported inside the function.
+`safe_substitute` preserves unknown `$names`, supports `$$` escaping, and keeps line endings intact. For example, `safe_substitute("$a", a="$b", b="done")` returns `"$b"`. This security repair changes the former recursive/Jinja helper contract. LLM prompts normalize line endings and remove one terminal newline from the trusted template before substitution; inserted data retains its original bytes.
 
 `_substitute_with_collision_check` merges the property, parameter, and additional-data sources and raises `TypeError` on a duplicate key rather than giving one source implicit precedence.
 
@@ -934,10 +933,14 @@ Published defaults are deep copies, never aliases of core state.
 
 | Function | Signature |
 |---|---|
-| `create_server` | `(*, registry=None, operator_ids=None, host="127.0.0.1", port=8000, path="/mcp") -> FastMCP[Any]` |
-| `serve` | `(*, registry=None, operator_ids=None, host="127.0.0.1", port=8000, path="/mcp") -> None` |
+| `create_server` | `(*, registry=None, operator_ids=None, host=None, port=None, path="/mcp") -> FastMCP[Any]` |
+| `serve` | `(*, registry=None, operator_ids=None, host=None, port=None, path="/mcp") -> None` |
 
 `create_server` freezes the deployment, constructs `FastMCP` with `json_response=False` and `stateless_http=False` — a stateful session — and registers the snapshot.
 `serve` performs the same construction and calls `server.run(transport="streamable-http")`.
 
 The package `__init__` resolves `ACTIVE_OPERATOR_IDS`, `V2_OPERATOR_IDS`, `create_server`, and `serve` through a module-level `__getattr__`, so importing `blue_data_ops_mcp` does not import the MCP SDK until one of them is actually read.
+
+HTTP requires the shared API key by default on both streamable HTTP and SSE.
+See the [HTTP bind, authentication and mounted lifespan contract](../docs/mcp.md#http-authentication-and-bind-settings)
+for environment overrides, the explicit no-key opt-out and the SDK Host/Origin limits.

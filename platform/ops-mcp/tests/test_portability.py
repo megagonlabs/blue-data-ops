@@ -42,7 +42,8 @@ def test_distribution_metadata_and_public_surface() -> None:
     assert project["version"] == blue_data_ops_mcp.__version__
     assert project["requires-python"] == ">=3.11"
     assert set(project["dependencies"]) == {
-        "blue-data-ops==3.1.0",
+        "blue-data-ops==1.0.0",
+        "blue-data[server]>=1.0.0",
         "mcp>=1.28.1,<2",
         "pydantic>=2.11,<3",
     }
@@ -109,7 +110,7 @@ def test_readme_states_current_pair_and_primary_only_surface() -> None:
     current = readme.split("## Migrating from", maxsplit=1)[0]
     lowered = current.lower()
     assert "blue-data-ops-mcp==1.0.0" in current
-    assert "blue-data-ops[ml,vector,llm]==3.1.0" in current
+    assert "blue-data-ops[ml,vector,llm]==1.0.0" in current
     assert "ACTIVE_OPERATOR_IDS" in current
     assert "V2_OPERATOR_IDS" in current
     assert "It contains the 33 retained v2 exact IDs" in current
@@ -133,7 +134,7 @@ def test_readme_states_current_pair_and_primary_only_surface() -> None:
     assert "`BLUE_DATA_LLM_PROVIDER`" in current
     assert "`BLUE_DATA_LLM_ALLOWED_MODELS`" in current
     assert "blue-data-ops-mcp\n```" in current
-    assert '"url": "http://127.0.0.1:8000/mcp"' in current
+    assert '"url": "http://127.0.0.1:8010/mcp"' in current
     assert "The rest of the Blue Data family speaks stdio" in current
     assert "python -c 'from blue_data_ops_mcp import serve; serve()'" not in current
     assert "filter them client-side" in current
@@ -155,29 +156,17 @@ def test_readme_tag_discovery_fence_executes_with_a_firing_control() -> None:
 
 
 def test_readme_registry_injection_fence_executes() -> None:
-    """The README's account of what a registry key does is checked against core.
-
-    Core reads `data_registry` only as a live object, so the claim that the wire needs the
-    two naming keys is a fact about `resolve_registry` rather than about this adapter, and
-    it is the kind of fact that goes stale without anything failing.
-    """
+    """The README's host-injection example executes without connecting a source."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     matches = list(REGISTRY_INJECTION_FENCE.finditer(readme))
     assert len(matches) == 1
     exec(compile(matches[0].group("source"), "<mcp-registry-injection-fence>", "exec"), {})
 
 
-def test_the_wire_advertises_only_the_registry_keys_json_can_carry() -> None:
-    """A client reads this description and sends what it names.
-
-    `data_registry` named a key core reads only as a Python object, so a client that
-    followed the description sent a string or an object, it was ignored, and the tool
-    returned its contained empty result with nothing said about why.
-    """
+def test_the_wire_advertises_deployment_registry_ownership() -> None:
     published = schema_module.PROPERTIES_DESCRIPTION
-    assert "`platform.name` together with `data_registry.name`" in published
-    # The naming key contains the bare one as a substring, so it is taken out first.
-    assert "data_registry" not in published.replace("data_registry.name", "")
+    assert "Registry tools use the deployment registry" in published
+    assert "cannot select it" in published
 
 
 def test_removed_refinement_surface_is_not_importable() -> None:
@@ -219,7 +208,7 @@ def test_pipeline_executor_stays_outside_the_mcp_adapter() -> None:
 def test_server_defaults_are_stateful_loopback_streamable_http() -> None:
     server = create_server(operator_ids=())
     assert server.settings.host == "127.0.0.1"
-    assert server.settings.port == 8000
+    assert server.settings.port == 8010
     assert server.settings.streamable_http_path == "/mcp"
     assert server.settings.json_response is False
     assert server.settings.stateless_http is False

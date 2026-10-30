@@ -99,8 +99,7 @@ class RegistryDouble:
         attributes: dict[str, Any] | None = None,
     ) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
-        # Mirrors SQLiteDBSource at the pinned blue-data 1b796fe: a protocol plus a
-        # connection detail the projection must drop.
+        # Keep the protocol while dropping the connection path from the projection.
         default_properties = {
             "connection": {
                 "protocol": "sql/sqlite",

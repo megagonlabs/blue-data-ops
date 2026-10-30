@@ -1,6 +1,6 @@
 # Natural language to SQL
 
-`nl2sql@3.0.0` translates a natural-language question into SQL and can execute the generated statement through the configured data registry.
+`nl2sql@3.0.0` translates a natural-language question into SQL and returns SQL by default and can execute through a host-bound read-only executor.
 
 ## Settings
 
@@ -12,36 +12,39 @@
 | `case_insensitive` | `attributes` | `yes` | `true` | attribute-spec:bool; optional; Requests case-insensitive string matching in generated SQL. | `scalar` |
 | `collection` | `attributes` | `yes` | `""` | attribute-spec:str; required; Nonblank collection or schema name. | `scalar` |
 | `context` | `attributes` | `yes` | `""` | attribute-spec:str; optional; Domain context included in generation. | `scalar` |
-| `data_registry` | `properties` | `no` | `none` | helper:resolve_registry; Injects a registry seam. Otherwise `platform.name` and `data_registry.name` may resolve one. | `seam` |
-| `data_registry.name` | `properties` | `no` | `none` | helper:resolve_registry; Selects a configured registry when no registry seam is injected. | `seam` |
+| `data_registry` | `properties` | `no` | `none` | denied-for-execution; Registry selection is available for generation only; presence is denied for execution. | `seam` |
+| `data_registry.name` | `properties` | `no` | `none` | denied-for-execution; Registry selection is available for generation only; presence is denied for execution. | `seam` |
 | `database` | `attributes` | `yes` | `""` | attribute-spec:str; required; Nonblank database name. | `scalar` |
-| `execute_query` | `properties` | `no` | `true` | none; Executes generated SQL through the registry; false returns `[[{"sql": "..."}]]`. | `scalar` |
+| `execute_query` | `properties` | `no` | `false` | boolean-host-capability; False generates SQL; true requires a host-bound read-only executor. | `scalar` |
 | `execution.timeout_seconds` | `base-properties` | `no` | `none` | finite-positive-number; Optional finite, positive timeout for `run()`. | `scalar` |
 | `force_query_prefixes` | `attributes` | `no` | `"SELECT"` | none; undeclared compatibility input that changes the prefixes requested from the model | `scalar` |
-| `input_context` | `properties` | `no` | `"$[0]"` | none; Controls request templating or response extraction. | `scalar` |
-| `input_context_field` | `properties` | `no` | `"content"` | none; Controls request templating or response extraction. | `scalar` |
-| `input_field` | `properties` | `no` | `"messages"` | none; Controls request templating or response extraction. | `scalar` |
-| `input_json` | `properties` | `no` | `"[{\"role\": \"user\"}]"` | none; Controls request templating or response extraction. | `scalar` |
-| `input_template` | `properties` | `no` | `source-sha256:26b282e53a7f7853d7fea2974ff5b6039742f9370d156894166a66e3ea0b01b9` | none; Controls request templating or response extraction. | `scalar` |
+| `input_context` | `properties` | `no` | `"$[0]"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `input_context_field` | `properties` | `no` | `"content"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `input_field` | `properties` | `no` | `"messages"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `input_json` | `properties` | `no` | `"[{\"role\": \"user\"}]"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `input_template` | `properties` | `no` | `source-sha256:26b282e53a7f7853d7fea2974ff5b6039742f9370d156894166a66e3ea0b01b9` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
 | `llm.*` | `properties:llm.*` | `no` | `none` | helper:resolve_llm_client; Adapter and provider settings passed through client resolution. | `namespace` |
 | `llm_client` | `properties` | `no` | `none` | helper:resolve_llm_client; Injects an LLM client. Otherwise the client is resolved from provider settings. | `seam` |
-| `openai.api` | `properties` | `no` | `"ChatCompletion"` | none; Provider setting used during client resolution. | `scalar` |
+| `openai.api` | `properties` | `no` | `"ChatCompletion"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
 | `openai.max_tokens` | `properties` | `no` | `512` | none; Provider setting used during client resolution. | `scalar` |
-| `openai.model` | `properties` | `no` | `"gpt-4o"` | none; Default model under the default service prefix. | `scalar` |
+| `openai.model` | `properties` | `no` | `"gpt-6-luna"` | none; Default model under the default service prefix. | `scalar` |
+| `openai.service_url` | `properties` | `no` | `none` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
 | `openai.stream` | `properties` | `no` | `false` | none; Provider setting used during client resolution. | `scalar` |
 | `openai.temperature` | `properties` | `no` | `0` | none; Provider setting used during client resolution. | `scalar` |
-| `output_cast` | `properties` | `no` | `"json"` | none; Controls request templating or response extraction. | `scalar` |
-| `output_path` | `properties` | `no` | `"$.choices[0].message.content"` | none; Controls request templating or response extraction. | `scalar` |
-| `output_strip` | `properties` | `no` | `true` | helper:resolve_llm_client; Controls request templating or response extraction. | `presence` |
-| `output_template` | `properties` | `no` | `none` | helper:resolve_llm_client; Controls request templating or response extraction. | `scalar` |
-| `output_transformations` | `properties` | `no` | `source-sha256:4c5590a88361773f2b559375ccaed622ddaab9adeb52b16482d5b2ea9d10255b` | none; Controls request templating or response extraction. | `structured` |
-| `platform.name` | `properties` | `no` | `none` | helper:resolve_registry; Selects a configured registry when no registry seam is injected. | `seam` |
+| `output_cast` | `properties` | `no` | `"json"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `output_path` | `properties` | `no` | `"$.choices[0].message.content"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `output_strip` | `properties` | `no` | `true` | reserved; Reserved in caller properties; configure trusted operator defaults. | `presence` |
+| `output_template` | `properties` | `no` | `none` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `output_transformations` | `properties` | `no` | `source-sha256:c6aba812d55427f013ea4096192a330a9984bff294ea41b48982ba0894185b21` | reserved; Reserved in caller properties; configure trusted operator defaults. | `structured` |
+| `platform.name` | `properties` | `no` | `none` | denied-for-execution; Registry selection is available for generation only; presence is denied for execution. | `seam` |
 | `protocol` | `attributes` | `yes` | `"postgres"` | attribute-spec:str; required; `postgres`, `mysql`, or `sqlite`. | `scalar` |
 | `question` | `attributes` | `yes` | `""` | attribute-spec:str; required; Nonblank question to translate. | `scalar` |
+| `read_only_executor` | `properties` | `no` | `none` | reserved; Reserved in caller properties; configure trusted operator defaults. | `presence` |
 | `schema` | `attributes` | `yes` | `""` | attribute-spec:str; optional; Declared compatibility input; the operator still fetches the live schema from the registry. | `scalar` |
-| `service_prefix` | `properties` | `no` | `"openai"` | none; Selects the provider-property namespace. | `scalar` |
+| `service_prefix` | `properties` | `no` | `"openai"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
 | `source` | `attributes` | `yes` | `""` | attribute-spec:str; required; Nonblank data-source name. | `scalar` |
-| `validate_query_prefixes` | `properties` | `no` | `["SELECT"]` | none; Accepts generated SQL only when it starts with one of these prefixes, ignoring case. | `structured` |
+| `template_syntax` | `properties` | `no` | `none` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
+| `validate_query_prefixes` | `properties` | `no` | `["SELECT"]` | ascii-select-list; Only a one-item ASCII SELECT list is accepted, ignoring case without trimming. | `structured` |
 
 ## Required addressing fields
 
@@ -49,11 +52,31 @@ The table combines declared defaults with execution fallbacks. For `question`, `
 
 ## Generation, execution, and errors
 
-`run()` validates the five addressing fields and protocol before registry or client resolution. It always obtains the schema from the registry, then makes one provider call. The generation response must be an object whose `query` field holds the SQL string. The undeclared compatibility attribute `force_query_prefixes` changes the generation prompt; `validate_query_prefixes` performs the independent prefix check. That prefix check is not a SQL safety guarantee.
+Generation is the default and returns `[[{"sql": "..."}]]`. Schema lookup uses the
+configured registry; the `schema` attribute remains a compatibility input. Caller
+controls and SQL policy are checked before schema, client, cache, or provider work,
+even on a blank-question raw path. Structured addressing validation still applies.
 
-With execution enabled, native registry results are normalized into record groups. No rows is a successful empty result. If the formatter returns no bundle for a list of lists containing non-record items, `run()` reports `EXECUTION_RESULT_INVALID` at `NORMALIZE`; generation, prefix, registry-call, and formatter exceptions are `EXECUTION_FAILED` at `EXECUTE`. With execution disabled, the generated SQL record is returned without a registry execution call, though schema lookup still occurs.
+Execution requires a constructor-bound `ReadOnlySQLExecutor` over exact existing
+source/database/collection targets and an actual boolean `execute_query=True`.
+Caller registry selectors and capabilities are denied. Stock CLI/MCP instances have
+no executor; an explicitly host-configured custom MCP instance may use its bound
+executor. A one-item ASCII SELECT prefix list is accepted without widening policy.
+The fixed SELECT token check is a quality check; the supported database read-only
+guard enforces execution with `commit=False`. There is no registry execution fallback.
 
-Raw `apply()` bypasses structured validation: a blank question and a missing registry each return `[[]]`, while an unsupported protocol, rejected query prefix, or malformed generation response raises. Inherited `invoke()` checks the declared attribute schema, but it does not run this version's nonblank addressing or protocol validation. It returns `None` for a declared-schema rejection; otherwise it calls `apply()` and inherits those raw returns and exceptions. Neither entry point returns `ExecMeta`.
+Only the inspected concrete SQLite/PostgreSQL/MySQL source guards are supported.
+Connections open before guard installation; SQLite path resolution may create a
+directory and refuses a missing database file in non-create mode. Use pre-existing
+approved targets and constrained principals. Read-only SELECT does not constrain
+stored functions, privileged file/network access, or resource use. Remote database
+checks are offline driver-order doubles. See the library's SQL execution guide for
+Python configuration and planner/executor migration.
+
+No rows is a successful empty result. Raw `apply()` returns `[[]]` for a blank
+question or missing generation registry; policy errors raise typed `LLMError`.
+Structured calls contain failures in the existing result schema. SQL policy and
+execution failures use fixed diagnostics without SQL or driver text.
 
 Successful `run()` results have empty `output_attributes`; `meta.traces` may contain a nonnegative `elapsed_ms`. Schema lookup and SQL execution are registry side effects, and an uninjected client may make provider calls.
 
@@ -64,3 +87,8 @@ is later mutated. Invalid bundle structure omits this key.
 After successful normalization, `output_shape` uses the same fields. Failures and timeouts omit it.
 An all-empty successful output is normalized to `[[]]`, while a mixed multi-group output retains a
 zero count for each empty group. Both shape keys are optional.
+
+Caller prompt, extraction, and transport controls are reserved, including null or
+copied defaults. Dollar placeholders are substituted once; inserted data and Jinja
+syntax stay literal. Define custom prompts in trusted operator defaults. Injected
+clients retain generation settings, while operator prompt/extraction defaults win.

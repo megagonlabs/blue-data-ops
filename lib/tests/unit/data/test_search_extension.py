@@ -12,13 +12,16 @@ search now returns scored keyword matches on a registry with no vector source.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
+import math
+from pathlib import Path
 from typing import Any, cast
 
+import blue_data.core.utils.similarity_utils as similarity_algorithm
+import blue_data.registry.search.hybrid_search as hybrid_algorithm
+import blue_data.registry.search.registry_search as search_algorithm
 import pytest
-
-blue_data = pytest.importorskip("blue_data")
-
 from blue_data.registry.data_registry import DataRegistry  # noqa: E402
 from blue_data.source.vector.memory_vector_source import MemoryVectorSource  # noqa: E402
 
@@ -27,13 +30,55 @@ from blue_data_ops.data.registry_seam import (  # noqa: E402
     _normalize_search_result,  # pyright: ignore[reportPrivateUsage]
 )
 
+_SEARCH_IDENTITIES = {
+    (
+        "27d87d9815acee9b431f1504082fdd378478355dda6fdc52f56179891a122629",
+        "ad2ec87faad0e2c41bcd408e6e9e2aba2610b94b16f4a801e4f6dd1aa1316e52",
+        "690bacdc3c5a21374cf722b28b0fffec2e3b28ad634dc8ff1f8510956cc45ec1",
+    ): "dev",
+    (
+        "017876a7d28f755874b9e9316490fcd8c31feb866f173f87856490bec14e2800",
+        "68b6e1703e4379babb45ef3ad76df94d02cb1eb946b045da6655fb3bc5edc381",
+        "d22e9f809646bd242f6fbbb138ab868d4e6a5d67df25a4652c43114e419bf694",
+    ): "1.0",
+}
+
+
+def _search_contract() -> str:
+    identity = tuple(
+        hashlib.sha256(Path(cast(str, module.__file__)).read_bytes()).hexdigest()
+        for module in (search_algorithm, hybrid_algorithm, similarity_algorithm)
+    )
+    assert identity in _SEARCH_IDENTITIES, "unrecognized blue-data search algorithm identity"
+    return _SEARCH_IDENTITIES[cast(tuple[str, str, str], identity)]
+
+
+def test_search_identity_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_algorithm, "__file__", __file__)
+    with pytest.raises(AssertionError, match="unrecognized"):
+        _search_contract()
+    monkeypatch.setattr(search_algorithm, "__file__", None)
+    with pytest.raises(TypeError):
+        _search_contract()
+
+
+def test_wrapped_keyword_scores_invert_separately() -> None:
+    normalized = [
+        _normalize_search_result(
+            {"record": {"name": str(score), "type": "source", "scope": "/"}, "score": score}
+        )
+        for score in (15, 10, 5)
+    ]
+    assert [row["score"] for row in normalized] == pytest.approx([0, 1 / 3, 2 / 3])
+    assert [row["id"] for row in normalized] == ["//source/15", "//source/10", "//source/5"]
+
 
 def _stub_embedding(texts: list[str]) -> list[list[float]]:
     return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
 
 
 def _keyword_registry() -> RegistrySeam:
-    # No vector source: hierarchical search takes the keyword fallback path.
+    # Dev uses keyword fallback here; 1.0 uses flat hybrid BM25.
     registry: Any = DataRegistry(name="kw_probe", rebuild=True)
     registry.register_record("jobs_db", "source", "/", description="job postings database")
     registry.register_record("jobs_kb", "source", "/", description="jobs knowledge")
@@ -45,13 +90,15 @@ def _keyword_registry() -> RegistrySeam:
 def test_keyword_fallback_normalized_shape_and_order() -> None:
     seam = _keyword_registry()
     results = seam.search_records_hierarchical("jobs", type="source", page=0, page_size=10)
-    # jobs_kb hits name AND description (15 => 0.0); jobs_db name only (10 => 1/3);
-    # the non-match is absent entirely. Ascending (lower = better) order preserved
-    # from the delegate's descending ints.
-    assert [(r["name"], r["score"]) for r in results] == [
-        ("jobs_kb", pytest.approx(0.0)),
-        ("jobs_db", pytest.approx(1.0 / 3.0)),
-    ]
+    expected = (
+        [("jobs_kb", 0.0), ("jobs_db", 1.0 / 3.0)]
+        if _search_contract() == "dev"
+        else [("jobs_kb", 3.0 / 23.0), ("jobs_db", 9.0 / 23.0)]
+    )
+    assert [r["name"] for r in results] == [name for name, _ in expected]
+    assert [r["score"] for r in results] == pytest.approx([score for _, score in expected])
+    assert all(math.isfinite(r["score"]) for r in results)
+    assert [r["score"] for r in results] == sorted(r["score"] for r in results)
     for r in results:
         assert set(r) == {"name", "type", "scope", "id", "score", "description"}
         assert r["id"] == f"//source/{r['name']}"  # "{scope}/{type}/{name}" with scope "/"
@@ -67,8 +114,14 @@ def test_keyword_scoring_tiers_invert_monotonically() -> None:
     seam = RegistrySeam(registry)
     results = seam.search_records_hierarchical("jobs", type="source", page=0, page_size=10)
     scores = [r["score"] for r in results]
-    assert scores == pytest.approx([0.0, 1.0 / 3.0, 2.0 / 3.0])
-    assert [r["name"] for r in results] == ["alpha jobs", "jobs_beta", "gamma"]
+    if _search_contract() == "dev":
+        assert scores == pytest.approx([0.0, 1.0 / 3.0, 2.0 / 3.0])
+        assert [r["name"] for r in results] == ["alpha jobs", "jobs_beta", "gamma"]
+    else:
+        assert scores == pytest.approx([3.0 / 23.0])
+        assert [r["name"] for r in results] == ["alpha jobs"]
+    assert all(math.isfinite(score) for score in scores)
+    assert scores == sorted(scores)
 
 
 # --- the flat variant normalization (unit: the delegate shape observed live) ----- #

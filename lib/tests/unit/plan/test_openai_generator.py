@@ -824,10 +824,6 @@ class SDKError(Exception):
             self.status_code = status_code
 
 
-# Stands in for any provider-side detail that must not reach a planning record.
-# Named and shaped so it is not itself credential-like: the repository scanner
-# rejects both a key-shaped value and a secret-shaped identifier, and it is right
-# to, even in a fixture.
 PROVIDER_TEXT = "PROVIDER-DETAIL-MUST-NOT-LEAK"
 
 
@@ -976,10 +972,8 @@ def test_importing_the_package_does_not_import_the_sdk() -> None:
 
 
 # --- 11. The official SDK, credential-free, through a local transport --------------- #
-# Skipped one test at a time where the optional extra is absent, never module-wide: the
-# 87 double-based tests above must still run without the SDK, because one of the things
-# they prove is that it stays optional. This section is the only place the real client's
-# serialization is checked, and it runs in the scratch gate environment.
+# Keep SDK tests separate so the double-based tests run without the optional extra.
+# Mock transport exercises SDK serialization without network calls.
 httpx: Any = None
 openai: Any = None
 _sdk_present = False
@@ -999,8 +993,7 @@ requires_sdk = pytest.mark.skipif(
 def official_client(handler: Any) -> Any:
     """A real OpenAI client whose transport never leaves the process."""
 
-    # Short on purpose: the SDK only needs a non-empty value, and anything longer
-    # trips the repository secret scanner's api_key pattern. No credential is read.
+    # The SDK requires a non-empty key; the mock transport keeps requests local.
     return openai.OpenAI(
         api_key="unused",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
@@ -1160,8 +1153,7 @@ def test_an_nl2sql_candidate_without_a_snapshot_is_rejected() -> None:
 
     assert caught.value.record.code is PlanningErrorCode.GENERATION_RESULT_INVALID
     assert caught.value.record.category is ErrorCategory.RECOVERABLE
-    # The provider was still called: this is an admission rule on the response, not a
-    # pre-provider gate, and saying otherwise would overstate the boundary.
+    # This check runs after generation, so the provider call has already occurred.
     assert len(client.create_calls) == 1
 
 
@@ -1179,7 +1171,7 @@ def test_a_malformed_declaration_fails_before_any_provider_traffic() -> None:
 
     registry = versioned_registry()
     resolved = registry.resolve("select@2.0.0")
-    object.__setattr__(resolved, "attributes", ["not", "a", "declaration"])
+    resolved.properties["attributes"] = ["not", "a", "declaration"]
     generator, _, client = build(registry=registry)
 
     with pytest.raises(PlanningError, match="requires supported built-in") as caught:

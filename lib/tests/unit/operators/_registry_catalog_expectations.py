@@ -8,7 +8,7 @@ from typing import Any, cast
 from blue_data_ops.operators import OperatorCard
 
 _LIB = Path(__file__).resolve().parents[3]
-_FIXTURE = json.loads((_LIB / "tests/fixtures/v2_discovery_catalog.json").read_text())
+_FIXTURE = json.loads((_LIB / "tests/fixtures/operator_discovery_legacy.json").read_text())
 _RETIRED_NAMES = {
     "multipart_query",
     "nl2query_router",

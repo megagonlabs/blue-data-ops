@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from blue_data_ops_cli import config
 from blue_data_ops_cli.commands import cli
+from blue_data_ops_cli.configstore import ProfileStore
 from blue_data_ops_cli.formats import FORMATS
 
 PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
@@ -204,8 +205,9 @@ def test_the_default_format_comes_from_the_profile(command: list[str], runner: C
     json.loads(result.stdout)
 
 
-def test_a_configured_format_the_cli_does_not_have_is_a_profile_error(runner: CliRunner) -> None:
-    assert runner.invoke(cli, ["profile", "config", "BLUE_DATA_CLI_FORMAT", "yaml"]).exit_code == 0
+def test_a_legacy_invalid_format_still_fails_when_read(runner: CliRunner, cli_home: Path) -> None:
+    assert runner.invoke(cli, ["profile", "list"]).exit_code == 0
+    ProfileStore(cli_home).set_value("default", "BLUE_DATA_CLI_FORMAT", "yaml")
     result = runner.invoke(cli, ["metadata", "inspect"])
     assert result.exit_code == config.EXIT_PROFILE
     assert "ERROR: PROFILE" in result.stderr

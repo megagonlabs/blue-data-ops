@@ -1056,10 +1056,8 @@ def test_the_local_sqlite_seam_collects_the_orders_snapshot_without_executing_a_
     document = as_document(collected)
 
     assert executed == []
-    # The protocol is compared against what this blue-data build declares rather than
-    # against the fixture literal: the fixture records the pinned 1b796fe value
-    # "sql/sqlite" while the earlier 0eac5d3 source set "sqlite". Copying whatever the
-    # source declares, without normalizing it, is the property the context actually owns.
+    # blue-data has used both "sql/sqlite" and "sqlite". Preserve the value
+    # declared by the source rather than normalizing it to the fixture value.
     fixture = load_fixture("data_context_orders.json")
     declared = seam.get_source_properties(ORDERS_SOURCE)["connection"]["protocol"]
     assert document["protocol"] == declared
@@ -1345,7 +1343,7 @@ def test_the_snapshot_accepts_any_bounded_string_description() -> None:
     assert as_document(rebuilt)["schema"]["entities"][0]["description"] == "   "
 
 
-# --- Persisted registry records (blue-data 1b796fe connect_source provenance) -------- #
+# --- Persisted registry records --------------------------------------------------- #
 def _orders_registry(tmp_path: Path) -> Any:
     """Build a real registry holding the owner orders collection."""
 
@@ -1422,9 +1420,8 @@ def test_context_collects_from_newly_created_registry_records(tmp_path: Path) ->
 def test_context_collects_from_previously_persisted_records_without_connect_source(
     tmp_path: Path,
 ) -> None:
-    # blue-data 1b796fe requires stored `_class` provenance before connect_source() can
-    # rehydrate a source. Collection reads registered records only, so a reopened
-    # registry that has never instantiated a source still yields the identical snapshot.
+    # Rehydrating a source needs stored `_class` metadata. Collection reads the
+    # registered records directly, so reopening the registry preserves the snapshot.
     pytest.importorskip("blue_data")
     registry, seam = _orders_registry(tmp_path)
     reopened = _reopened(registry)
@@ -1445,8 +1442,15 @@ def test_context_collection_does_not_need_class_provenance(tmp_path: Path) -> No
     properties = reopened.get_source_properties(ORDERS_SOURCE)
     properties.pop("_class", None)
 
+    from importlib import import_module
+
+    from blue_data_ops.data.errors import RegistryFailure
+
     with pytest.raises(ValueError, match="_class"):
         reopened.connect_source(ORDERS_SOURCE)
+    seam_module = cast(Any, import_module("blue_data_ops.data.registry_seam"))
+    with pytest.raises(RegistryFailure, match="data source is unavailable"):
+        seam_module._diagnose_source(reopened, ORDERS_SOURCE)
 
     collected = RegistryDataContextProvider(reopened).collect(orders_scope())
 

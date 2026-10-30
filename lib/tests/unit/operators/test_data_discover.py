@@ -42,7 +42,7 @@ class _RecordingSeam(RegistrySeamDouble, RegistrySeam):
 
 class _RaisingSeam(_RecordingSeam):
     def search_records_hierarchical(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        raise TypeError("'str' object is not callable")  # the upstream engine crash shape
+        raise TypeError("'str' object is not callable")
 
 
 @pytest.fixture
@@ -79,7 +79,6 @@ def test_no_registry_returns_empty(
 def test_hierarchical_call_shape_default(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
     op.apply(INPUT, dict(ATTRS), _props(seam))
     [call] = seam.calls_to("search_records_hierarchical")
-    # scope=None (the default) passes through as None — upstream's early return
     assert call == {
         "input_query": "jobs",
         "type": "source",
@@ -102,7 +101,7 @@ def test_regular_call_shape_forwards_approximate_hybrid(
 def test_threshold_keeps_low_scores_only(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
     seam.search_pages = {0: [_hit("close", 0.2), _hit("far", 0.9)]}
     out = op.apply(INPUT, {**ATTRS, "threshold": 0.5}, _props(seam))
-    assert [r["name"] for r in out[0]] == ["close"]  # score <= threshold kept (lower = better)
+    assert [r["name"] for r in out[0]] == ["close"]
 
 
 def test_no_filtering_when_not_approximate_or_hybrid(
@@ -118,7 +117,7 @@ def test_filter_names_skips_matches(op: DataDiscoverOperator, seam: _RecordingSe
     assert [r["name"] for r in out[0]] == ["jobs_kb"]
 
 
-def test_transform_enriches_from_get_record(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
+def test_transform_returns_catalog_fields(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
     out = op.apply(INPUT, dict(ATTRS), _props(seam))
     enriched = out[0][0]
     assert enriched == {
@@ -127,18 +126,26 @@ def test_transform_enriches_from_get_record(op: DataDiscoverOperator, seam: _Rec
         "id": "//source/jobs_db",
         "scope": "/",
         "score": 0.1,
-        "description": "job postings",
         "properties": {"kind": "sql"},
     }
-    bare = out[0][1]  # no stored record => empty description/properties, no metadata
-    assert bare["description"] == "" and bare["properties"] == {}
-    assert "metadata" not in bare
+    assert out[0][1] == {
+        "type": "source",
+        "name": "jobs_kb",
+        "id": "//source/jobs_kb",
+        "scope": "/",
+        "score": 0.3,
+    }
 
 
-def test_include_metadata(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
-    out = op.apply(INPUT, {**ATTRS, "include_metadata": True}, _props(seam))
-    assert out[0][0]["metadata"] == {"owner": "ops"}
-    assert "metadata" not in out[0][1]  # absent record: no metadata key even when requested
+def test_include_metadata_is_rejected(op: DataDiscoverOperator, seam: _RecordingSeam) -> None:
+    attrs = {**ATTRS, "approximate": True, "include_metadata": True}
+    assert op.validate(INPUT, attrs) is False
+    with pytest.raises(ValueError, match="include_metadata must be false"):
+        op.apply(INPUT, attrs, _props(seam))
+    out, _, meta = op.run(INPUT, attrs, _props(seam))
+    assert out == [[]]
+    assert len(meta.errors) == 1
+    assert "include_metadata must be false" in (meta.errors[0].suggestion or "")
 
 
 # --- result limit -------------------------------------------------------------------
@@ -190,8 +197,6 @@ def test_progressive_requires_approximate_or_hybrid(
 
 # --- contained search failures ------------------------------------------------------
 def test_search_failure_swallowed_to_empty(op: DataDiscoverOperator) -> None:
-    # The upstream engine's crash shape (and any other search failure) is logged
-    # and swallowed to [[]] by design.
     raising = _RaisingSeam()
     assert op.apply(INPUT, dict(ATTRS), _props(raising)) == [[]]
 
@@ -248,7 +253,7 @@ def test_construct_scope_matrix(kwargs: dict[str, Any], expected: str | None) ->
 # --- score passthrough in transformed results ---------------------------------------
 def test_transform_without_score(seam: _RecordingSeam) -> None:
     result = {"name": "x", "id": "/x", "scope": "/"}
-    transformed = _transform_result(result, "source", seam, include_metadata=False)
+    transformed = _transform_result(result, "source", seam)
     assert "score" not in transformed
 
 
@@ -274,6 +279,7 @@ BASE: dict[str, Any] = {"search_query": "q", "approximate": True}
         ({**BASE, "source": "s", "database": "d", "collection": "c"}, True),
         ({**BASE, "concept_type": "mystery"}, False),
         ({**BASE, "concept_type": "attribute"}, True),
+        ({**BASE, "include_metadata": True}, False),
         ({**BASE, "page": "junk"}, False),  # type gate inside the try wrap
     ],
     ids=[
@@ -290,6 +296,7 @@ BASE: dict[str, Any] = {"search_query": "q", "approximate": True}
         "full-scope-chain",
         "bad-concept",
         "attribute-concept",
+        "metadata-unsupported",
         "junk-page-type",
     ],
 )
@@ -302,8 +309,6 @@ def test_explainer_default_scope_renders_none(op: DataDiscoverOperator) -> None:
     out: list[list[dict[str, Any]]] = [[{"name": "a"}]]
     exp = op.explain(out, INPUT, {"search_query": "jobs"})
     assert exp["output"] == out and exp["input_data"] == INPUT
-    # Upstream compares the scope against "/" only, so the default None scope is
-    # reported literally — pinned.
     assert exp["explanation"] == (
         "Data discover operator searched for source entities using hierarchical "
         "search with query 'jobs' within scope 'None' and returned 1 results."

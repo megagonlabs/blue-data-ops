@@ -41,7 +41,7 @@ def sqlite_registry(directory: Path) -> tuple[RegistrySeam, SQLiteDBSource]:
     )
     registry = RegistrySeam(DataRegistry(name="outcomes", rebuild=True))
     registry.register_source(source)
-    source.create_database("sample")
+    cast(Callable[[str], dict[str, str]], getattr(source, "create_database"))("sample")
     connection = cast(sqlite3.Connection, getattr(source, "_db_connect")("sample"))
     try:
         connection.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, value INTEGER)")

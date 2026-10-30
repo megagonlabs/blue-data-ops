@@ -184,7 +184,7 @@ assert scored[0][0]["id"] == "left_right"
 
 A caller has a natural-language request and wants records back in a shape it declared.
 `nl2llm` takes a query and an `attrs` list describing the fields it wants, sends the request through LiteLLM, and returns the decoded JSON as a record group.
-The model is chosen through call properties; the default is `openai.model: gpt-4o`.
+The model is chosen through call properties; the default is `openai.model: gpt-6-luna`.
 
 The LLM extra is loaded lazily like the others, so a caller without `[llm]` installed gets an `EXECUTION_FAILED` record carrying an install suggestion rather than an import error.
 
@@ -225,7 +225,7 @@ The empty `[[]]` bundle is how a caller invokes an operator tagged `accepts-none
 
 A caller wants a question answered from a database it has registered, without writing the query.
 `nl2sql` reads the collection's schema through the seam, generates SQL, and optionally executes it.
-Execution is opt-in through `execute_query`, and `validate_query_prefixes` gates which statement kinds are allowed to run.
+Generation is the default. Execution requires a host-bound read-only executor and boolean `execute_query=True`. `validate_query_prefixes` accepts only a one-item SELECT list and cannot widen the fixed query check or the database guard.
 
 The prefix check is a case-insensitive string comparison, not a SQL parser or a sandbox.
 Permissions on the connection and review of the generated query stay with the caller.
@@ -533,7 +533,7 @@ Level 2 is the card plus the live attribute schema plus the guide; level 3 adds 
 
 An LLM agent needs to call these operators without a Python import.
 The MCP adapter registers the 33 active operators as primary tools over the canonical `run()` boundary, adds `ops_` to each logical name, and carries the exact pinned ID in `_meta`.
-`create_server()` returns a configured `FastMCP` instance for embedding; `serve()` starts it over streamable HTTP, bound by default to `127.0.0.1:8000/mcp`.
+`create_server()` returns a configured `FastMCP` instance for embedding; `serve()` starts it over streamable HTTP, bound by default to `127.0.0.1:8010/mcp`.
 
 A call that satisfies the container schema but fails operator validation is still a successful MCP result, with the record inside `exec_meta`.
 `isError` is reserved for an unknown tool, malformed top-level arguments, or a projection failure — the things that are wrong with the call rather than with the data.
@@ -604,3 +604,7 @@ except ResolveError as error:
 ```
 
 [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md) is the source of truth for the per-surface migration boundaries.
+
+HTTP requires the shared API key by default on both streamable HTTP and SSE.
+See the [HTTP bind, authentication and mounted lifespan contract](../docs/mcp.md#http-authentication-and-bind-settings)
+for environment overrides, the explicit no-key opt-out and the SDK Host/Origin limits.

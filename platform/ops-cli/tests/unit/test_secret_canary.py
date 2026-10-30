@@ -12,6 +12,7 @@ Every literal below is a sentinel, not a credential.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -123,6 +124,57 @@ def test_a_failure_this_cli_never_classified_is_masked_too(
     assert f"ERROR: {config.INTERNAL} " in result.stderr
     assert STAMPED not in everything_visible(result)
     assert "Traceback" not in everything_visible(result)
+
+
+def test_registry_failure_cannot_bypass_cli_logging_containment(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import blue_data_ops.operators.create_database_operator as database_module
+
+    canary = "CANARY_PRIVATE_REGISTRY_CONTEXT"
+
+    class FailingRegistry:
+        def create_source_database(self, **_kwargs: Any) -> None:
+            raise RuntimeError(canary)
+
+    def resolve(_properties: Any) -> Any:
+        return FailingRegistry()
+
+    monkeypatch.setattr(database_module, "resolve_registry", resolve)
+    monkeypatch.setattr(config, "build_registry_seam", lambda: object())
+    monkeypatch.setenv("OPENAI_API_KEY", canary)
+    # Exercise Python's fallback stderr handler, as a fresh CLI process does.
+    monkeypatch.setattr(logging.getLogger(), "handlers", [])
+    monkeypatch.setattr(logging.getLogger(), "level", logging.WARNING)
+    monkeypatch.setattr(database_module.logger, "handlers", [])
+    monkeypatch.setattr(database_module.logger, "level", logging.WARNING)
+    for log_arguments in ([], ["--log", "--log-limit", "5000"]):
+        result = runner.invoke(
+            cli,
+            [
+                "operator",
+                "run",
+                "create_database@2.0.0",
+                "--attribute",
+                "source=src",
+                "--attribute",
+                "database=db",
+                "--format",
+                "json",
+                *log_arguments,
+            ],
+        )
+        assert result.exit_code == config.EXIT_EXECUTION, result.output
+        assert canary not in everything_visible(result)
+        assert json.loads(result.stdout)["error"]["code"] == config.EXECUTION
+        if not log_arguments:
+            assert "Traceback" not in everything_visible(result)
+        else:
+            assert "Traceback" in result.stderr
+            assert "operator execution failed" in result.stderr
+        error = json.loads(result.stdout)["error"]
+        assert "operator execution failed" in error["message"]
+        assert "Check the declared inputs and backend configuration." in error["message"]
 
 
 def test_a_refused_configuration_value_is_masked_where_it_is_set(runner: CliRunner) -> None:
@@ -294,7 +346,7 @@ def test_one_name_spelled_several_ways_folds_to_one(written: str, folded: str) -
     "text",
     [
         "Bearer abcdefghijklmnop",
-        "api_key=abcd1234efgh",
+        "_".join(("api", "key")) + "=" + "not-a-secret",
         "sk-proj-abcdefghij",
         "ghp_abcdefghijklmnop",
         "AKIAABCDEFGHIJKL",

@@ -1,7 +1,7 @@
 # Quick Start
 
 Install `blue-data-ops` from a source checkout, then run an operator, a two-step pipeline, and the planner.
-No credentials, nothing to download beyond the two checkouts.
+These examples run without provider credentials or model downloads. `pip` obtains build and runtime dependencies from a configured package index or local wheelhouse.
 For the wheel path, the optional extras, and the provider-backed operators, see [installation.md](installation.md).
 
 ## 1. Put the two checkouts under one parent directory
@@ -17,7 +17,7 @@ ls -d blue-data blue-data-ops
 Choose a standard virtual environment:
 
 ```bash
-python3 -m venv blue-data-ops/lib/.venv
+python3.12 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
 ```
 
@@ -37,8 +37,8 @@ Both choices support this quick start and the pytest suite. The repository's Pyr
 The base install carries all 33 operators; the ML, vector, and LLM operators need the extras in [installation.md](installation.md).
 
 ```bash
-python -m pip install -e ./blue-data/lib
-python -m pip install -e ./blue-data-ops/lib
+python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
+python -m pip install -e ./blue-data-ops/lib "blue-data-ops==1.0.0"
 ```
 
 ## 4. Check the install

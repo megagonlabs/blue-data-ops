@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import logging
+from types import MethodType
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import resolve_registry
+from blue_data_ops.data.errors import RegistryFailure, RegistryReason
+from blue_data_ops.data.registry_seam import (
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+)
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -18,7 +23,7 @@ from blue_data_ops.operators.types import (
 logger = logging.getLogger(__name__)
 
 
-class _CreateDatabaseFailure(Exception):
+class _CreateDatabaseFailure(RegistryFailure):
     pass
 
 
@@ -67,7 +72,10 @@ class CreateDatabaseOperator(Operator):
         properties: Properties | None = None,
     ) -> DataBundle:
         try:
-            return self._execute(input_data, attributes, properties).output_data
+            execute = self._execute
+            if type(execute) is MethodType and execute.__func__ is _BUILTIN_EXECUTE:
+                return self._execute_create(input_data, attributes, properties).output_data
+            return execute(input_data, attributes, properties).output_data
         except _CreateDatabaseFailure:
             return input_data
 
@@ -76,6 +84,16 @@ class CreateDatabaseOperator(Operator):
         input_data: DataBundle,
         attributes: Attributes,
         properties: Properties | None = None,
+    ) -> FunctionResult:
+        return self._execute_create(input_data, attributes, properties, _diagnose_registry=True)
+
+    def _execute_create(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+        *,
+        _diagnose_registry: bool = False,
     ) -> FunctionResult:
         overwrite = attributes.get("overwrite", False)
         source = cast(str, attributes.get("source", ""))
@@ -86,9 +104,11 @@ class CreateDatabaseOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            raise _CreateDatabaseFailure
+            raise _CreateDatabaseFailure(RegistryReason.NOT_CONFIGURED)
 
         try:
+            if _diagnose_registry:
+                _diagnose_source(registry, source)
             registry.create_source_database(
                 source=source,
                 database=database,
@@ -120,8 +140,8 @@ class CreateDatabaseOperator(Operator):
             logger.info("Successfully created database '%s' in source '%s'.", database, source)
             return FunctionResult(input_data, {})
         except Exception as error:
-            logger.exception("create_database failed; passing input through")
-            raise _CreateDatabaseFailure from error
+            logger.error("create_database failed; passing input through")
+            raise _CreateDatabaseFailure(error) from None
 
     def validate(
         self,
@@ -193,3 +213,6 @@ DISCOVERY = DiscoverySpec(
         "requires-database-backend",
     ),
 )
+
+
+_BUILTIN_EXECUTE = CreateDatabaseOperator.__dict__["_execute"]

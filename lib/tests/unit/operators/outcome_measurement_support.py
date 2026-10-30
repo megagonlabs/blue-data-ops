@@ -314,7 +314,7 @@ def bind_case(case: dict[str, Any], directory: Path) -> Generator[BoundCall, Non
         seam.register_source(source)
         # Current blue-data no longer creates a missing SQLite database in _db_connect();
         # create through the public API first, which also works with older releases.
-        source.create_database("fixture")
+        cast(Callable[[str], dict[str, str]], getattr(source, "create_database"))("fixture")
         connection = cast(Callable[[str], sqlite3.Connection], getattr(source, "_db_connect"))(
             "fixture"
         )

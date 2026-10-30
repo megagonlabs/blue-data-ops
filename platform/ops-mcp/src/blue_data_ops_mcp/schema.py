@@ -5,6 +5,8 @@ import inspect
 from typing import Annotated, Any
 
 from blue_data_ops.operators import ErrorCategory, ErrorCode, ErrorStage, Operator
+from blue_data_ops.operators.vector_search_operator import VectorSearchOperator
+from blue_data_ops.operators.vector_similarity_operator import VectorSimilarityOperator
 from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
 
 InputData = list[list[dict[str, Any]]]
@@ -19,19 +21,13 @@ ATTRIBUTES_DESCRIPTION = (
     "Operator arguments for this tool. The published keys are the operator's declared "
     "attributes; an unlisted key is accepted and ignored."
 )
-# `data_registry` is deliberately absent from the list below. Core reads that key only when
-# its value is a live `RegistrySeam` or `DataRegistry` instance, which is a Python object and
-# not something a JSON request can carry: core's `resolve_registry` falls through every
-# JSON-representable value to the two naming keys. Advertising it here told a remote client
-# to send a string or an object, and what it got back was the tool's contained empty result
-# with no explanation. Object injection is real and stays documented in the package README as
-# what it is, an in-process Python API.
 PROPERTIES_DESCRIPTION = (
-    "Execution and backend settings for this call, or null. Recognized keys are "
+    "Execution and backend settings for this call, or null. Registry tools use the "
+    "deployment registry; caller `data_registry`, `platform.name` and `data_registry.name` "
+    "cannot select it. Recognized keys are "
     "`execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, "
-    "`ops_cluster`, and `ops_sklearn_estimator`; `platform.name` together with "
-    "`data_registry.name`, which the registry-backed tools need to resolve a registry at all; "
-    "`service_prefix`; and the two provider namespaces, `openai.*` and `llm.*`, both of which "
+    "`ops_cluster`, and `ops_sklearn_estimator`; "
+    "and the two provider namespaces, `openai.*` and `llm.*`, both of which "
     "are closed sets. `openai.*` accepts the generation parameters and nothing else: the "
     "provider, endpoint, project, tenant, region and credential are the deployment's, not the "
     "caller's, and a property naming one of them is refused rather than ignored. `llm.model` "
@@ -180,8 +176,9 @@ def json_type_fragment(core_type: str) -> dict[str, Any]:
 def attributes_json_schema(operator: Operator) -> dict[str, Any]:
     """Publish what core declares about each attribute, omitting defaults appropriately.
 
-    Every attribute keeps its description and gains its core type wherever that type is
-    expressible in JSON Schema. A closed value set publishes as an ``enum`` only when core's
+    Attributes keep their core descriptions except where a vector default needs clarification.
+    Each gains its core type wherever that type is expressible in JSON Schema. A closed value
+    set publishes as an ``enum`` only when core's
     validator rejects everything outside it and the operator's own default is a member; the
     second condition keeps a caller-registered operator that reuses a logical name from
     inheriting another operator's set.
@@ -196,8 +193,29 @@ def attributes_json_schema(operator: Operator) -> dict[str, Any]:
     """
     properties: dict[str, Any] = {}
     required: list[str] = []
-    for name, spec in operator.attributes.items():
+    projected = operator._project_attribute_specs()  # pyright: ignore[reportPrivateUsage]
+    attributes = list(projected.items())
+    shared = ("on_missing_embedding", "on_missing_fields", "add_meta_data")
+    if isinstance(operator, VectorSearchOperator) and all(
+        name in projected for name in ("metric", *shared)
+    ):
+        reordered = [(name, projected[name]) for name in shared]
+        attributes = [(name, spec) for name, spec in attributes if name not in shared]
+        metric_index = next(index for index, (name, _) in enumerate(attributes) if name == "metric")
+        attributes[metric_index + 1 : metric_index + 1] = reordered
+    for name, spec in attributes:
         entry: dict[str, Any] = {"description": spec.description}
+        if name == "on_missing_embedding":
+            if isinstance(operator, VectorSearchOperator) and spec.default == "embed_missing":
+                entry["description"] = (
+                    "Missing candidate embeddings: embed_missing (default, using search_fields) "
+                    "or raise."
+                )
+            elif isinstance(operator, VectorSimilarityOperator) and spec.default == "raise":
+                entry["description"] = (
+                    "Missing embeddings in either input group: raise (default) or "
+                    "embed_missing (using fields)."
+                )
         entry.update(json_type_fragment(spec.type))
         allowed = ATTRIBUTE_ENUMS.get((operator.name, name))
         if allowed is not None and (not spec.has_default or spec.default in allowed):

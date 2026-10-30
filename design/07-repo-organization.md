@@ -39,14 +39,14 @@ blue-data-ops/
 │   ├── api-reference.md                    # the public Python surface, module by module
 │   ├── architecture.md                     # the user-facing subset of the design architecture documents
 │   ├── extending.md                        # writing an operator, a registry provider, or a plan generator
-│   ├── mcp.md                              # synced copy of the MCP adapter README
-│   ├── cli.md                              # synced copy of the blue-ops README
-│   └── api.md                              # placeholder: no REST API is built
+│   ├── mcp.md                              # MCP usage guide
+│   └── cli.md                              # blue-ops usage guide
 │
 ├── examples/                               # runnable scripts, grouped by purpose
 │   ├── README.md                           # per script: what it demonstrates, its run command, its requirements
 │   ├── _sqlite_demo.py                     # shared SQLite registry helper; imported by scripts, not run on its own
 │   ├── coverage.json                       # checked map from each script to the exact operator IDs it exercises
+│   ├── cli/                                # sample record bundle and planning request
 │   ├── quickstart/                         # the scripts to run first on a fresh install
 │   ├── feature-demos/                      # one capability per script
 │   └── integration-demos/                  # scripts that combine more than one subsystem
@@ -61,9 +61,10 @@ blue-data-ops/
 │   ├── .gitignore                          # package-local ignore rules for the environment and caches
 │   │
 │   ├── scripts/                            # packaging and maintenance scripts; not installed with the package
-│   │   ├── build.sh                        # python -m build
+│   │   ├── build.sh                        # clean build/dist, build and check wheel
 │   │   ├── install.sh                      # editable install, resolving blue-data from its checkout first
-│   │   ├── publish.sh                      # twine upload dist/*
+│   │   ├── publish.sh                      # checked upload to an explicit index
+│   │   ├── check_wheel_contents.py         # checks all wheel members against src/
 │   │   ├── generate_operator_reference.py  # regenerates OPERATORS.md from the registry and generator fixtures
 │   │   └── check_real_llm_install.py       # fails if litellm resolves to the test stub instead of a real install
 │   │
@@ -121,7 +122,7 @@ blue-data-ops/
 │   │           ├── tool_utils.py           # annotation and signature conversion
 │   │           ├── json_utils.py           # JSON merge and JSONPath query and set
 │   │           ├── uuid_utils.py           # UUID and canonical-ID helpers
-│   │           └── string_utils.py         # Template and Jinja substitution
+│   │           └── string_utils.py         # One-pass dollar substitution
 │   │
 │   └── tests/                              # the library test suite; see 11-testing-strategy.md
 │       ├── conftest.py                     # installs the sentence-transformers stub before any lazy model import
@@ -176,7 +177,7 @@ blue-data-ops/
 
 Five regular files sit at the root. `README.md`, `CHANGELOG.md`, and `LICENSE` are the ones a reader meets before choosing a direction; `.gitignore` and `ruff.toml` exist for tooling rather than for reading.
 `CHANGELOG.md` carries one entry per released version, newest first, and names the three distributions a version moved.
-`LICENSE` is a BSD 3-Clause licence with a fourth attribution and NOTICE clause, and it covers all three distributions from the root, which is how the rest of the family carries it. It is byte-identical to the copies `blue-data-kb-source` and `blue-data-llm-source` carry.
+`LICENSE` is a BSD 3-Clause licence with a fourth attribution and NOTICE clause, covering all three distributions from the root.
 `README.md` states what the package is, links [`docs/`](../docs/README.md) and [`examples/README.md`](../examples/README.md), and carries a quickstart that runs on a clean checkout.
 `.gitignore` covers the whole repository, and `lib/.gitignore` adds the package-local entries for the environment and caches that live under `lib/`.
 Keeping both ignore files means a contributor can create `lib/.venv` without the root file having to know that packages exist.
@@ -195,8 +196,7 @@ cross document boundaries or supersede an earlier architecture decision.
 
 `docs/` contains unnumbered user documentation indexed by [`docs/README.md`](../docs/README.md).
 These pages must track current code behavior, which is the opposite update rule from `design/` — when the two disagree, the code and `docs/` are right and the design document is stale.
-[`docs/mcp.md`](../docs/mcp.md) and [`docs/cli.md`](../docs/cli.md) mirror their adapter READMEs.
-[`docs/api.md`](../docs/api.md) states that the repository provides no REST API.
+[`docs/mcp.md`](../docs/mcp.md) and [`docs/cli.md`](../docs/cli.md) cover the interfaces within this documentation set; their package READMEs are the complete guides.
 
 ### `examples/`
 
@@ -215,13 +215,14 @@ Anything that imports it has either installed it or put `src` on the path delibe
 Everything a wheel installs is under `lib/src/blue_data_ops/`.
 `OPERATORS.md`, `COMPATIBILITY.md`, and `scripts/` sit beside `src/` under `lib/` and reach a user through the source distribution rather than the wheel, because they are reference and maintenance material rather than runtime code; `MANIFEST.in` is what puts them there.
 
-`lib/scripts/` holds five scripts, all run by hand:
+`lib/scripts/` holds six maintenance scripts:
 
 | Script | Purpose |
 |---|---|
-| `build.sh` | `python -m build` from `lib/`, writing the wheel and the source distribution into `lib/dist/` |
+| `build.sh` | clear `lib/build/` and `lib/dist/`, run `python -m build` from `lib/`, then check the wheel |
 | `install.sh` | Installs `blue-data` from the sibling checkout, then this package editable with its `dev` extra; `BLUE_DATA_PATH` overrides where it looks |
-| `publish.sh` | `twine upload dist/*` from `lib/` |
+| `publish.sh` | Checks and uploads only the current artifacts to an explicit index |
+| `check_wheel_contents.py` | checks every wheel member against expected source/resources; see [the boundary and limits](12-deployment-ops.md) |
 | `generate_operator_reference.py` | Regenerates `OPERATORS.md` from the active registry and generator fixtures; `--check` verifies the committed file is current without rewriting it |
 | `check_real_llm_install.py` | Exits non-zero when `litellm` resolves to the test stub, so a provider-backed run cannot silently execute against a fake |
 

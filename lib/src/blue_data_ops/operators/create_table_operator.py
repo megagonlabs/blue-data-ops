@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import logging
+from types import MethodType
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import resolve_registry
+from blue_data_ops.data.errors import RegistryFailure, RegistryReason
+from blue_data_ops.data.local_names import sqlite_connect_missing
+from blue_data_ops.data.registry_seam import (
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+)
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -18,7 +24,7 @@ from blue_data_ops.operators.types import (
 logger = logging.getLogger(__name__)
 
 
-class _CreateTableFailure(Exception):
+class _CreateTableFailure(RegistryFailure):
     pass
 
 
@@ -92,7 +98,10 @@ class CreateTableOperator(Operator):
         properties: Properties | None = None,
     ) -> DataBundle:
         try:
-            return self._execute(input_data, attributes, properties).output_data
+            execute = self._execute
+            if type(execute) is MethodType and execute.__func__ is _BUILTIN_EXECUTE:
+                return self._execute_create(input_data, attributes, properties).output_data
+            return execute(input_data, attributes, properties).output_data
         except _CreateTableFailure:
             return input_data
 
@@ -101,6 +110,16 @@ class CreateTableOperator(Operator):
         input_data: DataBundle,
         attributes: Attributes,
         properties: Properties | None = None,
+    ) -> FunctionResult:
+        return self._execute_create(input_data, attributes, properties, _diagnose_registry=True)
+
+    def _execute_create(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+        *,
+        _diagnose_registry: bool = False,
     ) -> FunctionResult:
         overwrite = attributes.get("overwrite", False)
         source = cast(str, attributes.get("source", "default_source"))
@@ -115,7 +134,7 @@ class CreateTableOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            raise _CreateTableFailure
+            raise _CreateTableFailure(RegistryReason.NOT_CONFIGURED)
 
         # SQLite sources always use 'public' as the collection name, even when the
         # caller specifies a different one (lookup errors are ignored).
@@ -132,17 +151,24 @@ class CreateTableOperator(Operator):
             creation_properties = misc
             creation_properties["cols_definition"] = columns
 
-            registry.create_source_database_collection_entity(
-                source=source,
-                database=database,
-                collection=collection,
-                entity=table,
-                properties=table_properties,
-                creation_properties=creation_properties,
-                overwrite=overwrite,
-                rebuild=True,
-                recursive=False,
-            )
+            if _diagnose_registry:
+                _diagnose_source(registry, source)
+            try:
+                registry.create_source_database_collection_entity(
+                    source=source,
+                    database=database,
+                    collection=collection,
+                    entity=table,
+                    properties=table_properties,
+                    creation_properties=creation_properties,
+                    overwrite=overwrite,
+                    rebuild=True,
+                    recursive=False,
+                )
+            except FileNotFoundError as error:
+                if _diagnose_registry and sqlite_connect_missing(error, database):
+                    raise RegistryFailure(RegistryReason.DATABASE_NOT_FOUND) from None
+                raise
 
             if table_description:
                 registry.set_source_database_collection_entity_description(
@@ -174,8 +200,8 @@ class CreateTableOperator(Operator):
             )
             return FunctionResult(input_data, {})
         except Exception as error:
-            logger.exception("create_table failed; passing input through")
-            raise _CreateTableFailure from error
+            logger.error("create_table failed; passing input through")
+            raise _CreateTableFailure(error) from None
 
     def validate(
         self,
@@ -308,3 +334,6 @@ DISCOVERY = DiscoverySpec(
         "requires-database-backend",
     ),
 )
+
+
+_BUILTIN_EXECUTE = CreateTableOperator.__dict__["_execute"]

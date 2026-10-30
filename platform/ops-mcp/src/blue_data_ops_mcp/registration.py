@@ -4,8 +4,9 @@ import asyncio
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.operators import (
     ErrorRecord,
     ExecMeta,
@@ -15,9 +16,19 @@ from blue_data_ops.operators import (
     ResolveError,
     versioned_registry,
 )
+from blue_data_ops.operators._execution_fallback import run_body
+from blue_data_ops.operators._nl2bn_outcome import NL2BNOutcomeOperator
+from blue_data_ops.operators._nl2sql_outcome import NL2SQLOutcomeOperator
+from blue_data_ops.operators.nl2bn_operator import NL2BNOperator
+from blue_data_ops.operators.nl2sql_operator import NL2SQLOperator
+from blue_data_ops.operators.operator import (
+    _VersionBoundOperator,  # pyright: ignore[reportPrivateUsage]
+)
 from blue_data_ops.operators.registry import is_builtin_card
+from blue_data_ops.operators.vector_search_operator import VectorSearchOperator
 from mcp.server.fastmcp import FastMCP
 
+from blue_data_ops_mcp.data_registry import DeploymentRegistry, failure_result
 from blue_data_ops_mcp.schema import RunResult, handler_signature
 
 # The adapter-committed selections are explicit policy, not a semver maximum or registry query.
@@ -167,7 +178,7 @@ def freeze_deployment(
             if reference_registry is None:
                 reference_registry = versioned_registry()
             expected = reference_registry.resolve(requested_id)
-            if type(operator) is not type(expected):
+            if type(_implementation(operator)) is not type(_implementation(expected)):
                 raise ValueError(f"resolved implementation mismatch for {requested_id!r}")
         elif is_builtin_card(deployment_registry, card) or card.name in _SUPPORTED_BUILTIN_NAMES:
             raise ValueError(f"unsupported built-in selection {requested_id!r}")
@@ -231,16 +242,93 @@ def run_payload(
     )
 
 
-def make_run_handler(operator: Operator) -> Any:
+def _implementation(operator: Operator) -> Operator:
+    while type(operator) is _VersionBoundOperator:
+        operator = operator._target  # pyright: ignore[reportPrivateUsage]
+    return operator
+
+
+def make_run_handler(
+    operator: Operator,
+    *,
+    deployment: DeploymentRegistry | None = None,
+    requires_registry: bool = False,
+) -> Any:
+    implementation = _implementation(operator)
+    sql = type(implementation) in (NL2SQLOperator, NL2SQLOutcomeOperator)
+    bn = type(implementation) in (NL2BNOperator, NL2BNOutcomeOperator)
+    try:
+        preflight = getattr(implementation, "_preflight_execution", None) if sql else None
+    except Exception:
+        preflight = None
+
     async def handler(
         input_data: list[list[dict[str, Any]]],
         attributes: dict[str, Any] | None = None,
         properties: dict[str, Any] | None = None,
     ) -> RunResult:
         call_attributes: dict[str, Any] = {} if attributes is None else attributes
-        payload = await asyncio.to_thread(
-            lambda: run_payload(operator.run(input_data, call_attributes, properties))
-        )
+        call_properties = properties
+        bound_execution = False
+        if sql or bn:
+            try:
+                if sql:
+                    if not callable(preflight):
+                        raise LLMError(
+                            "SQL preflight unavailable",
+                            code="sql_execution_unavailable",
+                            retryable=False,
+                        )
+                    bound_execution = preflight(call_attributes, properties)
+                    if type(bound_execution) is not bool:
+                        raise LLMError(
+                            "SQL preflight invalid",
+                            code="sql_execution_unavailable",
+                            retryable=False,
+                        )
+                else:
+                    from blue_data_ops.llm.client import validate_llm_caller_controls
+
+                    validate_llm_caller_controls(
+                        properties,
+                        service_prefix=str(
+                            cast(NL2BNOperator, implementation).DEFAULT_PROPERTIES.get(
+                                "service_prefix", "openai"
+                            )
+                        ),
+                    )
+            except Exception as error:
+                if not isinstance(error, LLMError):
+                    error = LLMError(
+                        "preflight unavailable",
+                        code="sql_execution_unavailable" if sql else "reserved_field",
+                        retryable=False,
+                    )
+                return RunResult.model_validate(run_payload(failure_result(operator, error)))
+        if type(operator) is VectorSearchOperator:
+            # The v2 implementation reads these declared attributes from properties.
+            controls = {
+                name: call_attributes[name]
+                for name in ("top_k", "min_score", "normalize")
+                if name in call_attributes
+            }
+            if controls:
+                call_properties = {**controls, **(properties or {})}
+        if deployment is not None and (requires_registry or bound_execution):
+            result = await deployment.run(
+                operator,
+                input_data,
+                call_attributes,
+                call_properties,
+                bound_execution=bound_execution,
+            )
+            payload = run_payload(result)
+        else:
+            payload = await asyncio.to_thread(
+                lambda: run_payload(
+                    run_body(operator, input_data, call_attributes, call_properties)
+                )
+            )
         return RunResult.model_validate(payload)
 
     handler.__name__ = tool_name(operator.name)
@@ -271,11 +359,22 @@ def _meta(binding: OperatorBinding) -> dict[str, Any]:
     return meta
 
 
-def register_snapshot(server: FastMCP[Any], snapshot: DeploymentSnapshot) -> None:
+def register_snapshot(
+    server: FastMCP[Any],
+    snapshot: DeploymentSnapshot,
+    *,
+    deployment: DeploymentRegistry | None = None,
+) -> None:
+    if deployment is None:
+        deployment = DeploymentRegistry()
     for binding in snapshot:
         card = binding.card
         server.add_tool(
-            make_run_handler(binding.operator),
+            make_run_handler(
+                binding.operator,
+                deployment=deployment,
+                requires_registry="requires-data-registry" in card.tags,
+            ),
             name=tool_name(card.name),
             description=_compose_description(binding),
             meta=_meta(binding),

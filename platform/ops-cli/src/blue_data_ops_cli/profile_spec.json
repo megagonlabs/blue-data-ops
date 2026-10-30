@@ -1,24 +1,36 @@
 {
+  "BLUE_DATA_CLI_FORMAT": {
+    "default": "table",
+    "prompt": "Default output format: table, json, or nl",
+    "required": false,
+    "cast": "str",
+    "choices": ["table", "json", "nl"]
+  },
   "BLUE_DATA_OPS_CATALOG": {
     "default": "active",
     "prompt": "Catalog view commands read when none is selected: active or history",
     "required": false,
-    "cast": "str"
+    "cast": "str",
+    "choices": ["active", "history"]
   },
   "BLUE_DATA_OPS_TIMEOUT": {
     "default": null,
     "prompt": "Seconds one operator run may take",
     "required": false,
-    "cast": "float"
+    "cast": "float",
+    "minimum": 0,
+    "exclusive_minimum": true,
+    "finite": true
   },
   "BLUE_DATA_OPS_PLANNER": {
     "default": "rule",
     "prompt": "Plan generator: rule or openai",
     "required": false,
-    "cast": "str"
+    "cast": "str",
+    "choices": ["rule", "openai"]
   },
   "BLUE_DATA_OPS_PLANNER_MODEL": {
-    "default": "gpt-4o",
+    "default": "gpt-6-luna",
     "prompt": "Model the provider-backed planner calls",
     "required": false,
     "cast": "str"
@@ -27,19 +39,27 @@
     "default": 60.0,
     "prompt": "Seconds to wait for one planning call",
     "required": false,
-    "cast": "float"
+    "cast": "float",
+    "minimum": 0,
+    "exclusive_minimum": true,
+    "maximum": 300,
+    "finite": true
   },
   "BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS": {
     "default": 4096,
     "prompt": "Output allowance for one planning call",
     "required": false,
-    "cast": "int"
+    "cast": "int",
+    "minimum": 256,
+    "maximum": 16384
   },
   "BLUE_DATA_REGISTRY_STORE": {
     "default": "memory",
     "prompt": "Data-registry backend: memory, file, or redis",
     "required": false,
-    "cast": "str"
+    "cast": "str",
+    "choices": ["memory", "file", "redis"],
+    "case_sensitive": false
   },
   "BLUE_DATA_REGISTRY_FILE": {
     "default": null,

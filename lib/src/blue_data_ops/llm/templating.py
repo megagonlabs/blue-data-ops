@@ -6,9 +6,11 @@ import re
 from string import Template
 from typing import Any
 
-from jsonpath_ng.ext import (  # pyright: ignore[reportMissingTypeStubs]
+from jsonpath_ng.ext.parser import (  # pyright: ignore[reportMissingTypeStubs]
     parse as _jsonpath_parse,  # pyright: ignore[reportUnknownVariableType]
 )
+
+from blue_data_ops.llm.errors import raise_reply_failure
 
 
 def _find(path: str, target: Any) -> list[Any]:
@@ -18,17 +20,8 @@ def _find(path: str, target: Any) -> list[Any]:
 
 
 def safe_substitute(template: str, **kwargs: Any) -> str:
-    """Apply string.Template and Jinja substitutions repeatedly until stable."""
-    # A Template pass preserves unknown $names; the following Jinja pass renders
-    # {{ }} placeholders and empties unknown names. Repetition resolves chains such
-    # as $a -> "$b" -> "done".
-    from jinja2 import BaseLoader, Environment
-
-    rendered = Template(template).safe_substitute(**kwargs)
-    rendered = Environment(loader=BaseLoader()).from_string(rendered).render(**kwargs)
-    if rendered == template:
-        return rendered
-    return safe_substitute(rendered, **kwargs)
+    """Substitute dollar placeholders once; preserve unknown names and inserted data."""
+    return Template(template).safe_substitute(**kwargs)
 
 
 def build_message(
@@ -93,6 +86,8 @@ def _substitute_with_collision_check(
             if key in merged:
                 raise TypeError(f"got multiple values for keyword argument '{key}'")
         merged.update(source)
+    # Keep historical prompt formatting on trusted template text only.
+    template = template.replace("\r\n", "\n").replace("\r", "\n").removesuffix("\n")
     return safe_substitute(template, **merged)
 
 
@@ -138,16 +133,24 @@ def _preprocess_output(output_data: Any, properties: dict[str, Any]) -> Any:
 
 
 def _cast_output(output_data: Any, properties: dict[str, Any]) -> Any:
-    # Only int/float/json/str are implemented. Other cast names, including "bool",
-    # deliberately leave the value unchanged.
-    if "output_cast" in properties:
-        cast = str(properties["output_cast"]).lower()
+    if "output_cast" not in properties:
+        return output_data
+    cast = str(properties["output_cast"]).lower()
+    if cast == "str":
+        return str(output_data)
+    if cast not in {"int", "float", "json"}:
+        return output_data
+    failure = None
+    try:
+        if cast == "json":
+            return json.loads(output_data)
         if cast == "int":
-            output_data = int(output_data)
-        elif cast == "float":
-            output_data = float(output_data)
-        elif cast == "json":
-            output_data = json.loads(output_data)
-        elif cast == "str":
-            output_data = str(output_data)
-    return output_data
+            return int(output_data)
+        return float(output_data)
+    except json.JSONDecodeError:
+        failure = "json"
+    except ValueError:
+        failure = "value"
+    except TypeError:
+        failure = "type"
+    raise_reply_failure(failure)

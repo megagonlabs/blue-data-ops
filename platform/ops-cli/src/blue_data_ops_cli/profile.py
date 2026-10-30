@@ -107,7 +107,7 @@ def _store_value(param: Parameter, value: str) -> str:
     """The form a value takes on disk — secrets encoded, everything else cast."""
     if param.is_secret:
         return encode(value)
-    return str(param.cast_value(value))
+    return str(param.validate_for_storage(value))
 
 
 # ------------------------------------------------------------------ #
@@ -346,6 +346,12 @@ def profile_config(
     blue-ops profile config                  walk through every required parameter
     blue-ops profile config PARAM            prompt for one parameter
     blue-ops profile config PARAM VALUE      set one parameter directly
+
+    Closed values: BLUE_DATA_CLI_FORMAT=table|json|nl;
+    BLUE_DATA_OPS_CATALOG=active|history; BLUE_DATA_OPS_PLANNER=rule|openai;
+    BLUE_DATA_REGISTRY_STORE=memory|file|redis (case-insensitive).
+    Timeouts must be finite and positive; planner timeout is at most 300 seconds.
+    BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS accepts 256–16384.
 
     Secrets are never taken as VALUE on the command line — a secret parameter always
     prompts, so it stays out of shell history. Enter `$VAR` at the prompt to store a

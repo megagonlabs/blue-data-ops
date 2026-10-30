@@ -1,0 +1,35 @@
+{
+  "source_commit": "7b4b111b722442e1852133f4042d02e42eda68f6",
+  "files": [
+    {
+      "source_path": "lib/src/blue_data_ops/data/registry_seam.py",
+      "fixture_path": "data/registry_seam.py.txt",
+      "mode": "100644",
+      "sha256": "771f164915efb64ebea8cd21028971651767a06486b9240780259180373af7aa"
+    },
+    {
+      "source_path": "lib/src/blue_data_ops/operators/insert_table_operator.py",
+      "fixture_path": "operators/insert_table_operator.py.txt",
+      "mode": "100644",
+      "sha256": "53fa1fd28f8141d9e10799c77c2cd9c87821dd4b30d76ed0db49d0113be820db"
+    },
+    {
+      "source_path": "lib/src/blue_data_ops/operators/create_database_operator.py",
+      "fixture_path": "operators/create_database_operator.py.txt",
+      "mode": "100644",
+      "sha256": "ce5eb3429058756222d6cd93b7d26e80ff4a904898ab2375b22ddfed71d12277"
+    },
+    {
+      "source_path": "lib/src/blue_data_ops/operators/create_table_operator.py",
+      "fixture_path": "operators/create_table_operator.py.txt",
+      "mode": "100644",
+      "sha256": "13a3fb1922b4d882212df5b274c757bb2a4159414405cee12ef766efe5e17a4c"
+    },
+    {
+      "source_path": "lib/src/blue_data_ops/operators/nl2bn_operator.py",
+      "fixture_path": "operators/nl2bn_operator.py.txt",
+      "mode": "100644",
+      "sha256": "2227b3cdc7aa4eb0019d34e9fcc3255415506d2772120bd82047e6df6bec5d1a"
+    }
+  ]
+}

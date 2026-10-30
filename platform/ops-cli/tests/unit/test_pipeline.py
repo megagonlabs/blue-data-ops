@@ -22,8 +22,15 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from blue_data_ops.operators import OperatorRegistry
-from blue_data_ops.plan import DataPipeline
+from blue_data_ops.operators import (
+    ErrorCategory,
+    ErrorCode,
+    ErrorRecord,
+    ErrorStage,
+    ExecMeta,
+    OperatorRegistry,
+)
+from blue_data_ops.plan import DataPipeline, NodeRun, PipelineRun, Status
 from click.testing import CliRunner
 
 from blue_data_ops_cli import config, configstore, pipeline
@@ -206,8 +213,17 @@ def fake_client(payload: dict[str, Any]) -> Any:
     return Client()
 
 
+@pytest.mark.parametrize(
+    ("model_option", "expected_model"),
+    [([], "gpt-6-luna"), (["--model", "gpt-4o"], "gpt-4o")],
+)
 def test_the_provider_planner_runs_against_an_injected_client(
-    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cli_home: Path
+    runner: CliRunner,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cli_home: Path,
+    model_option: list[str],
+    expected_model: str,
 ) -> None:
     """No network and no credential: the client is handed in and returns a fixed plan."""
     candidate: dict[str, Any] = {
@@ -249,8 +265,7 @@ def test_the_provider_planner_runs_against_an_injected_client(
             path,
             "--planner",
             "openai",
-            "--model",
-            "gpt-4o",
+            *model_option,
             "--format",
             "json",
         ],
@@ -259,7 +274,8 @@ def test_the_provider_planner_runs_against_an_injected_client(
     assert body(result.stdout)["planning"]["operator_ids"] == ["select@2.0.0", "avg@3.0.0"]
     assert (cli_home / "default" / "pipeline" / "planned" / "pipeline.json").is_file()
     assert len(client.calls) == 1
-    assert client.calls[0]["model"] == "gpt-4o"
+    assert client.calls[0]["model"] == expected_model
+    assert "temperature" not in client.calls[0]
     assert "OPENAI_API_KEY" not in json.dumps(client.calls[0])
 
 
@@ -398,6 +414,32 @@ def test_declining_the_removal_is_not_a_failure(runner: CliRunner, stored: Path)
 
 
 # ------------------------------------------------------------------- run --
+def test_node_run_payload_masks_recoverable_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    marker = "fixture-value-1234"
+    monkeypatch.setenv("BLUE_TEST_TOKEN", marker)
+    error = ErrorRecord(
+        ErrorCategory.RECOVERABLE,
+        ErrorCode.EXECUTION_FAILED,
+        "select@2.0.0",
+        ErrorStage.EXECUTE,
+        f"provider returned {marker}",
+        True,
+        f"check {marker}",
+    )
+    node = NodeRun(
+        "filter",
+        "select@2.0.0",
+        Status.EXECUTED,
+        [[]],
+        {},
+        ExecMeta(True, [error], [], {}),
+    )
+    payload = pipeline.node_run_payload(PipelineRun([[]], (node,), None))
+    assert marker not in json.dumps(payload)
+    assert payload[0]["errors"][0]["message"] == "provider returned ***"
+    assert payload[0]["errors"][0]["suggestion"] == "check ***"
+
+
 def test_run_executes_the_stored_pipeline(
     runner: CliRunner, stored: Path, orders_file: str
 ) -> None:
@@ -503,50 +545,139 @@ def test_run_reads_the_bundle_from_standard_input(runner: CliRunner, stored: Pat
     assert body(result.stdout)["result"]["output_data"] == [[{"average_total": 167.5}]]
 
 
-def test_run_reports_the_settings_it_applied(
-    runner: CliRunner, stored: Path, orders_file: str
+def test_non_llm_run_skips_model_default(runner: CliRunner, stored: Path, orders_file: str) -> None:
+    result = runner.invoke(
+        cli,
+        ["pipeline", "run", "nightly", "--input-file", orders_file, "--format", "json"],
+    )
+    assert result.exit_code == 0, result.output
+    settings = body(result.stdout)["settings"]["applied"]
+    assert "openai.model" not in settings
+    assert "llm.reasoning_effort" not in settings
+
+    human = runner.invoke(cli, ["pipeline", "run", "nightly", "--input-file", orders_file])
+    assert human.exit_code == 0, human.output
+    assert "invocation defaults: (none)" in human.stdout
+
+
+def test_non_llm_run_rejects_llm_flags(runner: CliRunner, stored: Path, orders_file: str) -> None:
+    for option, value in (("--model", "gpt-5-mini"), ("--reasoning-effort", "medium")):
+        result = runner.invoke(
+            cli,
+            [
+                "pipeline",
+                "run",
+                "nightly",
+                "--input-file",
+                orders_file,
+                option,
+                value,
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == config.EXIT_USAGE
+        assert body(result.stdout)["error"]["code"] == config.USAGE
+
+
+def test_mixed_pipeline_keeps_llm_invocation_defaults(
+    runner: CliRunner,
+    tmp_path: Path,
+    orders_file: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import litellm
+
+    calls: list[dict[str, Any]] = []
+
+    class OfflineResponse:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "[]"}}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+
+    def offline_completion(**kwargs: Any) -> OfflineResponse:
+        calls.append(kwargs)
+        return OfflineResponse()
+
+    def offline_cost(**kwargs: Any) -> float:
+        del kwargs
+        return 0.0
+
+    monkeypatch.setattr(litellm, "completion", offline_completion)
+    monkeypatch.setattr(litellm, "completion_cost", offline_cost)
+
+    plan = DataPipeline(label="mixed")
+    source = plan.define_input("records")
+    select = plan.define_operator(
+        "select@2.0.0",
+        attributes={"operand_key": "total", "operand": ">", "operand_val": 100},
+    )
+    generate = plan.define_operator(
+        "nl2llm@3.0.0", attributes={"query": "Return an empty JSON list."}
+    )
+    sink = plan.define_output("result")
+    plan.set_plan_input(source)
+    plan.set_plan_output(sink)
+    plan.connect_nodes(source, select)
+    plan.connect_nodes(select, generate)
+    plan.connect_nodes(generate, sink)
+    imported = runner.invoke(
+        cli,
+        [
+            "pipeline",
+            "import",
+            "mixed",
+            "--pipeline-file",
+            written(tmp_path / "mixed.json", plan.to_dict()),
+        ],
+    )
+    assert imported.exit_code == 0, imported.output
+
     result = runner.invoke(
         cli,
         [
             "pipeline",
             "run",
-            "nightly",
+            "mixed",
             "--input-file",
             orders_file,
             "--model",
-            "gpt-5-mini",
+            "gpt-6-luna",
             "--reasoning-effort",
-            "medium",
+            "low",
             "--format",
             "json",
         ],
     )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert calls[0]["model"] == "gpt-6-luna"
+    assert calls[0]["reasoning_effort"] == "low"
     settings = body(result.stdout)["settings"]
     assert settings["scope"] == "invocation_defaults"
-    assert settings["source"]["openai.model"] == "flag"
-    assert settings["applied"]["openai.model"] == "gpt-5-mini"
-    assert settings["source"]["llm.reasoning_effort"] == "flag"
-    assert settings["applied"]["llm.reasoning_effort"] == "medium"
+    assert settings["applied"]["openai.model"] == "gpt-6-luna"
+    assert settings["applied"]["llm.reasoning_effort"] == "low"
 
     human = runner.invoke(
         cli,
         [
             "pipeline",
             "run",
-            "nightly",
+            "mixed",
             "--input-file",
             orders_file,
             "--model",
-            "gpt-5-mini",
+            "gpt-6-luna",
             "--reasoning-effort",
-            "medium",
+            "low",
         ],
     )
     assert human.exit_code == 0, human.output
     assert "invocation defaults:" in human.stdout
-    assert "openai.model=gpt-5-mini (flag)" in human.stdout
-    assert "llm.reasoning_effort=medium (flag)" in human.stdout
+    assert "openai.model=gpt-6-luna (flag)" in human.stdout
+    assert "llm.reasoning_effort=low (flag)" in human.stdout
     assert "settings:" not in human.stdout
 
 

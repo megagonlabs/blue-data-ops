@@ -4,15 +4,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, cast
 
+from blue_data_ops.operators._execution_fallback import execution_failed
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.registry import OperatorRegistry
 from blue_data_ops.operators.types import (
     Attributes,
     DataBundle,
-    ErrorCategory,
-    ErrorCode,
-    ErrorRecord,
-    ErrorStage,
     ExecMeta,
     Properties,
 )
@@ -32,19 +29,21 @@ def _merge_property_layers(
     merged.update(call_properties)
     merged.update(node_properties)
 
-    service_prefix = "openai"
+    # Each layer must use the namespace selected by the final property merge.
+    service_prefix = str(merged.get("service_prefix", "openai"))
     for layer in (call_properties, plan_properties, node_properties):
-        service_prefix = str(layer.get("service_prefix", service_prefix))
         for field in _LAYERED_LLM_ALIASES:
             prefixed = f"{service_prefix}.{field}"
             neutral = f"llm.{field}"
-            if prefixed in layer or neutral in layer:
-                merged.pop(prefixed, None)
-                merged.pop(neutral, None)
-                if prefixed in layer:
-                    merged[prefixed] = layer[prefixed]
-                if neutral in layer:
-                    merged[neutral] = layer[neutral]
+            aliases = (prefixed, neutral)
+            if field == "max_tokens":
+                aliases += (f"{service_prefix}.max_completion_tokens",)
+            if any(key in layer for key in aliases):
+                for key in aliases:
+                    merged.pop(key, None)
+                for key in aliases:
+                    if key in layer:
+                        merged[key] = layer[key]
     return merged
 
 
@@ -147,7 +146,7 @@ class PipelineExecutor:
             except Exception:
                 output_data = [[]]
                 output_attributes = {}
-                exec_meta = _execution_failed(item.operator_id)
+                exec_meta = execution_failed(item.operator_id)
 
             failed = bool(exec_meta.errors)
             status = Status.FAILED if failed else Status.EXECUTED
@@ -404,22 +403,3 @@ def _mark_unfinished_failed(pipeline: DataPipeline, order: tuple[str, ...]) -> N
             Status.FAILED,
         }:
             pipeline.set_node_status(node, Status.FAILED)
-
-
-def _execution_failed(operator_id: str) -> ExecMeta:
-    return ExecMeta(
-        is_empty=False,
-        errors=[
-            ErrorRecord(
-                category=ErrorCategory.FAILED,
-                code=ErrorCode.EXECUTION_FAILED,
-                operator_id=operator_id,
-                stage=ErrorStage.EXECUTE,
-                message="operator execution failed",
-                retryable=False,
-                suggestion=None,
-            )
-        ],
-        logs=[],
-        traces={},
-    )

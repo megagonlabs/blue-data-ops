@@ -190,10 +190,10 @@ def _exceeds_json_depth(value: object, limit: int) -> bool:
 
 
 def snapshot_attribute_specs(operator: Operator) -> dict[str, AttributeSpec]:
-    """Refresh and detach the runtime attribute projection for a skill view."""
+    """Detach the live runtime attribute projection for a skill view."""
 
     try:
-        projected = operator._refresh_attribute_projection()  # pyright: ignore[reportPrivateUsage]
+        projected = operator._project_attribute_specs()  # pyright: ignore[reportPrivateUsage]
         if type(projected) is not dict:
             raise TypeError("attribute projection must be a dictionary")
         if any(

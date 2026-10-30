@@ -5,12 +5,12 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any
+from typing import Any, cast
 
 import litellm
 import pytest
 
-from blue_data_ops.llm import LLMClient
+from blue_data_ops.llm import LLMClient, LLMError
 from blue_data_ops.llm.client import (
     _InvocationCostObservation,  # pyright: ignore[reportPrivateUsage]
 )
@@ -36,6 +36,13 @@ class _Response:
             "choices": [{"message": {"role": "assistant", "content": self.content}}],
             "usage": {"prompt_tokens": 2, "completion_tokens": 1},
         }
+
+
+def _truncated_response() -> dict[str, Any]:
+    return {
+        "choices": [{"finish_reason": "length", "message": {"content": ""}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -194,14 +201,124 @@ def test_retry_marks_the_observation_incomplete(
     assert client.last_usage is not None and client.last_usage.cost == 0.4
 
 
+def test_observed_truncation_records_the_billed_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def truncated(**kwargs: Any) -> dict[str, Any]:
+        litellm.calls.append(kwargs)
+        return _truncated_response()
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+
+    def fixed_cost(**kwargs: Any) -> float:
+        return 0.5
+
+    monkeypatch.setattr(litellm, "completion_cost", fixed_cost)
+    client = LLMClient("test", PROPERTIES)
+    observation = _InvocationCostObservation()
+    with pytest.raises(LLMError) as raised:
+        client._execute_api_call_observed(  # pyright: ignore[reportPrivateUsage]
+            {}, PROPERTIES, {}, observation
+        )
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 1
+    assert observation.provider_attempts == 1
+    assert observation.complete_cost() == 0.5
+    assert client.last_usage is not None
+    assert client.last_usage.prompt_tokens == 10
+    assert client.last_usage.completion_tokens == 20
+    assert client.last_usage.cost == 0.5
+
+
+def test_observed_cached_truncation_has_no_new_provider_cost(
+    tmp_path: Any,
+) -> None:
+    cache_dir = str(tmp_path / "llm-cache")
+    properties = {**PROPERTIES, "llm.cache": True, "llm.cache_dir": cache_dir}
+    client = LLMClient("test", properties)
+    client.execute_api_call({}, additional_data={})
+    cache = client._caches[cache_dir]  # pyright: ignore[reportPrivateUsage]
+    key = next(iter(cache))
+    cache[key] = _truncated_response()
+    observation = _InvocationCostObservation()
+    with pytest.raises(LLMError) as raised:
+        client._execute_api_call_observed(  # pyright: ignore[reportPrivateUsage]
+            {}, properties, {}, observation
+        )
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 1
+    assert observation.local_cache_hit is True
+    assert observation.provider_attempts == 0
+    assert observation.complete_cost() == 0.0
+    assert client.last_usage is not None
+    assert client.last_usage.cache_hit is True
+    assert client.last_usage.cost == 0.0
+    assert len(client.ledger.records) == 2
+
+
+def test_retry_then_truncation_keeps_total_cost_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def retry_then_truncate(**kwargs: Any) -> dict[str, Any]:
+        litellm.calls.append(kwargs)
+        if len(litellm.calls) == 1:
+            raise RuntimeError("retry transport")
+        return _truncated_response()
+
+    monkeypatch.setattr(litellm, "completion", retry_then_truncate)
+
+    def fixed_cost(**kwargs: Any) -> float:
+        return 0.6
+
+    monkeypatch.setattr(litellm, "completion_cost", fixed_cost)
+    client = LLMClient("test", PROPERTIES)
+    observation = _InvocationCostObservation()
+    with pytest.raises(LLMError) as raised:
+        client._execute_api_call_observed(  # pyright: ignore[reportPrivateUsage]
+            {}, PROPERTIES, {}, observation
+        )
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 2
+    assert observation.provider_attempts == 2
+    assert observation.estimated_cost == 0.6
+    assert observation.complete_cost() is None
+    assert len(client.ledger.records) == 1
+    assert client.last_usage is not None and client.last_usage.cost == 0.6
+
+
+def test_pricing_failure_does_not_hide_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def truncated(**kwargs: Any) -> dict[str, Any]:
+        return _truncated_response()
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+
+    def unavailable(**kwargs: Any) -> float:
+        raise RuntimeError("no price")
+
+    monkeypatch.setattr(litellm, "completion_cost", unavailable)
+    client = LLMClient("test", PROPERTIES)
+    observation = _InvocationCostObservation()
+    with pytest.raises(LLMError) as raised:
+        client._execute_api_call_observed(  # pyright: ignore[reportPrivateUsage]
+            {}, PROPERTIES, {}, observation
+        )
+    assert raised.value.code == "truncated_response"
+    assert observation.complete_cost() is None
+    assert client.last_usage is not None and client.last_usage.cost == 0.0
+
+
 def test_public_sync_path_preserves_old_arity_overrides() -> None:
     class OldArityClient(LLMClient):
         provider_called = False
         materialize_called = False
 
-        def _call_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
+        def _old_arity_call_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
             self.provider_called = True
             return super()._call_provider(kwargs)
+
+        _call_provider = cast(Any, _old_arity_call_provider)
 
         def _materialize(self, response: Any) -> tuple[dict[str, Any], float]:
             self.materialize_called = True

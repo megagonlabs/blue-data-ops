@@ -8,9 +8,10 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextvars import ContextVar
 from copy import deepcopy
 from math import isfinite
-from typing import Any, ClassVar, ParamSpec, TypeVar, cast
+from typing import Any, ClassVar, Literal, ParamSpec, TypeVar, cast
 
-from blue_data_ops.llm.errors import LLMError
+from blue_data_ops.data.errors import REGISTRY_DIAGNOSTICS, owned_reason
+from blue_data_ops.llm.errors import LLMError, is_reply_failure, is_sql_schema_failure
 from blue_data_ops.operators._metadata import (
     definitions_from_specs,
     enrich_attribute_signature,
@@ -28,6 +29,7 @@ from blue_data_ops.operators.types import (
     FunctionResult,
     Properties,
     ValidationResult,
+    execution_diagnostic,
 )
 from blue_data_ops.tools import Tool
 from blue_data_ops.utils.type_utils import string_to_python_type, validate_parameter_type
@@ -41,7 +43,12 @@ _check_type = validate_parameter_type
 
 _INVALID_TIMEOUT_SUGGESTION = "execution.timeout_seconds must be a finite number greater than zero"
 _MISSING_LLM_SUGGESTION = "Install blue-data-ops[llm] on Python 3.11 or later."
-_UNSUPPORTED_LLM_SETTING_SUGGESTION = "Remove the unsupported setting or choose a compatible model."
+_UNSUPPORTED_LLM_SETTING_SUGGESTION = (
+    "For temperature, set llm.temperature=null; otherwise remove the unsupported "
+    "setting or choose a compatible model."
+)
+_TRUNCATED_LLM_SUGGESTION = "Increase llm.max_tokens; reasoning tokens use the same limit."
+_CONFLICTING_LLM_LIMITS_SUGGESTION = "Set only one of max_tokens and max_completion_tokens."
 _LLM_EXTRA_MODULES = frozenset({"diskcache", "jinja2", "litellm"})
 _OPERATOR_ID_OVERRIDE: ContextVar[tuple[int, str] | None] = ContextVar(
     "blue_data_ops_operator_id_override",
@@ -120,7 +127,7 @@ def _function_result(value: object) -> FunctionResult | None:
     if type(value) is not FunctionResult:
         return None
     output_data, output_attributes = _pair_fields(value)
-    if not _is_data_bundle(output_data) or not isinstance(output_attributes, dict):
+    if not isinstance(output_attributes, dict):
         return None
     return FunctionResult(
         cast(DataBundle, output_data),
@@ -129,6 +136,8 @@ def _function_result(value: object) -> FunctionResult | None:
 
 
 def _normalize_data(value: DataBundle) -> tuple[DataBundle, bool]:
+    if not _is_data_bundle(value):
+        raise ValueError("invalid output shape")
     if not value or all(not group for group in value):
         return [[]], True
     return value, False
@@ -151,6 +160,7 @@ def _error(
     message: str,
     *,
     suggestion: str | None = None,
+    retryable: bool = False,
 ) -> ErrorRecord:
     return ErrorRecord(
         category=category,
@@ -158,7 +168,7 @@ def _error(
         operator_id=operator_id,
         stage=stage,
         message=message,
-        retryable=False,
+        retryable=retryable,
         suggestion=suggestion,
     )
 
@@ -192,6 +202,38 @@ def _invalid_timeout_error(operator_id: str) -> ErrorRecord:
 
 
 def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
+    custom = execution_diagnostic(exception)
+    if custom is not None:
+        message, suggestion, retryable = custom
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            message,
+            suggestion=suggestion,
+            retryable=retryable,
+        )
+    if is_sql_schema_failure(exception):
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            "generated SQL failed against the approved schema",
+            suggestion="Rephrase the question or check the declared target and schema.",
+        )
+    if is_reply_failure(exception):
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            "model reply did not match the operator's output format",
+            suggestion=(
+                "Simplify the request or choose a model that follows the required output format."
+            ),
+        )
     if isinstance(exception, LLMError) and exception.code == "unsupported_parameter":
         return _error(
             operator_id,
@@ -200,6 +242,24 @@ def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
             ErrorStage.EXECUTE,
             "model rejected a requested generation setting",
             suggestion=_UNSUPPORTED_LLM_SETTING_SUGGESTION,
+        )
+    if isinstance(exception, LLMError) and exception.code == "truncated_response":
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            "model output was cut off by the completion-token limit",
+            suggestion=_TRUNCATED_LLM_SUGGESTION,
+        )
+    if isinstance(exception, LLMError) and exception.code == "conflicting_token_limits":
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            "conflicting LLM token limits",
+            suggestion=_CONFLICTING_LLM_LIMITS_SUGGESTION,
         )
     missing = exception
     if not isinstance(missing, ModuleNotFoundError):
@@ -217,12 +277,136 @@ def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
             "LLM dependency is unavailable",
             suggestion=_MISSING_LLM_SUGGESTION,
         )
+    if isinstance(exception, LLMError) and exception.code != "cache_unavailable":
+        # Provider exception text can contain request or deployment details. Publish
+        # only messages we own, while retaining the stable operator error code.
+        llm_messages: dict[str, tuple[str, str]] = {
+            "reserved_field": (
+                "operator template and transport controls are reserved",
+                (
+                    "Remove caller template, extraction and transport controls; use a "
+                    "host-configured operator."
+                ),
+            ),
+            "sql_policy_invalid": (
+                "invalid SQL execution policy",
+                (
+                    "Use a boolean execute_query and omit validate_query_prefixes or use a "
+                    "one-item SELECT list; remove caller execution capabilities and registry "
+                    "selectors when requesting execution."
+                ),
+            ),
+            "sql_execution_unavailable": (
+                "read-only SQL execution is not configured",
+                (
+                    "Request generation only, or ask the deployment owner to configure a "
+                    "supported read-only SQL executor."
+                ),
+            ),
+            "sql_target_denied": (
+                "SQL target is outside the configured execution scope",
+                "Use a target approved by the deployment owner, or request generation only.",
+            ),
+            "sql_query_rejected": (
+                "generated SQL does not satisfy the read-only query contract",
+                (
+                    "Request one SELECT statement as a nonempty string; execution also "
+                    "requires the database read-only guard."
+                ),
+            ),
+            "provider_context": (
+                "model request exceeds the context window",
+                "Reduce input or context, or choose a model with a larger context window.",
+            ),
+            "provider_content": (
+                "model provider refused the request content",
+                "Revise the request or use a deployment-approved model.",
+            ),
+            "provider_rate_limit": (
+                "model provider rate limit reached",
+                "Wait before making another call.",
+            ),
+            "provider_timeout": (
+                "model provider timed out",
+                "Check provider availability before another call.",
+            ),
+            "provider_connection": (
+                "model provider connection failed",
+                "Check provider availability before another call.",
+            ),
+            "provider_unavailable": (
+                "model provider is temporarily unavailable",
+                "Try another call after provider recovery.",
+            ),
+            "provider_credentials": (
+                "model provider rejected its credentials",
+                "Check the provider credential in the deployment environment.",
+            ),
+            "provider_model_missing": (
+                "model provider could not find the requested model",
+                "Check the configured model name and provider access.",
+            ),
+            "sql_execution_failed": (
+                "read-only SQL execution failed",
+                (
+                    "Ask the deployment owner to check the approved target and read-only "
+                    "database configuration."
+                ),
+            ),
+            "model_not_allowed": (
+                "model is not allowed by this deployment",
+                "Choose a model served and allowed by this deployment.",
+            ),
+            "no_model": (
+                "no LLM model is configured",
+                "Set llm.model or the operator's provider model setting.",
+            ),
+            "bad_override": (
+                "LLM setting is not supported",
+                "Use a documented llm.* or provider generation setting.",
+            ),
+            "bad_provider": (
+                "deployment LLM provider is not recognized",
+                "Check BLUE_DATA_LLM_PROVIDER in the deployment environment.",
+            ),
+            "bad_response": (
+                "model provider returned an invalid response",
+                "Check provider availability and response format.",
+            ),
+        }
+        if exception.code == "provider_error":
+            message, suggestion = (
+                "model provider request failed",
+                "Check provider availability and deployment settings.",
+            )
+        else:
+            message, suggestion = llm_messages.get(
+                exception.code or "",
+                ("LLM request failed", "Check the model and LLM settings."),
+            )
+        return _error(
+            operator_id,
+            ErrorCategory.FAILED,
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
+            message,
+            suggestion=suggestion,
+            retryable=exception.code
+            in {
+                "provider_rate_limit",
+                "provider_timeout",
+                "provider_connection",
+                "provider_unavailable",
+            },
+        )
+    message, suggestion = REGISTRY_DIAGNOSTICS[owned_reason(exception)]
     return _error(
         operator_id,
         ErrorCategory.FAILED,
         ErrorCode.EXECUTION_FAILED,
         ErrorStage.EXECUTE,
-        "operator execution failed",
+        message,
+        suggestion=suggestion,
     )
 
 
@@ -270,7 +454,7 @@ def default_attributes_validator(
                 raise
             if error_handling == "log":
                 return False
-            logging.exception("attribute validation failed for %s", name)
+            logging.debug("attribute validation failed")
     return True
 
 
@@ -366,7 +550,6 @@ class Operator(Tool, ABC):
                 "validate_output": True,
                 "validation_error_handling": "fail",
                 "max_records": None,
-                "timeout": 300,
                 "error_handling": "skip",
                 "log_processing_stats": True,
                 "attributes": {},
@@ -384,11 +567,14 @@ class Operator(Tool, ABC):
         definitions = cast(dict[str, Any], self.properties["attributes"])
         enrich_attribute_signature(self.properties["signature"], definitions)
 
-    def _refresh_attribute_projection(self) -> dict[str, AttributeSpec]:
-        projected = project_specs(
+    def _project_attribute_specs(self) -> dict[str, AttributeSpec]:
+        return project_specs(
             self.properties.get("attributes"),
             self._metadata_materialize_defaults,
         )
+
+    def _refresh_attribute_projection(self) -> dict[str, AttributeSpec]:
+        projected = self._project_attribute_specs()
         current = self.attributes
         current.clear()
         current.update(projected)
@@ -521,7 +707,7 @@ class Operator(Tool, ABC):
         properties: Properties | None,
     ) -> tuple[DataBundle, Attributes, ExecMeta]:
         try:
-            schema = self._refresh_attribute_projection()
+            schema = self._project_attribute_specs()
         except Exception:
             error = _error(
                 self.operator_id,
@@ -624,6 +810,25 @@ class Operator(Tool, ABC):
             return [[]], {}, _meta(error=error)
         try:
             output_data, is_empty = _normalize_data(result.output_data)
+        except Exception:
+            try:
+                model_records = self._invalid_output_shape_reason() == "model_records"
+            except Exception:
+                model_records = False
+            error = _error(
+                self.operator_id,
+                ErrorCategory.FAILED,
+                ErrorCode.EXECUTION_RESULT_INVALID,
+                ErrorStage.NORMALIZE,
+                "model reply is not an array of records"
+                if model_records
+                else "operator returned an invalid result",
+                suggestion="Request a JSON array of objects in the model reply."
+                if model_records
+                else None,
+            )
+            return [[]], {}, _meta(error=error)
+        try:
             output_attributes = deepcopy(dict(result.output_attributes))
         except Exception:
             error = _error(
@@ -635,6 +840,9 @@ class Operator(Tool, ABC):
             )
             return [[]], {}, _meta(error=error)
         return output_data, output_attributes, _meta(is_empty=is_empty)
+
+    def _invalid_output_shape_reason(self) -> Literal["generic", "model_records"]:
+        return "generic"
 
     def explain(
         self,
@@ -733,7 +941,7 @@ class Operator(Tool, ABC):
     def is_required(self, attribute: str) -> bool | None:
         """Report whether attribute is declared required (None if unknown)."""
         try:
-            spec = self._refresh_attribute_projection().get(attribute)
+            spec = self._project_attribute_specs().get(attribute)
         except Exception:
             return None
         return spec.required if spec is not None else None
@@ -741,7 +949,7 @@ class Operator(Tool, ABC):
     def default_of(self, attribute: str) -> Any:
         """Return the declared default for attribute (None if unknown or unset)."""
         try:
-            spec = self._refresh_attribute_projection().get(attribute)
+            spec = self._project_attribute_specs().get(attribute)
         except Exception:
             return None
         return spec.default if spec is not None else None

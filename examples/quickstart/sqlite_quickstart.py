@@ -14,9 +14,20 @@ def main() -> None:
     data_discover = registry.resolve("data_discover@2.0.0")
     with TemporaryDirectory(prefix="blue-data-ops-") as directory:
         seam = build_demo_registry(directory)
+        sources, _, source_meta = data_discover.run(
+            [[]],
+            {"search_query": "demo_sqlite", "approximate": False},
+            {"data_registry": seam},
+        )
+        assert source_meta.errors == []
+        assert len(sources[0]) == 1
+        source_name = sources[0][0]["name"]
+        assert source_name == "demo_sqlite"
+        assert "connection" not in repr(sources)
+
         rows = seam.execute_query(
             "SELECT id, region, total FROM orders ORDER BY id",
-            "demo_sqlite",
+            source_name,
             "shop",
             "public",
         )
@@ -24,13 +35,13 @@ def main() -> None:
 
         _, _, create_meta = create_database.run(
             [[]],
-            {"source": "demo_sqlite", "database": "scratch"},
+            {"source": source_name, "database": "scratch"},
             {"data_registry": seam},
         )
 
         inserted, _, insert_meta = insert_table.run(
             [[{"id": 11, "region": "north", "total": 275.0}]],
-            {"source": "demo_sqlite", "database": "shop", "table": "orders"},
+            {"source": source_name, "database": "shop", "table": "orders"},
             {"data_registry": seam},
         )
         discovered, _, discover_meta = data_discover.run(

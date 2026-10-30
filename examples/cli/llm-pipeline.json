@@ -1,0 +1,37 @@
+{
+  "id": "llm-example",
+  "label": "LLM override and effort clearing",
+  "type": "DATA_PIPELINE",
+  "nodes": {
+    "input": {
+      "id": "input", "label": "records", "type": "INPUT", "prev": [],
+      "next": ["generate"], "properties": {}, "values": {}, "statuses": {},
+      "value": null, "provenance": "$.llm-example"
+    },
+    "generate": {
+      "id": "generate", "label": "generate", "type": "OPERATOR", "prev": ["input"],
+      "next": ["output"],
+      "properties": {"llm.model": "gpt-4o-mini", "llm.reasoning_effort": null},
+      "values": {}, "statuses": {}, "OPERATOR": "llm-operator",
+      "provenance": "$.llm-example"
+    },
+    "output": {
+      "id": "output", "label": "result", "type": "OUTPUT", "prev": ["generate"],
+      "next": [], "properties": {}, "values": {}, "statuses": {},
+      "value": null, "provenance": "$.llm-example"
+    }
+  },
+  "map": {"records": "input", "generate": "generate", "result": "output"},
+  "entities": {
+    "OPERATOR": {
+      "llm-operator": {
+        "id": "llm-operator", "label": null, "type": "OPERATOR",
+        "properties": {"llm.model": "gpt-4o-mini", "llm.reasoning_effort": null},
+        "nodes": ["generate"], "operator_id": "nl2llm@3.0.0",
+        "attributes": {"query": "Return an empty JSON array."}
+      }
+    }
+  },
+  "properties": {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "medium"},
+  "provenance": "$", "input": "input", "output": "output", "attributes": {}
+}

@@ -4,7 +4,10 @@ import json
 from abc import ABC, abstractmethod
 from typing import Any
 
-from blue_data_ops.llm.client import LLMClient
+from blue_data_ops.llm.client import (
+    LLMClient,
+    _inherits_temperature,  # pyright: ignore[reportPrivateUsage]
+)
 
 
 class LLMClientProvider(ABC):
@@ -47,7 +50,7 @@ class CachingLLMClientProvider(LLMClientProvider):
             or self._is_prefixed(key, properties)
         }
         try:
-            cache_key = json.dumps(relevant, sort_keys=True)
+            cache_key = json.dumps([_inherits_temperature(properties), relevant], sort_keys=True)
         except (TypeError, ValueError):
             # non-serializable config: construct uncached (never an error)
             return LLMClient(name="llm_client", properties=properties)

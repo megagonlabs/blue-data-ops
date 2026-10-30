@@ -225,13 +225,13 @@ The provider seam the LLM-backed operators call through.
 - Records one `UsageRecord` per call, cache hits included, with model, token counts, cost, end-to-end latency, and a cache-hit flag.
 - The default lifetime is one client per invocation. `properties["llm_client"]` injects one; `CachingLLMClientProvider` reuses one per configuration, and the cache's lifetime belongs to whoever created the provider.
 
-`tenacity` is imported at module import time here, which is why it is a core dependency rather than part of the `llm` extra. LiteLLM, `diskcache`, and Jinja2 are imported inside the functions that use them.
+`tenacity` is imported at module import time here, which is why it is a core dependency rather than part of the `llm` extra. LiteLLM and `diskcache` are imported inside the functions that use them. The dollar renderer uses the standard library; Jinja2 remains declared in the compatibility bundle.
 
 ### Utilities
 
 The Blue helper functions the operator surface depends on, under the same names and with the same behavior, without importing `blue`.
 
-Type parsing and validation, annotation and signature extraction, the MCP type-shape conversion, JSON merge and JSONPath query and set, canonical ID helpers, and recursive template substitution.
+Type parsing and validation, annotation and signature extraction, the MCP type-shape conversion, JSON merge and JSONPath query and set, canonical ID helpers, and one-pass dollar substitution.
 Helpers outside the operator closure are left out on purpose: most of Blue's JSON utilities, the base64 pair in `string_utils`, and the logging helpers.
 The porting details that are easy to get wrong — which `typing` objects `string_to_python_type` returns, the falsy-default quirk in `extract_signature`, `merge_json` raising on a scalar base — are recorded in [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md).
 

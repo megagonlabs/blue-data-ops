@@ -7,7 +7,7 @@ This package exposes Blue Data Operators as MCP tools over the structured execut
 It serves 33 primary tools and no refinement companions by default.
 The exact operator selection is the same 33-ID projection returned by core `active_registry()`.
 
-The adapter pins `blue-data-ops==3.1.0`.
+The adapter pins `blue-data-ops==1.0.0`.
 Every tool name is `ops_` followed by the core operator's logical name, so the `select` operator is served as `ops_select` and `avg` as `ops_avg`.
 Each tool's `_meta` carries its exact mixed-version operator ID, which stays unprefixed because it names a core registration rather than a wire surface.
 
@@ -17,28 +17,32 @@ For a source checkout, place `blue-data` and `blue-data-ops` under the same pare
 From the `blue-data-ops` repository root, install the sibling dependency, core, and adapter:
 
 ```bash
-python -m pip install ../blue-data/lib
-python -m pip install "./lib[ml,vector,llm]"
-python -m pip install ./platform/ops-mcp
+python -m pip install "../blue-data/lib[server]" "blue-data[server]>=1.0.0"
+python -m pip install "./lib[ml,vector,llm]" "blue-data-ops==1.0.0"
+python -m pip install ./platform/ops-mcp "blue-data-ops-mcp==1.0.0"
 ```
 
-`platform/ops-mcp/scripts/install.sh` does the same three steps through the library's own installer, which resolves `blue-data` from its checkout first.
+`platform/ops-mcp/scripts/install.sh` resolves `blue-data` from its checkout first, then installs the core, its ML, vector, and LLM extras, and the MCP adapter. It also installs the core and adapter development extras; use the three commands above for a runtime-only install.
 
 If your artifact index is configured separately:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.1.0" \
+  "blue-data-ops[ml,vector,llm]==1.0.0" \
   "blue-data-ops-mcp==1.0.0"
 ```
 
 `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators resolve a provider client when called.
-This package reads no environment variable of its own.
-Core reads two: `BLUE_DATA_LLM_PROVIDER`, which names the provider every call is sent to and defaults to `openai`, and `BLUE_DATA_LLM_ALLOWED_MODELS`, which when set is the exact set of models a call property may ask for.
-Both come from the environment the server process was started in, which a tool caller cannot reach, and together they are what makes the provider the deployment's choice rather than the caller's.
-The rest are the provider SDK's, read the same way — `OPENAI_API_KEY` for an OpenAI-compatible endpoint, and the equivalent for whichever provider `BLUE_DATA_LLM_PROVIDER` names.
-The `openai.model` property selects the model within that provider; its default is `gpt-4o`, and a provider-qualified name such as `vertex_ai/gemini-2.5-pro` is refused, because choosing the provider is not a caller's to do.
-No tool takes a credential as an argument, and no tool is expected to be given one.
+The core library reads `BLUE_DATA_LLM_PROVIDER` and `BLUE_DATA_LLM_ALLOWED_MODELS`
+from the server's environment. The first defaults to `openai`; the second, when
+set, limits the model names tool callers can select. Put the provider credential
+in that environment too (`OPENAI_API_KEY` for the default provider). Tool
+callers may choose an allowed model with
+`llm.model` or `openai.model`, while the server controls the provider. A
+provider-qualified model name such as `vertex_ai/gemini-2.5-pro` is refused.
+Tools never accept credentials as arguments. The
+[model settings guide](llm-settings.md#choosing-a-model-for-an-llm-operator)
+shows a concrete provider setup and explains the separate planner path.
 
 Read the adapter version from distribution metadata:
 
@@ -66,7 +70,7 @@ Point one at it the usual way:
   "mcpServers": {
     "blue-data-ops": {
       "type": "streamable-http",
-      "url": "http://127.0.0.1:8000/mcp"
+      "url": "http://127.0.0.1:8010/mcp"
     }
   }
 }
@@ -74,6 +78,11 @@ Point one at it the usual way:
 
 The URL is the server's default bind.
 Change it in both places together, and read the transport note below before binding anything but loopback.
+The console command takes no `--help`, `--version`, host, or port options; those arguments start the default server. To use another loopback port, call `serve()` from Python and update the client URL:
+
+```bash
+python -c 'from blue_data_ops_mcp import serve; serve(port=8765)'
+```
 
 ### Transport
 
@@ -81,13 +90,110 @@ This server speaks streamable HTTP over a stateful session.
 The rest of the Blue Data family speaks stdio, and this server is the exception.
 
 Long CPU- and provider-bound calls run on worker threads, keeping the event loop responsive while multiple calls remain in flight.
-Stateful HTTP sessions also support cancellation of a running call.
+Stateful HTTP sessions do not by themselves cancel product work. With the tested Python MCP 1.30.0,
+cancelling the local awaiter, using `asyncio.wait_for()`, or reaching the SDK read timeout does
+not send `notifications/cancelled`; the request can still run. An explicit notification received
+after the handler enters `DeploymentRegistry.run()` can cancel its wait. An immediate notification
+sent before the handler starts can be lost. A running worker continues.
 A client-spawned stdio process would tie the server lifetime to one client and would not preserve the current cross-session concurrency model.
 Changing to stdio would be a breaking transport change.
 
-Both server functions and the console command accept the loopback defaults `127.0.0.1`, `8000`, and `/mcp`.
-Review network exposure before changing the loopback host: a tool call carries provider and registry settings in its `properties` argument, and loopback is what keeps that reachable only from the host the server runs on.
-A tool argument can no longer choose the provider endpoint — a property that names one is refused — but the settings a call does carry are still worth keeping on one host.
+### HTTP authentication and bind settings
+
+HTTP requires `blue-data[server]>=1.0.0`. A missing helper or FastAPI installation fails
+with an installation error; use the compatible source's `[server]` extra or the configured
+index. The same shared guards protect streamable HTTP and SSE, including custom routes,
+unknown paths, `/health`, and both SSE endpoints. There are no public path exemptions.
+Websocket requests are closed with code 1008 before acceptance.
+
+Set `BLUE_DATA_OPS_MCP_KEY` in the server environment and configure the client to send its
+value in `X-API-Key` or `Authorization: Bearer`. Keep values in environment/secret storage.
+A Python client can use `httpx.AsyncClient(headers={"X-API-Key": os.environ["BLUE_DATA_OPS_MCP_KEY"]})`
+and pass it as `http_client` to `streamable_http_client`. Client configuration formats differ;
+the URL example above also requires authentication configured through that client's header support.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BLUE_DATA_OPS_MCP_HOST` | `127.0.0.1` | Built-in listener host |
+| `BLUE_DATA_OPS_MCP_PORT` | `8010` | Built-in listener port |
+| `BLUE_DATA_OPS_MCP_KEY` | unset | Required key; unset denies HTTP by default |
+| `BLUE_DATA_OPS_MCP_AUTH_DISABLED` | unset | Explicit no-key opt-out: `1`, `true`, or `yes`, ignoring case |
+
+`create_server(host=..., port=...)` and `serve(...)` override the environment per field.
+Omission (`None`) selects the environment/default. Hosts are stripped and must be nonempty;
+ports must be integers 1–65535, with booleans refused as Python arguments. Environment port
+text uses Python `int()` syntax, including whitespace, underscores, signs and Unicode decimal
+digits; the resulting range is still enforced. Invalid effective settings fail before startup.
+An explicit port overrides even invalid environment port text. Recreate the server to change
+its host: editing `server.settings.host` is refused because SDK rebinding settings are fixed
+at construction. An edited port is validated again by each HTTP app builder.
+
+Authentication is checked on every request. A configured key wins even when the disable flag
+is set. After authentication, the shared CSRF guard refuses form, multipart and text/plain
+content types on POST, PUT, PATCH and DELETE, including case/parameters. JSON and bodyless
+requests proceed to SDK protocol validation. This content-type check is not a general browser
+isolation policy or a complete JSON validator. In-memory and stdio calls need no HTTP key.
+
+The SDK automatically enables DNS-rebinding Host/Origin checks only for the exact construction
+hosts `127.0.0.1`, `localhost`, and `::1`. Other addresses, including other loopback spellings,
+have no automatic SDK protection. Deliberate non-loopback binding with the shared no-key
+opt-out remains allowed and warns: reachable callers can run tools with the deployment's
+provider configuration and incur costs. A configured key suppresses that unauthenticated
+warning. Later environment changes can change authentication; the warning is not enforcement.
+Restrict network access and configure TLS/reverse-proxy policy for external deployment.
+
+### Embedding guarded HTTP apps
+
+Both `server.streamable_http_app()` and `server.sse_app(mount_path=None)` return guarded
+Starlette apps. The inherited `run(transport="streamable-http")`, `run(transport="sse")`,
+`run_streamable_http_async()` and `run_sse_async()` use those builders too. The console
+command and `serve()` keep stateful streamable HTTP at `/mcp`; SSE uses `/sse` and `/messages/`.
+The inherited stdio runner remains available to Python hosts.
+
+Mount only the guarded builder app. Private SDK handles such as
+`server.session_manager.handle_request` and `server._mcp_server` are trusted host internals
+and bypass this boundary. Parent FastAPI dependencies do not secure an MCP mount.
+Starlette does not start mounted child lifespans; a streamable HTTP host must run the child's
+session manager exactly once:
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from blue_data_ops_mcp import create_server
+
+server = create_server()
+child = server.streamable_http_app()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    async with server.session_manager.run():
+        yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.mount("/ops", child)  # MCP is /ops/mcp; HTTP authentication still applies.
+```
+
+Direct SDK app lifespans are preserved. Repeated builder calls do not stack guards, but the tested MCP
+1.30.0 session managers cannot be restarted: use a fresh server for each independent lifespan.
+The outer ASGI listener controls its own bind and exposure; the child cannot infer that interface.
+A default loopback child's SDK Host allow-list rejects non-loopback Host headers even when the
+outer listener is external. Choose the construction host and proxy headers for the intended
+exposure, and review the actual `server.settings.transport_security` before deploying.
+
+### Deployment data registry
+
+`create_server(data_registry=...)` and `serve(data_registry=...)` accept a host-owned `RegistrySeam` or raw `DataRegistry`, including an empty one. This is separate from `registry=`, which selects operator implementations. With `data_registry=None`, the first registry-backed call resolves environment configuration once for that server. Caller `data_registry`, `platform.name` and `data_registry.name` values cannot choose or replace the deployment registry. Untagged tools do not initialize it. Ordinary Python `resolve_registry()` keeps its existing injected-object, explicit-provider and cached name-pair behavior.
+
+Set `BLUE_DATA_REGISTRY_STORE` to `memory`, `file` or `redis` (case-insensitive, with no surrounding whitespace), or set `BLUE_DATA_SOURCES_CONFIG` to a readable JSON file containing a `sources` list of objects. An empty list is valid. An explicit store selector permits an empty registry. A missing, non-file, unreadable or malformed source file fails before construction; an unsupported store fails too. Blank values are absent. Other model, search, vector, registry-file or Redis settings alone do not configure MCP. With neither selector nor source file, registry calls return an owned `EXECUTION_FAILED` record; they never allocate a fallback registry from caller names. Missing and failed initialization are cached until a new server is created.
+
+The shared builder uses blue-data's store, enricher, hybrid-search, vector-dimension and source-loader helpers. Selecting `file` permits writes at `BLUE_DATA_REGISTRY_FILE` (default `blue_data_store.json`, relative to the process directory). Selecting `redis` uses its configured endpoint (default local Redis). A sources file without a store selector uses memory. Source loading can connect eagerly, enrich and sync metadata; it does not add embedding/vector builders. The dev dependency aborts a failed load/sync; 1.0 can retain unavailable sources or partially synced metadata. Successful initialization does not establish source health. Only the `blue_data.config` logger's records from the building thread are suppressed in favor of an owned summary; other dependency loggers are outside that filter.
+
+Registry calls enter an async queue before executor work is scheduled. They serialize within one server. When an explicit `notifications/cancelled` reaches a handler after it enters `DeploymentRegistry.run()`, a call still waiting for admission is removed from the queue and does not execute. Local task cancellation and client-side timeouts in the tested Python MCP 1.30.0 do not send that notification. An explicit notification sent immediately can arrive before the handler starts and be lost, so the request may execute later. Cancelling a handler after its worker starts leaves admission held until the worker finishes. Initial construction has no deadline: `execution.timeout_seconds` bounds only the later operator wait. Configure backend/provider connection timeouts separately. A hung build or an operator without a deadline can stall that server's registry lane indefinitely. An `OPERATOR_TIMEOUT` returns to the caller at once, but the timed-out body keeps this server's registry lane until the worker finishes. Calls already queued and new calls wait for it and then run normally, with no restart. Active or timed-out work may finish and change the backend. A code 0 `Request cancelled` response acknowledges cancellation handling; it does not prove that the operator or backend had no effects. There is no atomic rollback or no-effects guarantee, and cancellation does not terminate a worker. There is no automatic retry. Check backend effects before retrying a cancelled or timed-out write. A body that never finishes keeps the lane. Late non-daemon threads can delay process exit. Untagged calls and other servers continue. Injecting one registry into multiple servers provides no cross-server serialization.
+
+`ops_create_database`, `ops_create_table` and `ops_insert_table` now reach deployment sources and can persist writes, including partial writes before a contained error or timeout. Check backend effects before restarting. Stock NL2SQL tools have no executor and deny execution before registry construction. A host-configured exact built-in `NL2SQLOperator` or `NL2SQLOutcomeOperator` instance, including registered version/name aliases, can use its bound read-only capability; that path builds no ordinary deployment registry and injects no registry/naming selectors. Other subclasses, including those that customize prompts, require the direct Python host API for SQL execution.
 
 ## Embed or serve
 
@@ -128,7 +234,7 @@ asyncio.run(main())
 ```
 
 To expose the server over stateful streamable HTTP from your own process, run it directly.
-Defaults bind to `127.0.0.1:8000/mcp`:
+Defaults bind to `127.0.0.1:8010/mcp`:
 
 ```python
 from blue_data_ops_mcp import create_server
@@ -194,13 +300,19 @@ Then initialize an MCP session and call a tool:
 
 ```python
 import asyncio
+import os
 
+import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 
 async def main() -> None:
-    async with streamable_http_client("http://127.0.0.1:8000/mcp") as (
+    async with httpx.AsyncClient(
+        headers={"X-API-Key": os.environ["BLUE_DATA_OPS_MCP_KEY"]}
+    ) as http_client, streamable_http_client(
+        "http://127.0.0.1:8010/mcp", http_client=http_client
+    ) as (
         read_stream,
         write_stream,
         _,
@@ -279,7 +391,9 @@ Every tool accepts the same three open arguments:
 
 - required `input_data`: a list of record groups, where each group is a list of record objects;
 - optional `attributes`: an open object of operator arguments, defaulting to a fresh empty object;
-- optional `properties`: an open object or `null` carrying execution and backend settings. The recognized keys are `execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, `ops_cluster`, and `ops_sklearn_estimator` and without which `ops_sklearn_estimator` does not run at all; `platform.name` together with `data_registry.name`, which the six registry-backed tools need before they return anything but an empty result; `service_prefix`; and the two provider namespaces, `openai.*` and `llm.*`, both closed. `llm.*` takes `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel` and `rate_limit`. `openai.*` takes the generation parameters of the provider call and nothing else. Which provider answers, at which endpoint, in which project, tenant or region, and under which credential are the deployment's to set, from its own environment; a property naming any of them is refused with `reserved_field` rather than quietly dropped, because a dropped routing override would change who answered and say nothing.
+- optional `properties`: an open object or `null` carrying execution and backend settings. The recognized keys are `execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, `ops_cluster`, and `ops_sklearn_estimator` and without which `ops_sklearn_estimator` does not run at all; the deployment registry is configured by the host, while caller registry and naming selectors are discarded for ordinary registry calls and rejected for SQL execution; and the two provider namespaces, `openai.*` and `llm.*`, both closed. `llm.*` takes `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel` and `rate_limit`. `openai.*` takes the generation parameters of the provider call and nothing else. Which provider answers, at which endpoint, in which project, tenant or region, and under which credential are the deployment's to set, from its own environment; a service-prefixed property naming any of them is refused with `reserved_field` rather than quietly dropped, because silently dropping it could route the request to a different provider without telling the caller.
+
+`reserved_field` is the internal LLM error code for forbidden service-prefixed properties, including routing, credentials, and response-mocking settings. Forbidden `llm.*` settings instead produce `bad_override`. Both refusals happen before any provider request. The tool returns a non-retryable `EXECUTION_FAILED` record with a safe message and guidance to remove the forbidden property or use a documented setting.
 
 Use the neutral property names when selecting a model or effort for one tool call. These are the
 arguments objects for `ops_nl2llm` and `ops_semantic_filter`:
@@ -316,6 +430,7 @@ Optional attributes that materialize a default publish it; required attributes a
 
 An enum is published only where core enforces it, never on the strength of a description.
 Several attributes name their permitted values in prose and still accept others — `ops_nl2sql`'s `protocol`, `ops_nl2bn`'s `protocol_variant`, `ops_semantic_transform`'s `strategy`, and the scikit-learn pass-through settings on `ops_classify` and `ops_cluster` — and those stay open here so the schema does not refuse a call the operator would run.
+`ops_select.operand` also stays open: the core accepts an empty string and returns no matches, while its description names the six comparison operators callers normally use.
 
 Business validation belongs to canonical `run()`.
 The published schema advertises the operator's contract; it is not a second enforcement point in front of it.
@@ -428,11 +543,11 @@ The package ships a console command.
 The service directory moved from `platform/mcp/` to `platform/ops-mcp/`, matching the family's `<family>-<service>` naming.
 The distribution name `blue-data-ops-mcp` and the import name `blue_data_ops_mcp` are unchanged.
 
-The core pin moves with it, from `blue-data-ops==3.0.0` to `==3.1.0`, so a deployment updates both:
+The core pin moves with it, from `blue-data-ops==3.0.0` to `==1.0.0`, so a deployment updates both:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.1.0" \
+  "blue-data-ops[ml,vector,llm]==1.0.0" \
   "blue-data-ops-mcp==1.0.0"
 ```
 
@@ -447,7 +562,7 @@ They no longer resolve from a package registry, and there is no companion result
 A caller-created v2 card that reuses one of these names runs the caller's implementation; it does not restore the removed package binding.
 
 If a deployment still needs those package bindings, automatic refinement, or declarative plan expansion, keep a compatible core 2.x/MCP 0.x pair, such as core 2.10.0 with MCP 0.12.0.
-MCP 0.13.0 has no replacement companion path.
+This MCP release has no replacement companion path.
 
 Update both distributions together:
 

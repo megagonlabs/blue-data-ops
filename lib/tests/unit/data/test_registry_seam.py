@@ -28,6 +28,10 @@ from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # noqa
 from blue_data.source.vector.memory_vector_source import MemoryVectorSource  # noqa: E402
 
 from blue_data_ops.data import RegistrySeam  # noqa: E402
+from blue_data_ops.data.errors import RegistryFailure, RegistryReason  # noqa: E402
+from blue_data_ops.data.registry_seam import (  # noqa: E402
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+)
 
 
 def _stub_embedding(texts: list[str]) -> list[list[float]]:
@@ -324,8 +328,12 @@ def test_connect_source_fails_for_a_persisted_record_without_class_provenance(
     seam = RegistrySeam(reopened)
     cast("dict[str, Any]", seam.get_source_properties("persist_src")).pop("_class", None)
 
-    with pytest.raises(ValueError, match="_class"):
+    with pytest.raises(ValueError):
         seam.connect_source("persist_src")
+    with pytest.raises(RegistryFailure, match="data source is unavailable") as caught:
+        _diagnose_source(seam, "persist_src")
+    assert caught.value.reason is RegistryReason.SOURCE_UNAVAILABLE
+    assert reopened.sources == {}
 
     # The record listings the planning data context uses are unaffected either way.
     assert [r["name"] for r in seam.list_collection_entities("persist_src", "db", "public")] == [
@@ -440,10 +448,13 @@ def test_get_data_source_schema_blue_data_signature() -> None:
 
 
 def test_get_data_source_schema_real_shapes() -> None:
-    # An unknown source resolves to an empty entity/relation schema. A bn-protocol
-    # source reports graph_structure at the top level rather than under metadata.
+    # The facade preserves an empty schema for an unknown source; the owned check fails.
+    # A bn-protocol source reports graph_structure at the top level rather than under metadata.
     seam = RegistrySeam(DataRegistry(name="schema_probe", rebuild=True))
     assert seam.get_data_source_schema("absent", "db", "c") == {"entities": [], "relations": []}
+    with pytest.raises(RegistryFailure) as caught:
+        _diagnose_source(seam, "absent")
+    assert caught.value.reason is RegistryReason.SOURCE_NOT_REGISTERED
 
     bn_source = _memory_sql_stub("bn_src")
     bn_source.properties = {"connection": {"protocol": "bn"}}

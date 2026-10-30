@@ -1,2 +1,4 @@
 include README.md
+recursive-include scripts *.py
 recursive-include scripts *.sh
+include tests/unit/test_semantic_reply_errors.py

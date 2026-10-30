@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import cast
 
 import pytest
 
@@ -116,7 +117,7 @@ def test_transformer_returns_native_vectors(op: SklearnEstimator) -> None:
     )
 
     assert all(
-        isinstance(record["component"], list) and len(record["component"]) == 1
+        isinstance(record["component"], list) and len(cast(list[object], record["component"])) == 1
         for record in output[0]
     )
     assert CLUSTER_INPUT == original

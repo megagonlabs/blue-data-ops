@@ -124,17 +124,21 @@ async def test_unknown_tool_is_sdk_tool_error() -> None:
     assert "Unknown tool: ops_not_registered" in block.text
 
 
-async def test_malformed_asgi_requests_are_http_jsonrpc_errors() -> None:
+async def test_malformed_asgi_requests_are_http_jsonrpc_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BLUE_DATA_OPS_MCP_KEY", "protocol-fixture")
     app = create_server(operator_ids=()).streamable_http_app()
     headers = {
+        "x-api-key": "protocol-fixture",
         "accept": "application/json, text/event-stream",
         "content-type": "application/json",
-        "origin": "http://127.0.0.1:8000",
+        "origin": "http://127.0.0.1:8010",
     }
     transport = httpx.ASGITransport(app=app)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
-            transport=transport, base_url="http://127.0.0.1:8000"
+            transport=transport, base_url="http://127.0.0.1:8010"
         ) as client:
             bad_json = await client.post("/mcp", content="{", headers=headers)
             bad_message = await client.post("/mcp", json={}, headers=headers)

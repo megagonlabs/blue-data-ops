@@ -89,17 +89,55 @@ def test_sklearn_supplement_is_sealed_separately() -> None:
     generator = _generator()
     path = cast(Path, generator.SUPPLEMENTAL_EVIDENCE_PATH)
     raw = path.read_bytes()
-    source_path = LIB_ROOT / "tests" / "unit" / "operators" / "test_sklearn.py"
+    source_locator = cast(str, generator.SUPPLEMENTAL_SOURCE_LOCATOR)
+    source_path = LIB_ROOT.parent / source_locator
 
     assert hashlib.sha256(raw).hexdigest() == generator.SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256
     document = json.loads(raw)
     assert document["source_instrument"] == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT
     assert (
         hashlib.sha256(source_path.read_bytes()).hexdigest()
-        == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT["document_sha256"]
+        == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT["evidence_sha256"]
     )
     assert document["active_ids"] == list(generator.SUPPLEMENTAL_ACTIVE_IDS)
     assert generator._document_seal(document) == document["projection_seal_sha256"]
+    rows = generator._validate_evidence(
+        document,
+        expected_active_ids=generator.SUPPLEMENTAL_ACTIVE_IDS,
+        source_instrument=generator.SUPPLEMENTAL_SOURCE_INSTRUMENT,
+    )
+    generator._validate_supplemental_source_instrument(rows)
+
+    wrong_evidence = copy.deepcopy(generator.SUPPLEMENTAL_SOURCE_INSTRUMENT)
+    wrong_evidence["evidence_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="source instrument seal mismatch"):
+        generator._validate_supplemental_source_instrument(
+            rows,
+            source_instrument=wrong_evidence,
+        )
+
+    wrong_rows = copy.deepcopy(rows)
+    wrong_rows[0]["claims"]["success"]["summary"] = "changed"
+    with pytest.raises(ValueError, match="source instrument seal mismatch"):
+        generator._validate_supplemental_source_instrument(wrong_rows)
+
+    wrong_locator = copy.deepcopy(rows)
+    wrong_locator[0]["evidence"]["test_locator"]["node"] = "tests/other.py"
+    with pytest.raises(ValueError, match="source evidence locator mismatch"):
+        generator._validate_supplemental_source_instrument(wrong_locator)
+
+
+def test_combined_load_calls_supplemental_source_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _generator()
+
+    def firing_control(_rows: tuple[dict[str, Any], ...]) -> None:
+        raise ValueError("supplemental validation firing control")
+
+    monkeypatch.setattr(generator, "_validate_supplemental_source_instrument", firing_control)
+    with pytest.raises(ValueError, match="supplemental validation firing control"):
+        generator._load_combined_rows()
 
 
 def test_operator_reference_matches_the_active_registry_and_evidence() -> None:
@@ -207,7 +245,7 @@ def test_the_tag_taxonomy_contains_only_active_card_values() -> None:
         "| `requires-*` | unconditional operator-specific runtime requirement | zero or more |"
         in generated
     )
-    assert "Values are flat exact labels, not a hierarchy." in generated
+    assert "Tags are flat, exact-match labels with no parent-child relationships." in generated
     assert "callers still pass `input_data`" in generated
     assert "Malformed filters" in generated
     assert "nonempty, contains no whitespace, and" in generated
@@ -217,7 +255,8 @@ def test_the_tag_taxonomy_contains_only_active_card_values() -> None:
     assert "`-vector`, and `domain_-vector` are well-formed" in generated
     assert "absent tags match no cards." in generated
     assert "use `capability-metadata-search` or" in generated
-    assert "It returns metadata, not a plan." in generated
+    assert "Its result holds registry identities" in generated
+    assert "stored metadata remains in the registry." in generated
     assert "a custom tag is discoverable only when" in generated
     assert "its stored value equals the normalized filter" in generated
     assert 'tags=["domain-vector", "flow-transform"]' in generated
@@ -311,6 +350,35 @@ def test_wrong_live_implementation_fails_with_the_same_exact_id() -> None:
         generator._validate_registry(active_registry(), tuple(rows))
 
 
+@pytest.mark.parametrize(
+    "operator_id",
+    (
+        "nl2bn@3.0.0",
+        "semantic_extract@3.0.0",
+        "semantic_filter@3.0.0",
+        "semantic_join@3.0.0",
+        "semantic_project@3.0.0",
+        "semantic_transform@3.0.0",
+    ),
+)
+def test_llm_implementation_digest_matches_reference(operator_id: str) -> None:
+    generator = _generator()
+    rows = {row["operator_id"]: row for row in generator._load_combined_rows()}
+    implementation = rows[operator_id]["implementation"]
+    source_path = LIB_ROOT / implementation["path"]
+    assert hashlib.sha256(source_path.read_bytes()).hexdigest() == implementation["sha256"]
+
+
+def test_wrong_source_digest_still_fails() -> None:
+    generator = _generator()
+    rows = list(generator._load_combined_rows())
+    rows[0] = copy.deepcopy(rows[0])
+    rows[0]["implementation"]["sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="argmax@2.0.0: live implementation digest mismatch"):
+        generator._validate_registry(active_registry(), tuple(rows))
+
+
 def test_operator_reference_check_cli_does_not_rewrite_subject(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -329,3 +397,39 @@ def test_operator_reference_check_cli_does_not_rewrite_subject(
     with pytest.raises(SystemExit, match="is not current"):
         generator.main()
     assert output.read_text(encoding="utf-8") == "stale\n"
+
+
+@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0"))
+def test_current_rows_preserve_archived_evidence(operator_id: str) -> None:
+    generator = _generator()
+    before = generator.EVIDENCE_PATH.read_bytes()
+    archived = {row["operator_id"]: row for row in generator._load_evidence()["rows"]}
+    current = {row["operator_id"]: row for row in generator._load_combined_rows()}
+    old_sha, new_sha = generator._CURRENT_IMPLEMENTATION_BINDINGS[operator_id]
+    assert archived[operator_id]["implementation"]["sha256"] == old_sha
+    assert current[operator_id]["implementation"]["sha256"] == new_sha
+    assert generator.EVIDENCE_PATH.read_bytes() == before
+
+
+@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0"))
+def test_wrong_archived_binding_is_rejected(
+    operator_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _generator()
+    bindings = dict(generator._CURRENT_IMPLEMENTATION_BINDINGS)
+    _, current = bindings[operator_id]
+    bindings[operator_id] = ("0" * 64, current)
+    monkeypatch.setattr(generator, "_CURRENT_IMPLEMENTATION_BINDINGS", bindings)
+    with pytest.raises(ValueError, match="archived implementation identity mismatch"):
+        generator._load_combined_rows()
+
+
+@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0"))
+def test_wrong_current_binding_is_rejected(operator_id: str) -> None:
+    generator = _generator()
+    rows = list(generator._load_combined_rows())
+    target = next(i for i, row in enumerate(rows) if row["operator_id"] == operator_id)
+    rows[target] = copy.deepcopy(rows[target])
+    rows[target]["implementation"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="live implementation digest mismatch"):
+        generator._validate_registry(active_registry(), tuple(rows))

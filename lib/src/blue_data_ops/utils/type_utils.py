@@ -135,7 +135,7 @@ def validate_parameter_type(value: Any, expected_type: str | None) -> bool:
 
     ``None`` expected type accepts anything. A validation mismatch or a malformed
     type specification (including ``union[]``, which yields an empty Union and a
-    ``TypeError``) returns ``False`` with a warning. A genuine system fault is
+    ``TypeError``) returns ``False`` with a debug message. A genuine system fault is
     logged and re-raised as ``RuntimeError`` — Blue's fail boundary.
     """
     if expected_type is None:
@@ -147,9 +147,9 @@ def validate_parameter_type(value: Any, expected_type: str | None) -> bool:
         return True
     except ValidationError:
         return False
-    except (TypeError, ValueError, AttributeError) as error:
-        logging.warning(f"Invalid type specification '{expected_type}': {error}")
+    except (TypeError, ValueError, AttributeError):
+        logging.debug("Invalid type specification")
         return False
     except Exception as error:
-        logging.error(f"System error during parameter type validation: {error}")
+        logging.debug("System error during parameter type validation")
         raise RuntimeError(f"Parameter type validation system error: {error}") from error

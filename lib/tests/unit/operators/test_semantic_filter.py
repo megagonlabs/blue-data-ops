@@ -54,43 +54,28 @@ def test_guards_return_empty_without_provider(
 def test_string_truth_set_is_exact(
     op: SemanticFilterOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    records = [[{"id": index} for index in range(8)]]
-    _json_provider(
-        [" YES ", "match", "1", "include", "true", "false", "0", "anything"],
-        monkeypatch,
-    )
-    assert op.apply(records, {"filter_conditions": {"score": "high"}}) == [
-        [
-            records[0][0],
-            records[0][2],
-            records[0][3],
-            records[0][4],
-        ]
-    ]
+    _json_provider([" TRUE ", "false"], monkeypatch)
+    assert op.apply(DATA, {"filter_conditions": {"score": "high"}}) == [[DATA[0][0]]]
+    for value in ["yes", " YeS ", "1", " 1\t", "include", " InClUdE\n"]:
+        _json_provider([value, " false "], monkeypatch)
+        assert op.apply(DATA, {"filter_conditions": {"score": "high"}}) == [[DATA[0][0]]]
+    for value in ["maybe", "", "Yes.", "True."]:
+        _json_provider(value, monkeypatch)
+        with pytest.raises(ValueError, match="model reply"):
+            op.apply(DATA, {"filter_conditions": {"score": "high"}})
 
 
-def test_non_string_results_use_python_truthiness(
+def test_non_string_results_are_rejected(
     op: SemanticFilterOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    values = iter([1, 0, [], [0], None])
+    for value in [1, 0, [], [0], None]:
 
-    def fake(
-        self: LLMClient,
-        input: Any,
-        properties: dict[str, Any] | None = None,
-        additional_data: dict[str, Any] | None = None,
-    ) -> Any:
-        del self, input, properties, additional_data
-        return next(values)
+        def fake(*args: Any, **kwargs: Any) -> Any:
+            return value
 
-    monkeypatch.setattr(LLMClient, "execute_api_call", fake)
-    records = [[{"id": index} for index in range(5)]]
-    assert op.apply(records, {"filter_conditions": {"x": "keep"}}) == [
-        [
-            records[0][0],
-            records[0][3],
-        ]
-    ]
+        monkeypatch.setattr(LLMClient, "execute_api_call", fake)
+        with pytest.raises(ValueError, match="model reply"):
+            op.apply(DATA, {"filter_conditions": {"score": "high"}})
 
 
 def test_return_indices_and_exact_condition_text(
@@ -169,7 +154,7 @@ def test_prompt_and_defaults_are_pinned() -> None:
     )
     assert SemanticFilterOperator.DEFAULT_PROPERTIES == {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0,
@@ -181,8 +166,11 @@ def test_prompt_and_defaults_are_pinned() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         # The adapter deliberately leaves unknown cast names unchanged.

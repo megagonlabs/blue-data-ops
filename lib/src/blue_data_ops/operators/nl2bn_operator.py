@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
+from types import MethodType
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import RegistrySeam, resolve_registry
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.data.errors import RegistryNotConfigured
+from blue_data_ops.data.registry_seam import (
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+)
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import LLMError, is_reply_failure, raise_reply_failure
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._query_results import format_execution_result
 from blue_data_ops.operators.operator import Operator
@@ -21,7 +28,7 @@ from blue_data_ops.operators.types import (
 logger = logging.getLogger(__name__)
 
 
-class _MissingRegistryError(RuntimeError):
+class _MissingRegistryError(RegistryNotConfigured):
     pass
 
 
@@ -328,7 +335,7 @@ class NL2BNOperator(Operator):
     # operator's own response parse is outside it, where (as upstream) only
     # JSONDecodeError converts and any other parse failure propagates. Failures of
     # a CORRECTION call propagate (upstream leaves that call uncaught). Exhausted
-    # corrections raise ValueError.
+    # malformed replies raise ValueError; a zero-budget LLMError propagates unchanged.
 
     name: ClassVar[str] = "nl2bn"
     description: ClassVar[str] = (
@@ -393,7 +400,7 @@ class NL2BNOperator(Operator):
         # property-surface parity.
         "execute_query": True,
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 4096,
         "openai.temperature": 0,
@@ -405,8 +412,11 @@ class NL2BNOperator(Operator):
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",
@@ -419,7 +429,10 @@ class NL2BNOperator(Operator):
         properties: Properties | None = None,
     ) -> DataBundle:
         try:
-            return self._execute(input_data, attributes, properties).output_data
+            execute = self._execute
+            if type(execute) is MethodType and execute.__func__ is _BUILTIN_EXECUTE:
+                return self._execute_bn(input_data, attributes, properties).output_data
+            return execute(input_data, attributes, properties).output_data
         except _MissingRegistryError:
             return [[]]
 
@@ -429,6 +442,19 @@ class NL2BNOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        return self._execute_bn(input_data, attributes, properties, _diagnose_registry=True)
+
+    def _execute_bn(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+        *,
+        _diagnose_registry: bool = False,
+    ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         question = cast(str, attributes.get("question", ""))
         source = cast(str, attributes.get("source", ""))
         database = cast(str, attributes.get("database", "default"))
@@ -456,6 +482,8 @@ class NL2BNOperator(Operator):
         if not registry:
             raise _MissingRegistryError
 
+        if _diagnose_registry:
+            _diagnose_source(registry, source)
         schema_info, graph_structure = _resolve_schema_section(
             provided_schema, registry, source, database, collection
         )
@@ -464,6 +492,7 @@ class NL2BNOperator(Operator):
         # Caller properties override the operator defaults (Blue source merges the same
         # values through its instance properties; same observable, different shell).
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = resolve_llm_client(merged)
 
         additional_data = {
@@ -474,32 +503,32 @@ class NL2BNOperator(Operator):
 
         bn_query_data: dict[str, Any] = {}
         validation_errors: list[str] = []
-
+        service_error: LLMError | None = None
+        service_failure = False
         try:
             bn_query_result = client.execute_api_call(
                 {}, properties=merged, additional_data=additional_data
             )
-        except Exception as e:
-            # The Exception-wide scope is the upstream equivalent for failures leaving
-            # the CLIENT CALL ONLY (see the class note); the local parse below sits
-            # outside it so that, as upstream, only JSONDecodeError converts there and
-            # any other local parse failure propagates.
-            validation_errors.append(f"Service error: {str(e)}")
-            bn_query_data = {}
+        except Exception as error:
+            service_error = error if isinstance(error, LLMError) else None
+            service_failure = not is_reply_failure(error)
+            feedback = (
+                "model reply did not match the operator's output format"
+                if is_reply_failure(error)
+                else "model request failed"
+            )
+            validation_errors.append("Service error: " + feedback)
         else:
             if isinstance(bn_query_result, str):
                 try:
-                    bn_query_data = json.loads(bn_query_result)
-                except json.JSONDecodeError as e:
-                    validation_errors.append(f"Invalid JSON response from LLM: {str(e)}")
-                    bn_query_data = {}
-            elif isinstance(bn_query_result, dict):
-                bn_query_data = cast("dict[str, Any]", bn_query_result)
-            else:
-                validation_errors.append(
-                    f"Invalid response type from LLM: {type(bn_query_result).__name__}"
-                )
-                bn_query_data = {}
+                    bn_query_result = json.loads(bn_query_result)
+                except json.JSONDecodeError:
+                    validation_errors.append("Invalid JSON response from LLM")
+            if not validation_errors:
+                if isinstance(bn_query_result, dict):
+                    bn_query_data = cast(dict[str, Any], bn_query_result)
+                else:
+                    validation_errors.append("LLM response must be a query object")
 
         if not validation_errors:
             if "target_node" not in bn_query_data:
@@ -508,74 +537,59 @@ class NL2BNOperator(Operator):
                 validation_errors.append("No target_state found in LLM response")
             if "context" not in bn_query_data:
                 bn_query_data["context"] = {}
-
         if is_structured and not validation_errors:
             assert graph_structure is not None
             validation_errors.extend(_validate_bn_query(bn_query_data, graph_structure))
+
         correction_attempts = 0
-
         while validation_errors and correction_attempts < max_corrections:
-            logger.info(
-                f"Query validation found errors (attempt {correction_attempts + 1}): "
-                f"{validation_errors}"
-            )
-
+            logger.info("Query validation found errors (attempt %s)", correction_attempts + 1)
             correction_data = {
                 "question": question,
                 "original_query": json.dumps(bn_query_data, indent=2),
                 "validation_errors": json.dumps(validation_errors, indent=2),
                 "schema_section": schema_info,
             }
-
-            # Upstream deep-copies the properties before swapping the prompt; the only
-            # write is the top-level input_template, so a copy-with-override is the
-            # same observable without deep-copying live adapter objects (e.g. an
-            # injected client).
-            correction_properties = {**merged, "input_template": _CORRECTION_PROMPT}
-
+            correction_properties = merged.copy()
+            correction_properties["input_template"] = _CORRECTION_PROMPT
             correction_result = client.execute_api_call(
                 {}, properties=correction_properties, additional_data=correction_data
             )
-
+            service_error = None
+            service_failure = False
+            validation_errors = []
             if isinstance(correction_result, str):
                 try:
-                    bn_query_data = json.loads(correction_result)
-                    validation_errors = []
-                except json.JSONDecodeError as e:
-                    validation_errors = [f"Invalid JSON in corrected query: {str(e)}"]
+                    correction_result = json.loads(correction_result)
+                except json.JSONDecodeError:
+                    validation_errors = ["Invalid JSON in corrected query"]
                     break
-            elif isinstance(correction_result, dict):
-                bn_query_data = cast("dict[str, Any]", correction_result)
-                validation_errors = []
+            if isinstance(correction_result, dict):
+                bn_query_data = cast(dict[str, Any], correction_result)
             else:
-                validation_errors = [
-                    f"Invalid correction response type: {type(correction_result).__name__}"
-                ]
+                validation_errors = ["Corrected response must be a query object"]
                 break
-
-            if not validation_errors:
-                if "target_node" not in bn_query_data:
-                    validation_errors.append("No target_node found in corrected query")
-                if "target_state" not in bn_query_data:
-                    validation_errors.append("No target_state found in corrected query")
-                if "context" not in bn_query_data:
-                    bn_query_data["context"] = {}
-
+            if "target_node" not in bn_query_data:
+                validation_errors.append("No target_node found in corrected query")
+            if "target_state" not in bn_query_data:
+                validation_errors.append("No target_state found in corrected query")
+            if "context" not in bn_query_data:
+                bn_query_data["context"] = {}
             if is_structured and not validation_errors:
                 assert graph_structure is not None
                 validation_errors.extend(_validate_bn_query(bn_query_data, graph_structure))
             correction_attempts += 1
 
         if validation_errors:
-            error_message = (
-                f"Query validation failed after {max_corrections} correction attempts. "
-                f"Errors: {', '.join(validation_errors)}"
-            )
-            logger.error(error_message)
-            raise ValueError(error_message)
+            logger.error("BN query validation failed")
+            if service_error is not None:
+                raise service_error
+            if service_failure:
+                raise ValueError("BN model request failed")
+            raise_reply_failure()
 
         query_json = json.dumps(bn_query_data)
-        logger.info("Generated BN Query: " + query_json)
+        logger.info("Generated BN query")
 
         optional_properties: dict[str, Any] = {}
         if explanation:
@@ -586,8 +600,7 @@ class NL2BNOperator(Operator):
         result = registry.execute_query(
             query_json, source, database, collection, optional_properties=optional_properties
         )
-        logger.debug("Result: ")
-        logger.debug(result)
+        logger.debug("BN query execution completed")
 
         formatted_result = format_execution_result(result)
 
@@ -647,3 +660,6 @@ DISCOVERY = DiscoverySpec(
         "requires-query-backend",
     ),
 )
+
+
+_BUILTIN_EXECUTE = NL2BNOperator.__dict__["_execute"]

@@ -14,11 +14,17 @@ import json
 from pathlib import Path
 from typing import Any, ClassVar
 
+import blue_data_ops.operators.data_discover_operator as discover_module
 import pytest
 from blue_data_ops.operators import (
     Attributes,
     AttributeSpec,
     DataBundle,
+    ErrorCategory,
+    ErrorCode,
+    ErrorRecord,
+    ErrorStage,
+    ExecMeta,
     Operator,
     OperatorRegistry,
     Properties,
@@ -106,6 +112,53 @@ def written(path: Path, payload: Any) -> str:
 
 def body(output: str) -> dict[str, Any]:
     return json.loads(output)
+
+
+def test_data_discover_cli_returns_only_catalog_fields(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class LocalSearch:
+        def search_records_hierarchical(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            return [{"name": "jobs_db", "id": "/source/jobs_db", "scope": "/"}]
+
+        def get_record(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {
+                "description": "hidden-marker",
+                "properties": {"kind": "sql", "connection": {"password": "hidden-marker"}},
+                "metadata": {"note": "hidden-marker"},
+            }
+
+    def local_registry(_root: object) -> LocalSearch:
+        return LocalSearch()
+
+    monkeypatch.setattr(discover_module, "resolve_registry", local_registry)
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "data_discover@2.0.0",
+            "--attribute",
+            "search_query=jobs",
+            "--attribute",
+            "approximate=false",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert body(result.stdout)["result"]["output_data"] == [
+        [
+            {
+                "type": "source",
+                "name": "jobs_db",
+                "id": "/source/jobs_db",
+                "scope": "/",
+                "properties": {"kind": "sql"},
+            }
+        ]
+    ]
+    assert "hidden-marker" not in result.stdout
 
 
 # ------------------------------------------------------------------- list --
@@ -249,6 +302,66 @@ def test_run_passes_the_bundle_through_and_reports_what_came_back(
     assert found["result"]["output_data"] == [[{"total": 120.0}, {"total": 215.0}]]
     assert found["operator_id"] == "select@2.0.0"
     assert found["errors"] == []
+
+
+def test_run_masks_recoverable_diagnostics_in_json(
+    runner: CliRunner, install_catalog: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = "fixture-value-1234"
+    monkeypatch.setenv("BLUE_TEST_TOKEN", marker)
+
+    class OpaqueDiagnostic:
+        def __str__(self) -> str:
+            return f"raw {marker}"
+
+    class Recoverable(Echo):
+        name: ClassVar[str] = "recoverable"
+
+        def run(
+            self,
+            input_data: DataBundle,
+            attributes: Attributes,
+            properties: Properties | None = None,
+        ) -> tuple[DataBundle, Attributes, ExecMeta]:
+            del attributes, properties
+            error = ErrorRecord(
+                ErrorCategory.RECOVERABLE,
+                ErrorCode.EXECUTION_FAILED,
+                self.operator_id,
+                ErrorStage.EXECUTE,
+                f"provider returned {marker}",
+                True,
+                f"check {marker}",
+            )
+            return (
+                input_data,
+                {},
+                ExecMeta(
+                    False,
+                    [error],
+                    [],
+                    {
+                        "provider": {
+                            "details": [f"request {marker}"],
+                            "raw": OpaqueDiagnostic(),
+                            "binary": marker.encode(),
+                        }
+                    },
+                ),
+            )
+
+    registry = OperatorRegistry()
+    registry.register(Recoverable(), "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    install_catalog(registry)
+    result = runner.invoke(cli, ["operator", "run", "recoverable@1.0.0", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert marker not in result.stdout + result.stderr
+    payload = body(result.stdout)
+    assert payload["errors"][0]["message"] == "provider returned ***"
+    assert payload["errors"][0]["suggestion"] == "check ***"
+    assert payload["traces"] == {
+        "provider": {"details": ["request ***"], "raw": "***", "binary": "***"}
+    }
 
 
 def test_run_reads_the_bundle_from_standard_input(runner: CliRunner) -> None:
@@ -529,6 +642,45 @@ def test_a_failed_run_exits_execution_and_carries_the_library_code(
     assert body(result.stdout)["error"]["detail"]["library_code"] == "EXECUTION_FAILED"
 
 
+def test_failed_llm_call_keeps_json_stdout_clean(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import litellm
+
+    calls = 0
+
+    def failed_completion(**kwargs: Any) -> None:
+        nonlocal calls
+        del kwargs
+        calls += 1
+        if not litellm.suppress_debug_info:
+            print("Give Feedback / Get Help")
+        raise RuntimeError("private provider detail")
+
+    monkeypatch.setattr(litellm, "suppress_debug_info", False)
+    monkeypatch.setattr(litellm, "completion", failed_completion)
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "nl2llm@3.0.0",
+            "--attribute",
+            "query=Return an empty JSON array.",
+            "--model",
+            "gpt-6-luna",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == config.EXIT_EXECUTION
+    assert calls == 3
+    assert body(result.stdout)["error"]["code"] == "EXECUTION"
+    assert "Give Feedback / Get Help" not in result.stdout
+    assert "private provider detail" not in result.stdout
+
+
 def test_the_applied_settings_are_published_with_the_tier_each_came_from(
     runner: CliRunner, tmp_path: Path
 ) -> None:
@@ -556,7 +708,58 @@ def test_the_applied_settings_are_published_with_the_tier_each_came_from(
     settings = body(result.stdout)["settings"]
     assert settings["applied"]["execution.timeout_seconds"] == 5.0
     assert settings["source"]["execution.timeout_seconds"] == "flag"
-    assert settings["source"]["openai.model"] == "default"
+    assert "openai.model" not in settings["applied"]
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_timeout_flag_rejects_nonpositive_or_nonfinite_values(
+    runner: CliRunner, tmp_path: Path, value: str
+) -> None:
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "select@2.0.0",
+            "--input-file",
+            written(tmp_path / "orders.json", ORDERS),
+            "--timeout",
+            value,
+        ],
+    )
+    assert result.exit_code == config.EXIT_USAGE
+    assert "finite and greater than zero" in result.stderr
+
+
+def test_non_llm_operator_skips_model_default_and_rejects_llm_flags(
+    runner: CliRunner, install_catalog: Any
+) -> None:
+    operator = PropertyEcho()
+    registry = doubles()
+    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    install_catalog(registry)
+
+    result = runner.invoke(cli, ["operator", "run", "property_echo@1.0.0", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert operator.seen_properties is not None
+    assert "openai.model" not in operator.seen_properties
+    assert body(result.stdout)["settings"]["applied"] == {}
+
+    for option, value in (("--model", "gpt-6-luna"), ("--reasoning-effort", "low")):
+        rejected = runner.invoke(
+            cli,
+            [
+                "operator",
+                "run",
+                "property_echo@1.0.0",
+                option,
+                value,
+                "--format",
+                "json",
+            ],
+        )
+        assert rejected.exit_code == config.EXIT_USAGE
+        assert body(rejected.stdout)["error"]["code"] == config.USAGE
 
 
 def test_model_and_reasoning_effort_flags_reach_the_operator(
@@ -564,7 +767,11 @@ def test_model_and_reasoning_effort_flags_reach_the_operator(
 ) -> None:
     operator = PropertyEcho()
     registry = doubles()
-    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    registry.register(
+        operator,
+        "1.0.0",
+        ("domain-text", "accepts-none", "produces-data", "requires-llm"),
+    )
     install_catalog(registry)
 
     result = runner.invoke(
@@ -596,7 +803,11 @@ def test_dedicated_model_flag_overrides_the_generic_alias(
 ) -> None:
     operator = PropertyEcho()
     registry = doubles()
-    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    registry.register(
+        operator,
+        "1.0.0",
+        ("domain-text", "accepts-none", "produces-data", "requires-llm"),
+    )
     install_catalog(registry)
 
     result = runner.invoke(
@@ -635,7 +846,11 @@ def test_generic_neutral_model_suppresses_the_profile_default(
 ) -> None:
     operator = PropertyEcho()
     registry = doubles()
-    registry.register(operator, "1.0.0", ("domain-text", "accepts-none", "produces-data"))
+    registry.register(
+        operator,
+        "1.0.0",
+        ("domain-text", "accepts-none", "produces-data", "requires-llm"),
+    )
     install_catalog(registry)
 
     result = runner.invoke(
@@ -665,6 +880,43 @@ def test_generic_neutral_model_suppresses_the_profile_default(
     assert settings["source"]["llm.reasoning_effort"] == "flag"
 
 
+def test_neutral_model_setting_masks_a_credential_in_json_and_footer(
+    runner: CliRunner, install_catalog: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = "fixture-value-1234"
+    monkeypatch.setenv("BLUE_TEST_TOKEN", marker)
+    operator = PropertyEcho()
+    registry = doubles()
+    registry.register(
+        operator,
+        "1.0.0",
+        ("domain-text", "accepts-none", "produces-data", "requires-llm"),
+    )
+    install_catalog(registry)
+
+    for output_format in ("json", "table"):
+        result = runner.invoke(
+            cli,
+            [
+                "operator",
+                "run",
+                "property_echo@1.0.0",
+                "--property",
+                f"llm.model={marker}",
+                "--format",
+                output_format,
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert marker not in result.stdout + result.stderr
+        if output_format == "json":
+            assert body(result.stdout)["settings"]["applied"]["llm.model"] == "***"
+        else:
+            assert "llm.model=***" in result.stdout
+    assert operator.seen_properties is not None
+    assert operator.seen_properties["llm.model"] == marker
+
+
 def test_the_table_footer_names_the_same_settings(runner: CliRunner, tmp_path: Path) -> None:
     result = runner.invoke(
         cli,
@@ -683,7 +935,7 @@ def test_the_table_footer_names_the_same_settings(runner: CliRunner, tmp_path: P
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "settings: openai.model=gpt-4o (default)" in result.stdout
+    assert "settings: (none)" in result.stdout
 
 
 def test_a_card_that_does_not_ask_for_a_data_registry_never_builds_one(

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -18,7 +20,7 @@ from blue_data_ops.operators.types import (
 
 def _mapping(value: object, schema: set[str]) -> dict[str, str]:
     if not isinstance(value, dict):
-        raise ValueError("semantic projection response must be an object")
+        raise_reply_failure()
     raw_mapping = cast(dict[Any, Any], value)
     if any(
         not isinstance(old_name, str)
@@ -27,10 +29,10 @@ def _mapping(value: object, schema: set[str]) -> dict[str, str]:
         or not new_name.strip()
         for old_name, new_name in raw_mapping.items()
     ):
-        raise ValueError("semantic projection response has invalid field names")
+        raise_reply_failure()
     mapping = cast(dict[str, str], raw_mapping)
     if len(set(mapping.values())) != len(mapping):
-        raise ValueError("semantic projection response has duplicate output fields")
+        raise_reply_failure()
     return mapping
 
 
@@ -43,11 +45,15 @@ class SemanticProjectOutcomeOperator(_OutcomeOperator, SemanticProjectOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         instructions = cast(str, attributes.get("projection_instructions", ""))
         if not input_data or not instructions or all(not group for group in input_data):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = resolve_llm_client(merged)
         results: DataBundle = []
         for data_group in input_data:

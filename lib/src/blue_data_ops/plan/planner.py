@@ -225,6 +225,8 @@ def _validate_request_data(request: object) -> PlanningRequest:
         raise invalid_request("planning goal must be nonempty")
     if type(typed.input_label) is not str or type(typed.output_label) is not str:
         raise invalid_request("planning request contains a malformed label")
+    if typed.input_label and typed.input_label == typed.output_label:
+        raise invalid_request("planning input and output labels must differ")
     if type(typed.discovery_queries) is not tuple:
         raise invalid_request("planning request is malformed")
     if not typed.discovery_queries:
@@ -1437,11 +1439,19 @@ class PipelinePlanner:
         pipeline = DataPipeline(label=draft.label or request.goal)
         input_node = pipeline.define_input(request.input_label)
         nodes: dict[str, Node] = {}
+        used_labels = {request.input_label, request.output_label}
         try:
             for step in steps:
+                original_label = step.label or step.step_id
+                label = original_label
+                suffix = 2
+                while label in used_labels:
+                    label = f"{original_label}_{suffix}"
+                    suffix += 1
+                used_labels.add(label)
                 nodes[step.step_id] = pipeline.define_operator(
                     step.operator_id,
-                    label=step.label or step.step_id,
+                    label=label,
                     attributes=deepcopy(dict(step.attributes)),
                 )
         except Exception:

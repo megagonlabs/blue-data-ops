@@ -35,17 +35,21 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import math
 import os
 import re
 import sys
 import traceback
 from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
 from importlib import metadata
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, cast
 
 import click
 from blue_data_ops import RegistrySeam
+from blue_data_ops.data.errors import REGISTRY_DIAGNOSTICS, RegistryFailure, RegistryReason
 from blue_data_ops.operator_skills import OperatorSkillLoadError
 from blue_data_ops.operators import (
     DiscoveryError,
@@ -186,7 +190,8 @@ def _planning_failure(error: PlanningError) -> CliError:
         code = PLANNING
     message = f"PlanningError: {record.code.value} ({record.stage.value}): {record.message}"
     if record.suggestion:
-        message = f"{message} {record.suggestion}"
+        separator = " " if message.endswith((".", "!", "?")) else ". "
+        message = f"{message}{separator}{record.suggestion}"
     return CliError(
         code,
         message,
@@ -209,6 +214,9 @@ def failure_for(error: Exception) -> CliError:
     """
     if isinstance(error, CliError):
         return error
+    if isinstance(error, RegistryFailure) and error.reason is RegistryReason.CONFIGURATION_FAILED:
+        message, suggestion = REGISTRY_DIAGNOSTICS[error.reason]
+        return CliError(CONFIG, f"{message}. {suggestion}")
     if isinstance(error, StoreError):
         return CliError(PROFILE, str(error))
     if isinstance(error, PlanningError):
@@ -253,7 +261,11 @@ def recoverable_notices(errors: Sequence[ErrorRecord]) -> list[str]:
     return lines
 
 
-def execution_failure(errors: Sequence[ErrorRecord]) -> CliError | None:
+def execution_failure(
+    errors: Sequence[ErrorRecord],
+    *,
+    stopped_pipeline: bool = False,
+) -> CliError | None:
     """The CLI error for a run whose failure came back as data rather than as an exception.
 
     ``Operator.run()`` returns its failures in ``ExecMeta.errors`` instead of raising, so the
@@ -262,13 +274,16 @@ def execution_failure(errors: Sequence[ErrorRecord]) -> CliError | None:
     is usable, so it does not move the exit code.
     """
     failed = [record for record in errors if record.category is not ErrorCategory.RECOVERABLE]
+    if not failed and stopped_pipeline:
+        failed = [record for record in errors if record.category is ErrorCategory.RECOVERABLE]
     if not failed:
         return None
     first = failed[0]
     code = TIMEOUT if first.category is ErrorCategory.TIMEOUT else EXECUTION
     message = f"{first.code.value} ({first.stage.value}) in {first.operator_id}: {first.message}"
     if first.suggestion:
-        message = f"{message} {first.suggestion}"
+        separator = " " if message.endswith((".", "!", "?")) else ". "
+        message = f"{message}{separator}{first.suggestion}"
     return CliError(
         code,
         message,
@@ -477,14 +492,10 @@ class Settings:
         return f"settings: {pairs}" if pairs else "settings: (none)"
 
 
-MASKED_SETTINGS = frozenset({"openai.model"})
-"""Applied settings whose value is masked wherever the envelope is published.
+MASKED_SETTINGS = frozenset({"openai.model", "llm.model"})
+"""Model-selection settings echoed in JSON results and table footers.
 
-The model name only. It is the setting a deployment is most likely to paste a credential
-into by accident, and it is echoed back in the default table footer, which is the most
-visible line this CLI prints. Nothing else is masked, because the rule reads shape and a
-path is high-entropy by construction: masking a file path would turn an ordinary directory
-into ``***``, which is the footer failing at the one thing it is for.
+Credential-like values are masked on publication; the operator receives the original value.
 """
 
 
@@ -541,6 +552,57 @@ class Reporter:
         self.console.print(printable(mask(text)), style="yellow", soft_wrap=True)
 
 
+class _ExecutionLogHandler(logging.Handler):
+    def __init__(self, reporter: Reporter) -> None:
+        super().__init__()
+        self.reporter = reporter
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self.reporter.log:
+            try:
+                text = self.format(record)
+            except Exception:
+                text = "Library log record could not be formatted."
+            try:
+                self.reporter.line(text)
+            except Exception:
+                # A failed diagnostic stream must not change the operator result.
+                pass
+
+
+@contextmanager
+def execution_logging(reporter: Reporter) -> Generator[None]:
+    """Route library logs through the CLI's mask for this execution."""
+    root = logging.getLogger()
+    package_loggers = [
+        logger
+        for name, logger in list(root.manager.loggerDict.items())
+        if isinstance(logger, logging.Logger)
+        and (
+            name in {"blue_data", "blue_data_ops"}
+            or name.startswith(("blue_data.", "blue_data_ops."))
+        )
+    ]
+    saved = [(logger, logger.handlers, logger.propagate) for logger in package_loggers]
+    root_handlers = root.handlers
+    fallback = logging.lastResort
+    handler = _ExecutionLogHandler(reporter)
+    try:
+        root.handlers = [handler]
+        logging.lastResort = handler
+        for logger in package_loggers:
+            logger.handlers = []
+            logger.propagate = True
+        yield
+    finally:
+        for logger, handlers, propagate in saved:
+            logger.handlers = handlers
+            logger.propagate = propagate
+        root.handlers = root_handlers
+        logging.lastResort = fallback
+        handler.close()
+
+
 # ------------------------------------------------------------ shared options --
 def format_option(command: Any) -> Any:
     """``--format``, declared once rather than on every command that returns a result.
@@ -591,6 +653,24 @@ class CatalogChoice(_ChoiceBase):
         if isinstance(value, str) and value.strip().lower() == "raw":
             self.fail(_RAW_REFUSAL, param, ctx)
         return str(super().convert(value, param, ctx))
+
+
+if TYPE_CHECKING:
+    _FloatParamBase = click.ParamType[float]
+else:
+    _FloatParamBase = click.ParamType
+
+
+class PositiveFiniteFloat(_FloatParamBase):
+    name = "positive finite number"
+
+    def convert(
+        self, value: Any, param: click.Parameter | None, ctx: click.Context | None
+    ) -> float:
+        number = float(click.FLOAT.convert(value, param, ctx))
+        if not math.isfinite(number) or number <= 0:
+            self.fail("must be finite and greater than zero", param, ctx)
+        return number
 
 
 def catalog_option(command: Any) -> Any:
@@ -760,16 +840,22 @@ def requires_data_registry(card: OperatorCard) -> bool:
     return DATA_REGISTRY_TAG in card.tags
 
 
+def requires_llm(card: OperatorCard) -> bool:
+    """Whether this operator uses language-model call settings."""
+    return "requires-llm" in card.tags
+
+
 def registry_backend() -> str:
     """Which ``blue-data`` backend ``BLUE_DATA_REGISTRY_STORE`` currently names."""
-    return (os.environ.get("BLUE_DATA_REGISTRY_STORE") or "memory").strip().lower()
+    from blue_data_ops.data.config import registry_backend as backend
+
+    return backend()
 
 
 def registry_is_ephemeral() -> bool:
-    """Whether anything written to the registry dies with the process.
+    """Whether registry metadata is discarded when this command exits.
 
-    The in-memory backend is the default, and for a CLI it means ``create_database`` creates
-    a database and then loses it. Worth one line on stderr rather than a surprise.
+    Configured data-source writes can persist independently of that metadata.
     """
     return registry_backend() == "memory"
 
@@ -787,22 +873,8 @@ def build_registry_seam() -> RegistrySeam:
     ``requires-data-registry``. ``blue-data`` ships no ``py.typed``, so the five imports are
     untyped at this boundary and stop here rather than in every caller.
     """
-    from blue_data.config import (  # pyright: ignore[reportMissingTypeStubs]
-        build_enricher,
-        build_hybrid_config,  # pyright: ignore[reportUnknownVariableType]
-        build_store,
-        get_vector_dim,
-        load_sources,  # pyright: ignore[reportUnknownVariableType]
-    )
-    from blue_data.registry.data_registry import (  # pyright: ignore[reportMissingTypeStubs]
-        DataRegistry,
-    )
+    from blue_data_ops.data.config import build_environment_registry
 
-    registry: Any = DataRegistry(
-        store=build_store(),
-        metadata_enricher=build_enricher(),
-        hybrid_config=build_hybrid_config(),
-        vector_dim=get_vector_dim(),
-    )
-    load_sources(registry)
-    return RegistrySeam(registry)
+    seam = build_environment_registry()
+    assert seam is not None
+    return seam

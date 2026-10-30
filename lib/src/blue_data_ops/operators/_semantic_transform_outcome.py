@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-from blue_data_ops.llm import LLMClient, resolve_llm_client
+from blue_data_ops.llm import LLMClient, prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -35,10 +37,12 @@ def _response_object(value: object) -> dict[str, Any]:
     if isinstance(value, str):
         try:
             value = json.loads(value)
-        except (json.JSONDecodeError, ValueError) as error:
-            raise ValueError("semantic transform response is not valid JSON") from error
+        except (json.JSONDecodeError, ValueError):
+            value = None
+        if value is None:
+            raise_reply_failure()
     if not isinstance(value, dict):
-        raise ValueError("semantic transform response must be an object")
+        raise_reply_failure()
     return cast(dict[str, Any], value)
 
 
@@ -66,18 +70,18 @@ class _StrictTransformClient(LLMClient):
         if properties and properties.get("input_template") == _PLAN_RESOLUTION_PROMPT:
             missing = set(self._output_desc).difference(response)
             if missing:
-                raise ValueError("semantic transform plan does not cover every target")
+                raise_reply_failure()
             for plan_value in response.values():
                 if not isinstance(plan_value, dict):
-                    raise ValueError("semantic transform plan entries must be objects")
+                    raise_reply_failure()
                 plan = cast(dict[str, Any], plan_value)
                 source_fields = plan.get("source_fields")
                 if not isinstance(source_fields, list) or any(
                     not isinstance(field, str) for field in cast(list[Any], source_fields)
                 ):
-                    raise ValueError("semantic transform source_fields must be a string array")
+                    raise_reply_failure()
                 if plan.get("transformation_type") not in _TRANSFORMATION_TYPES:
-                    raise ValueError("semantic transform plan has an invalid transformation type")
+                    raise_reply_failure()
             return response
 
         requirements = (
@@ -89,7 +93,7 @@ class _StrictTransformClient(LLMClient):
             if field.get("required") is True and f"- {name}:" in requirements
         }
         if not required_here.issubset(response):
-            raise ValueError("semantic transform response omits a required target")
+            raise_reply_failure()
         return response
 
 
@@ -102,12 +106,16 @@ class SemanticTransformOutcomeOperator(_OutcomeOperator, SemanticTransformOperat
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         input_meta = cast(dict[str, dict[str, Any]], attributes.get("input_meta", {}))
         output_desc = cast(dict[str, dict[str, Any]], attributes.get("output_desc", {}))
         if not input_data or not output_desc or all(not group for group in input_data):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = _StrictTransformClient(resolve_llm_client(merged), output_desc)
         results: DataBundle = []
         for data_group in input_data:

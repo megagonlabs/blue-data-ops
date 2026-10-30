@@ -57,12 +57,17 @@ def test_string_to_python_type_matches_blue(type_str: str, expected: Any) -> Non
     assert string_to_python_type(type_str) == expected
 
 
-def test_typing_object_identity_is_preserved_not_pep604() -> None:
+def test_typing_object_matches_standard_typing_factory() -> None:
     # A mutation to builtin generics (list[str]) instead of typing.List[str] would
     # break Blue callers that compare the returned object; pin the typing.* spelling.
     assert string_to_python_type("List[str]") == List[str]  # noqa: UP006
     assert repr(string_to_python_type("List[str]")).startswith("typing.List")
-    assert repr(string_to_python_type("Optional[int]")).startswith("typing.Optional")
+    # Optional's representation follows the standard factory on each interpreter.
+    observed = string_to_python_type("Optional[int]")
+    expected = Optional[int]
+    assert observed is expected
+    assert type(observed) is type(expected)
+    assert repr(observed) == repr(expected)
 
 
 # --- validate_parameter_type: lax coercion, malformed, and system faults -----------

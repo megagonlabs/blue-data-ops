@@ -505,7 +505,7 @@ def pipeline_group() -> None:
 @click.option(
     "--model",
     default=None,
-    show_default="the profile's BLUE_DATA_OPS_PLANNER_MODEL, else gpt-4o",
+    show_default="the profile's BLUE_DATA_OPS_PLANNER_MODEL, else gpt-6-luna",
     help="Model the openai planner calls.",
 )
 @click.option(
@@ -917,7 +917,7 @@ def pipeline_remove(obj: dict[str, Any], name: str, confirm: bool) -> None:
 @click.option(
     "--model",
     default=None,
-    show_default="the profile's BLUE_DATA_LLM_MODEL, else gpt-4o",
+    show_default="the profile's BLUE_DATA_LLM_MODEL, else gpt-6-luna",
     help="Default model for language-model operator nodes in this run.",
 )
 @click.option(
@@ -962,6 +962,16 @@ def pipeline_run(
         # writes each node's value and status onto it. Nothing here writes it back.
         plan = load_plan(store.read(name))
         preflight = PipelineExecutor(registry).preflight(plan)
+        uses_llm = any(
+            config.requires_llm(card)
+            for operator_id in preflight.operator_ids
+            if (card := registry.get_card(operator_id)) is not None
+        )
+        if not uses_llm and (model is not None or reasoning_effort is not None):
+            raise config.CliError(
+                config.USAGE,
+                f"{name} has no language-model operator for --model or --reasoning-effort.",
+            )
         bundle: DataBundle = records.load_bundle(input_file)
 
         settings = config.Settings(resolver)
@@ -969,16 +979,17 @@ def pipeline_run(
         timeout = settings.take("execution.timeout_seconds", None, "BLUE_DATA_OPS_TIMEOUT")
         if timeout is not None:
             properties["execution.timeout_seconds"] = timeout
-        applied_model = settings.take("openai.model", model, "BLUE_DATA_LLM_MODEL")
-        if applied_model is not None:
-            properties["openai.model"] = applied_model
-        applied_effort = settings.take("llm.reasoning_effort", reasoning_effort)
-        if applied_effort is not None:
-            properties["llm.reasoning_effort"] = applied_effort
+        if uses_llm:
+            applied_model = settings.take("openai.model", model, "BLUE_DATA_LLM_MODEL")
+            if applied_model is not None:
+                properties["openai.model"] = applied_model
+            applied_effort = settings.take("llm.reasoning_effort", reasoning_effort)
+            if applied_effort is not None:
+                properties["llm.reasoning_effort"] = applied_effort
         properties.update(registry_properties(preflight.operator_ids, registry, reporter))
 
         started = time.monotonic()
-        with reporter.status(f"Running {name}…"):
+        with config.execution_logging(reporter), reporter.status(f"Running {name}…"):
             run = PipelineExecutor(registry).execute(plan, bundle, properties)
         elapsed = round(time.monotonic() - started, 3)
 
@@ -1006,7 +1017,9 @@ def pipeline_run(
             failed = next(
                 (node for node in run.node_runs if node.node_id == run.failed_node_id), None
             )
-            failure = config.execution_failure(failed.exec_meta.errors if failed else [])
+            failure = config.execution_failure(
+                failed.exec_meta.errors if failed else [], stopped_pipeline=True
+            )
             if failure is None:
                 raise config.CliError(
                     config.EXECUTION,
@@ -1038,9 +1051,7 @@ def pipeline_run(
                 f"{name} ran {len(run.node_runs)} node(s) in {elapsed}s and returned "
                 f"{sum(len(group) for group in run.output_data)} record(s).",
             ),
-            notes=(
-                settings.footer().replace("settings:", "invocation defaults:", 1),
-            ),
+            notes=(settings.footer().replace("settings:", "invocation defaults:", 1),),
             title=f"pipeline: {name}",
             empty=f"(no records — {name} returned an empty bundle)",
         )

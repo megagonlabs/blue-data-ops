@@ -14,7 +14,12 @@ from typing import cast
 
 CORE_DISTRIBUTION = "blue-data-ops"
 MCP_DISTRIBUTION = "blue-data-ops-mcp"
-RESOURCE_PREFIX = PurePosixPath("blue_data_ops/operator_skills")
+PACKAGE_PREFIX = PurePosixPath("blue_data_ops")
+RESOURCE_PREFIX = PACKAGE_PREFIX / "operator_skills"
+FIXED_NON_CODE_MEMBERS = {
+    (PACKAGE_PREFIX / "py.typed").as_posix(),
+    (PACKAGE_PREFIX / "plan/_schemas/plan-candidates.schema.json").as_posix(),
+}
 INDEX_FORMAT = "blue-data-ops/operator-skill-index@1"
 MANIFEST_FORMAT = "blue-data-ops/operator-skill@1"
 INDEX_BYTE_LIMIT = 4_096
@@ -86,14 +91,22 @@ def _json_object(archive: zipfile.ZipFile, path: PurePosixPath, limit: int) -> d
     return cast(dict[object, object], value)
 
 
-def _resource_members(archive: zipfile.ZipFile) -> set[str]:
-    prefix = RESOURCE_PREFIX.as_posix() + "/"
+def _non_code_package_members(archive: zipfile.ZipFile) -> set[str]:
+    prefix = PACKAGE_PREFIX.as_posix() + "/"
     return {
         name
         for name in archive.namelist()
         if name.startswith(prefix)
         and not name.endswith("/")
-        and PurePosixPath(name).suffix in {".json", ".md"}
+        and PurePosixPath(name).suffix != ".py"
+    }
+
+
+def _wheel_data_members(archive: zipfile.ZipFile) -> set[str]:
+    return {
+        name
+        for name in archive.namelist()
+        if name.partition("/")[0].endswith(".data") and not name.endswith("/")
     }
 
 
@@ -109,7 +122,7 @@ def _check_core_resources(archive: zipfile.ZipFile) -> tuple[str, ...]:
         sorted(typed_packages, key=lambda item: str(item).encode("utf-8"))
     )
     operator_ids: list[str] = []
-    expected_members = {index_path.as_posix()}
+    expected_members = FIXED_NON_CODE_MEMBERS | {index_path.as_posix()}
     for operator_id, manifest_name in typed_packages.items():
         assert type(operator_id) is str and type(manifest_name) is str
         match = PINNED_ID.fullmatch(operator_id)
@@ -144,7 +157,10 @@ def _check_core_resources(archive: zipfile.ZipFile) -> tuple[str, ...]:
             assert hashlib.sha256(raw).hexdigest() == digest
             expected_members.add(member.as_posix())
         operator_ids.append(operator_id)
-    assert _resource_members(archive) == expected_members
+    for fixed in FIXED_NON_CODE_MEMBERS:
+        _regular_member_bytes(archive, PurePosixPath(fixed))
+    assert not _wheel_data_members(archive)
+    assert _non_code_package_members(archive) == expected_members
     return tuple(operator_ids)
 
 

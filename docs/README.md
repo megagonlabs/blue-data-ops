@@ -18,7 +18,6 @@
 | [llm-settings.md](llm-settings.md) | Choose a model and reasoning effort for one LLM operator or a pipeline, from Python, CLI, or MCP |
 | [mcp.md](mcp.md) | Serve the 33 operators as MCP tools to an MCP client |
 | [cli.md](cli.md) | Run an operator, search the catalog, or run a stored pipeline from a shell, with `blue-ops` |
-| [api.md](api.md) | REST API — not built; the page says where that boundary would go if it were |
 
 ## Building on it
 
@@ -40,5 +39,10 @@ For overlapping topics, use the following authoritative files.
 | [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md) | the MCP adapter: install, embedding, serving, and tool shape |
 | [`platform/ops-cli/README.md`](../platform/ops-cli/README.md) | the `blue-ops` command: install, the command tree, configuration, storage, formats, and exit codes |
 
-[mcp.md](mcp.md) and [cli.md](cli.md) are synced copies of the last two and name their source at the top.
+[mcp.md](mcp.md) and [cli.md](cli.md) cover those interfaces from this documentation set. Their package READMEs above are the complete guides.
 Everything else here is written for this directory.
+
+## Conduct and disclosures
+
+See the [Code of Conduct](../CODE_OF_CONDUCT.md),
+[disclosures](disclosures.md), and [NOTICE](../NOTICE).

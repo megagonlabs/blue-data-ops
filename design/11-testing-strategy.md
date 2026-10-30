@@ -263,9 +263,9 @@ The same modules run by hand against real artifacts:
 ```bash
 cd lib
 python -m tests.installed.operator_skill_release_gate \
-  --core-wheel dist/blue_data_ops-3.1.0-py3-none-any.whl \
+  --core-wheel dist/blue_data_ops-1.0.0-py3-none-any.whl \
   --mcp-wheel ../platform/ops-mcp/dist/blue_data_ops_mcp-1.0.0-py3-none-any.whl \
-  --core-version 3.1.0 \
+  --core-version 1.0.0 \
   --mcp-version 1.0.0 \
   $(python -c 'import json, pathlib
 index = json.loads(pathlib.Path("src/blue_data_ops/operator_skills/_index.json").read_text())

@@ -10,8 +10,9 @@ The **`blue-ops` command** is a third distribution, `blue-data-ops-cli`, on the 
 There is no REST API.
 Section 3 records that boundary.
 
-Authentication and authorization are the deployment layer's.
-No distribution authenticates a caller, and the MCP server binds to loopback by default.
+Database credentials and permissions belong to the deployment. The MCP server binds to loopback by default.
+MCP requests over HTTP/SSE require a shared API key unless the host explicitly opts out;
+stdio relies on local process access.
 
 ---
 
@@ -24,8 +25,8 @@ All three distributions ship `py.typed`, so a consumer's type checker reads the 
 
 | Import path | Exports | Holds |
 |---|---|---|
-| `blue_data_ops` | 48 | the 32 concrete operator classes, the `Operator` base, the result and error types, the registry seam, and `utils` |
-| `blue_data_ops.operators` | 64 | the operator classes including `SklearnEstimator` and `OperatorDiscoverOperator`, plus the registry, cards, factories, discovery, the type aliases, and the operator exceptions |
+| `blue_data_ops` | 49 | the 32 concrete operator classes, the `Operator` base, the result and error types, the registry seam, and `utils` |
+| `blue_data_ops.operators` | 65 | the operator classes including `SklearnEstimator` and `OperatorDiscoverOperator`, plus the registry, cards, factories, discovery, the type aliases, and the operator exceptions |
 | `blue_data_ops.plan` | 38 | pipelines, the executor, the planner, generators, and planning records |
 | `blue_data_ops.operator_skills` | 12 | the resource loader, its views, and its bounds |
 | `blue_data_ops.llm` | 7 | the LLM client, its provider seam, usage records, and `LLMError` |
@@ -522,7 +523,7 @@ This client is the operator-level LLM seam; the plan generator's OpenAI seam is 
 | `merge_json` | `(original_json: Any, update_json: Any) -> Any` |
 | `json_query` | `(json_object: dict[str, Any], json_path_query: str, single: bool = True, default: Any = None) -> Any` |
 | `json_query_set` | `(json_object: dict[str, Any], attribute: str, value: Any, context: str = "$") -> None` |
-| `safe_substitute` | `(template: str, **kwargs: Any) -> str` |
+| `safe_substitute` | `(template: str, **kwargs: Any) -> str`; one dollar-placeholder pass, literal inserted data and Jinja syntax |
 | `create_uuid` | `() -> str` |
 | `concat_ids` | `(*ids: str) -> str` |
 | `split_ids` | `(canonical_id: str) -> list[str]` |
@@ -540,6 +541,7 @@ The library raises for a condition the caller must fix before anything can run, 
 | Exception | Base | Import from | Raised when |
 |---|---|---|---|
 | `OperatorError` | `Exception` | `blue_data_ops.operators` | base class for operator errors |
+| `OperatorExecutionError` | `OperatorError` | `blue_data_ops`, `blue_data_ops.operators` | trusted-author fixed public execution diagnostic: `(message, *, suggestion=None, retryable=False)`; exact bounded primitives, canonical body only |
 | `OperatorValidationError` | `OperatorError` | `blue_data_ops.operators` | exported for callers that raise from a custom validation path. Nothing in the package raises it. |
 | `ResolveError` | `Exception` | `blue_data_ops.operators` | a pinned reference cannot be resolved. Recoverable. |
 | `UpgradeError` | `Exception` | `blue_data_ops.operators` | a legacy reference cannot be upgraded. Recoverable. |
@@ -571,18 +573,18 @@ def create_server(
     *,
     registry: OperatorRegistry | None = None,
     operator_ids: Iterable[str] | None = None,
-    host: str = "127.0.0.1",
-    port: int = 8000,
+    host: str | None = None,
+    port: int | None = None,
     path: str = "/mcp",
 ) -> FastMCP[Any]: ...
 
-def serve(*, registry=None, operator_ids=None, host="127.0.0.1", port=8000, path="/mcp") -> None: ...
+def serve(*, registry=None, operator_ids=None, host=None, port=None, path="/mcp") -> None: ...
 ```
 
 Four names, and the two constants are resolved lazily through a module `__getattr__` so importing the package does not import the SDK.
 
 `create_server()` returns a configured server for embedding, and `serve()` constructs one and runs it.
-The transport is stateful streamable HTTP and the defaults bind to `127.0.0.1:8000/mcp`.
+The transport is stateful streamable HTTP and the defaults bind to `127.0.0.1:8010/mcp`.
 `json_response` is false and `stateless_http` is false.
 Review network exposure before changing the host.
 
@@ -729,7 +731,7 @@ Acceptance for execution grants no planning authority and authorizes no write; t
 
 ### 2.7 Version pairing
 
-The adapter pins the core exactly, `blue-data-ops==3.1.0`, alongside `mcp>=1.28.1,<2` and `pydantic>=2.11,<3`.
+The adapter pins the core exactly, `blue-data-ops==1.0.0`, alongside `blue-data[server]>=1.0.0`, `mcp>=1.28.1,<2` and `pydantic>=2.11,<3`.
 One environment therefore holds one verified pair, and the core and the adapter are updated together.
 The MCP initialization response's `serverInfo.version` is this package's own version, `1.0.0`, set on the server after `FastMCP` builds it because `FastMCP` takes no version argument and otherwise reports the SDK's.
 The same string is `blue_data_ops_mcp.__version__` and what package metadata returns, and each tool's operator version is in its `_meta`, moving independently of it.
@@ -823,7 +825,7 @@ Records do not: they are the output an operator was asked to compute.
 
 ### 4.6 Maintenance scripts are not this interface
 
-`lib/scripts/` holds two Python tools run from a checkout with `python`, one of which parses arguments, and three shell scripts that wrap `build`, `install`, and `publish`.
+`lib/scripts/` holds three Python tools run from a checkout with `python`, one of which parses arguments, and three shell scripts that wrap `build`, `install`, and `publish`.
 They are repository maintenance, not a product interface, and they install no entry point.
 
 ---
@@ -844,3 +846,7 @@ They are repository maintenance, not a product interface, and they install no en
 | CLI command and option names, the JSON payload keys, and the exit codes | public. A renamed command, a removed option, a renamed payload key, or a moved exit code is a major version of `blue-data-ops-cli`. |
 
 Migration boundaries between release lines are in [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md), for the adapter in [`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and for released versions of all three distributions in [`../CHANGELOG.md`](../CHANGELOG.md).
+
+HTTP requires the shared API key by default on both streamable HTTP and SSE.
+See the [HTTP bind, authentication and mounted lifespan contract](../docs/mcp.md#http-authentication-and-bind-settings)
+for environment overrides, the explicit no-key opt-out and the SDK Host/Origin limits.

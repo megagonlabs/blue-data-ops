@@ -19,15 +19,15 @@ The CLI parses inputs, uses the core library APIs, and renders results.
 ### The core library
 
 ```text
-               Python caller                    MCP client
-                     │                             │
-                     │                             ▼
-                     │               ┌──────────────────────────┐
-                     │               │    blue_data_ops_mcp     │
-                     │               │  33 tools, one per each  │
-                     │               │  active operator         │
-                     │               └─────────────┬────────────┘
-                     ▼                             ▼
+    Python caller             MCP client            CLI user
+          │                       │                     │
+          │                       ▼                     ▼
+          │          ┌──────────────────────────┐ ┌──────────────┐
+          │          │    blue_data_ops_mcp     │ │   blue-ops   │
+          │          │  33 tools, one per each  │ │ command line │
+          │          │  active operator         │ └──────┬───────┘
+          │          └─────────────┬────────────┘        │
+          ▼                        ▼                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                              blue_data_ops                              │
 │                                                                         │
@@ -99,9 +99,8 @@ The dependency direction is one-way in both cases, which is what lets a caller u
 | Python library | `blue-data-ops` from `lib/` | in-process import | Implemented |
 | MCP server | `blue-data-ops-mcp` from `platform/ops-mcp/` | streamable HTTP, loopback by default | Implemented |
 | CLI | `blue-data-ops-cli` from `platform/ops-cli/` | the `blue-ops` command, in process | Implemented |
-| REST API | none | none | Not built. See [api.md](api.md) |
 
-Both interface distributions pin core exactly, at `blue-data-ops==3.1.0`.
+Both interface distributions pin core exactly, at `blue-data-ops==1.0.0`.
 One environment therefore holds one matched set, which is how a tool's advertised operator version stays true.
 The adapter serves 33 primary tools, one per active operator, each named `ops_` plus the operator's name, and holds no state between calls beyond the frozen deployment snapshot it built at startup.
 The command holds its state on disk instead, under `~/.blue-ops`: profiles, the selected catalog, and stored pipelines.
@@ -261,7 +260,8 @@ Each error carries a stage and a stable code.
 Provider failures map to codes such as `GENERATOR_TIMEOUT` and `GENERATOR_UNAVAILABLE`, and the records exclude response bodies, request payloads, credentials, and provider-specific exception text.
 
 `allowed_operator_ids` is an authorization boundary rather than a filter.
-Without one, package built-ins are limited to the `active_registry()` selection, and a generator cannot reach an operator discovery never returned.
+Without a request allowlist, package built-ins are limited to the `active_registry()` selection; `OpenAIPlanGenerator` separately requires a nonempty `allowed_operator_ids` argument.
+A generator cannot reach an operator discovery never returned.
 
 ---
 

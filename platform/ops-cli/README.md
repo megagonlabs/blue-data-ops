@@ -4,10 +4,10 @@ The `blue-ops` command. It reaches the operator library in [`lib/`](../../lib/RE
 
 ## Install
 
-Create and activate either a standard virtual environment:
+From `platform/ops-cli/`, create and activate either a standard virtual environment:
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -26,18 +26,20 @@ With either environment active, run:
 scripts/install.sh
 ```
 
-That installs the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
+That installs the sibling `blue-data` checkout, the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
 `blue-data` is a core dependency of the library and is not on a public index, so it has to be resolvable first; [`docs/installation.md`](../../docs/installation.md) is the source of truth for the paths that put it there.
 
 Add the provider-backed planner's dependency with the `openai` extra:
 
 ```bash
-pip install -e ".[dev,openai]"
+python -m pip install -e ".[dev,openai]" "blue-data-ops-cli==1.0.0" "blue-data-ops==1.0.0"
 ```
 
 Installation, runtime use, and pytest work in either environment. This package's Pyright configuration still looks for `.venv` in `platform/ops-cli`, so use the standard virtual-environment path when running the documented Pyright gate.
 
 ## Commands
+
+Run the following examples from the repository root; the JSON inputs are in `examples/cli/`.
 
 ```bash
 blue-ops --help
@@ -89,6 +91,8 @@ blue-ops [--version] [-h|--help] [--profile NAME]
 
 24 commands over five components and one subcomponent.
 
+The CLI's `blue-ops operator run select@2.0.0` calls the same core operator as the MCP tool `ops_select`. CLI users choose a component and action; MCP clients choose a tool from the server's operator list.
+
 The three additional components use repository-specific nouns.
 A `catalog` is a view of the operator registry that later commands can share.
 An `operator` is one of the library's 33 versioned operations; each has a pinned ID, card, tags, attribute schema, and resource package.
@@ -103,7 +107,9 @@ An operator's attribute schema is part of the operator's own description rather 
 blue-ops metadata inspect
 ```
 
-Prints what is installed, which optional extras resolve, and which catalog a command would read now:
+`blue-ops metadata inspect` prints what is installed, which optional extras resolve, and which catalog a command would read now.
+
+With all three distributions and the listed extras installed, the output looks like this:
 
 ```text
                    metadata
@@ -111,15 +117,17 @@ Prints what is installed, which optional extras resolve, and which catalog a com
 ┃ key               ┃ value                   ┃
 ┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
 │ blue-data-ops-cli │ 1.0.0                   │
-│ blue-data-ops     │ 3.1.0                   │
+│ blue-data-ops     │ 1.0.0                   │
 │ blue-data-ops-mcp │ 1.0.0                   │
-│ blue-data         │ 0.1.0                   │
+│ blue-data         │ 1.0.0                   │
 │ python            │ 3.12.14                 │
 │ extras            │ llm, ml, openai, vector │
 │ catalog           │ active                  │
 │ cards             │ 33                      │
 └───────────────────┴─────────────────────────┘
 ```
+
+A CLI-only install reports `null` for `blue-data-ops-mcp`.
 
 Every version there is read from the installed distribution rather than written down, so none of them can drift from what `pip` reports.
 An extra is present when every module it brings can be located; nothing is imported to find out, so asking what is installed never pays for loading a model runtime.
@@ -134,9 +142,9 @@ blue-ops metadata inspect --format json
 {
   "metadata": {
     "blue-data-ops-cli": "1.0.0",
-    "blue-data-ops": "3.1.0",
+    "blue-data-ops": "1.0.0",
     "blue-data-ops-mcp": "1.0.0",
-    "blue-data": "0.1.0",
+    "blue-data": "1.0.0",
     "python": "3.12.14",
     "extras": {
       "ml": true,
@@ -185,25 +193,25 @@ blue-ops profile inspect
 
 ```text
                          profile: default
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┓
-┃ Parameter                               ┃ Value   ┃ Source      ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━┩
-│ OPENAI_API_KEY                          │ ***     │ environment │
-│ BLUE_DATA_LLM_MODEL                     │ gpt-4o  │ default     │
-│ BLUE_DATA_CLI_FORMAT                    │ table   │ default     │
-│ BLUE_DATA_CLI_LOG_LIMIT                 │ 80      │ default     │
-│ BLUE_DATA_OPS_CATALOG                   │ active  │ default     │
-│ BLUE_DATA_OPS_TIMEOUT                   │ (unset) │ unset       │
-│ BLUE_DATA_OPS_PLANNER                   │ rule    │ default     │
-│ BLUE_DATA_OPS_PLANNER_MODEL             │ gpt-4o  │ default     │
-│ BLUE_DATA_OPS_PLANNER_TIMEOUT           │ 60.0    │ default     │
-│ BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS │ 4096    │ default     │
-│ BLUE_DATA_REGISTRY_STORE                │ memory  │ default     │
-│ BLUE_DATA_REGISTRY_FILE                 │ (unset) │ unset       │
-│ BLUE_DATA_REGISTRY_REDIS_URL            │ (unset) │ unset       │
-│ BLUE_DATA_REGISTRY_REDIS_NAMESPACE      │ (unset) │ unset       │
-│ BLUE_DATA_SOURCES_CONFIG                │ (unset) │ unset       │
-└─────────────────────────────────────────┴─────────┴─────────────┘
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Parameter                               ┃ Value      ┃ Source      ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ OPENAI_API_KEY                          │ ***        │ environment │
+│ BLUE_DATA_LLM_MODEL                     │ gpt-6-luna │ default     │
+│ BLUE_DATA_CLI_FORMAT                    │ table      │ default     │
+│ BLUE_DATA_CLI_LOG_LIMIT                 │ 80         │ default     │
+│ BLUE_DATA_OPS_CATALOG                   │ active     │ default     │
+│ BLUE_DATA_OPS_TIMEOUT                   │ (unset)    │ unset       │
+│ BLUE_DATA_OPS_PLANNER                   │ rule       │ default     │
+│ BLUE_DATA_OPS_PLANNER_MODEL             │ gpt-6-luna │ default     │
+│ BLUE_DATA_OPS_PLANNER_TIMEOUT           │ 60.0       │ default     │
+│ BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS │ 4096       │ default     │
+│ BLUE_DATA_REGISTRY_STORE                │ memory     │ default     │
+│ BLUE_DATA_REGISTRY_FILE                 │ (unset)    │ unset       │
+│ BLUE_DATA_REGISTRY_REDIS_URL            │ (unset)    │ unset       │
+│ BLUE_DATA_REGISTRY_REDIS_NAMESPACE      │ (unset)    │ unset       │
+│ BLUE_DATA_SOURCES_CONFIG                │ (unset)    │ unset       │
+└─────────────────────────────────────────┴────────────┴─────────────┘
 ```
 
 Profiles are independent, and `--profile` picks one for a single command:
@@ -236,29 +244,33 @@ The last profile cannot be removed, because the selection has to name a profile 
 
 ### Parameters
 
-| Parameter | Cast | Default | Asked on a first run | Reaches |
-|---|---|---|---|---|
-| `OPENAI_API_KEY` | secret | — | yes | the provider SDK, through the environment |
-| `BLUE_DATA_LLM_MODEL` | str | `gpt-4o` | yes | the `openai.model` call property |
-| `BLUE_DATA_CLI_FORMAT` | str | `table` | | the default for `--format` |
-| `BLUE_DATA_CLI_LOG_LIMIT` | int | `80` | | the default for `--log-limit` |
-| `BLUE_DATA_OPS_CATALOG` | str | `active` | | the default for `--catalog` |
-| `BLUE_DATA_OPS_TIMEOUT` | float | — | | the `execution.timeout_seconds` call property |
-| `BLUE_DATA_OPS_PLANNER` | str | `rule` | | the default plan generator |
-| `BLUE_DATA_OPS_PLANNER_MODEL` | str | `gpt-4o` | | the provider-backed planner's model |
-| `BLUE_DATA_OPS_PLANNER_TIMEOUT` | float | `60.0` | | the provider-backed planner's timeout |
-| `BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS` | int | `4096` | | the provider-backed planner's output allowance |
-| `BLUE_DATA_REGISTRY_STORE` | str | `memory` | | the `blue-data` registry backend |
-| `BLUE_DATA_REGISTRY_FILE` | str | — | | the file backend's path |
-| `BLUE_DATA_REGISTRY_REDIS_URL` | str | — | | the redis backend's URL |
-| `BLUE_DATA_REGISTRY_REDIS_NAMESPACE` | str | — | | the redis backend's namespace |
-| `BLUE_DATA_SOURCES_CONFIG` | file | — | | the JSON file of sources pre-loaded into the registry |
+| Parameter | Cast | Default | Allowed values or bounds | Asked on a first run | Reaches |
+|---|---|---|---|---|---|
+| `OPENAI_API_KEY` | secret | — | — | yes | the provider SDK, through the environment |
+| `BLUE_DATA_LLM_MODEL` | str | `gpt-6-luna` | — | yes | the `openai.model` call property |
+| `BLUE_DATA_CLI_FORMAT` | str | `table` | `table`, `json`, `nl` | | the default for `--format` |
+| `BLUE_DATA_CLI_LOG_LIMIT` | int | `80` | — | | the default for `--log-limit` |
+| `BLUE_DATA_OPS_CATALOG` | str | `active` | `active`, `history` | | the default for `--catalog` |
+| `BLUE_DATA_OPS_TIMEOUT` | float | — | finite, greater than 0 | | the `execution.timeout_seconds` call property |
+| `BLUE_DATA_OPS_PLANNER` | str | `rule` | `rule`, `openai` | | the default plan generator |
+| `BLUE_DATA_OPS_PLANNER_MODEL` | str | `gpt-6-luna` | — | | the provider-backed planner's model |
+| `BLUE_DATA_OPS_PLANNER_TIMEOUT` | float | `60.0` | finite, greater than 0 and at most 300 | | the provider-backed planner's timeout |
+| `BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS` | int | `4096` | 256–16384 | | the provider-backed planner's output allowance |
+| `BLUE_DATA_REGISTRY_STORE` | str | `memory` | `memory`, `file`, `redis` (case-insensitive) | | the `blue-data` registry backend |
+| `BLUE_DATA_REGISTRY_FILE` | str | — | — | | the file backend's path |
+| `BLUE_DATA_REGISTRY_REDIS_URL` | str | — | — | | the redis backend's URL |
+| `BLUE_DATA_REGISTRY_REDIS_NAMESPACE` | str | — | — | | the redis backend's namespace |
+| `BLUE_DATA_SOURCES_CONFIG` | file | — | — | | the JSON file of sources pre-loaded into the registry |
 
 The first four are the family-wide parameters every Blue CLI declares.
 The five registry names are `blue-data`'s own, read verbatim, so the same variables produce the same registry here and in `blue-data`'s CLI.
-Their default is worth knowing before a first run: `memory` means the registry lives for one command and dies with it, so `create_database` creates a database and then loses it, and the next command starts empty.
-Nothing fails and nothing is written; one line on standard error says so.
-Set `BLUE_DATA_REGISTRY_STORE=file` with `BLUE_DATA_REGISTRY_FILE` to keep what a command registers.
+New profile values are checked against the backends `blue-data` currently documents. Existing profiles and environment values retain `blue-data`'s runtime behavior.
+The default `memory` store keeps registry metadata for one command; the next command starts with a new registry and reloads configured sources.
+It does not make source operations temporary. Database, file and remote-source writes can persist, including effects completed before a failure or timeout.
+The CLI prints a warning on standard error when using the memory store.
+Set `BLUE_DATA_REGISTRY_STORE=file` with `BLUE_DATA_REGISTRY_FILE` to retain registry metadata between commands.
+
+SQL and Bayesian operators check caller template and transport controls before the CLI builds a data registry. Stock SQL operators support generation only. A host-configured exact built-in `NL2SQLOperator` or `NL2SQLOutcomeOperator` instance, including registered version/name aliases, can use its bound read-only executor. Other subclasses, including those that customize prompts, require the direct Python host API for SQL execution.
 
 `BLUE_DATA_SOURCES_CONFIG` names a file in `blue-data`'s own format, read by its `load_sources`, so a source registered there is in the registry before the first command runs:
 
@@ -295,7 +307,7 @@ A catalog is a view of the operator registry, and `--catalog` says which one a c
 The selection follows the same four tiers as everything else, with the profile's own file under the parameter that the environment can reach: `--catalog` > `BLUE_DATA_OPS_CATALOG` > `~/.blue-ops/<profile>/.selected.catalog` > `active`.
 
 The library's third view, the raw registry, is not offered.
-Its cards carry no tags and no `when_to_invoke`, and core 3.x rejects every one of them as planning authority, so `--catalog raw` is refused with that reason rather than with an unknown-value message.
+Its cards carry no tags and no `when_to_invoke`, and the core planner rejects every one of them as planning authority, so `--catalog raw` is refused with that reason rather than with an unknown-value message.
 
 ```bash
 blue-ops catalog list
@@ -383,15 +395,17 @@ Under `--format json` it appears under a `schema` key, so the family word is use
 
 `operator run` takes a record bundle and returns what came back.
 A bundle is `list[list[dict]]`: groups of records, which is what every operator in this library consumes and produces.
+Run the file-based examples below from the repository root.
+The JSON inputs live in the source checkout under `examples/cli/`; if you installed only a wheel, save the displayed JSON to your own files and pass those paths instead.
 
-`orders.json`:
+`examples/cli/orders.json`:
 
 ```json
 [[{"total": 120.0}, {"total": 215.0}, {"total": 50.0}]]
 ```
 
 ```bash
-blue-ops operator run select@2.0.0 --input-file orders.json --attribute operand_key=total --attribute 'operand=>' --attribute operand_val=100
+blue-ops operator run select@2.0.0 --input-file examples/cli/orders.json --attribute operand_key=total --attribute 'operand=>' --attribute operand_val=100
 ```
 
 ```text
@@ -402,7 +416,7 @@ blue-ops operator run select@2.0.0 --input-file orders.json --attribute operand_
 │ 0     │ 120.0 │
 │ 0     │ 215.0 │
 └───────┴───────┘
-settings: openai.model=gpt-4o (default)
+settings: (none)
 ```
 
 `--input-file -` reads the bundle from standard input.
@@ -413,7 +427,7 @@ Both are repeatable, both read their value as JSON and fall back to the literal 
 `--attributes-file` and `--properties-file` take a JSON object of the same thing; the file is applied first and a per-key option overrides one key of it.
 
 **`--attribute` and `--property` are the only places in this CLI where you name both a key and its value in the command itself, so a key that reads as a credential is refused there.**
-The two file options are not scanned, because a file is not argv: a credential written into one reaches the library, which refuses it before it builds a request. A profile is still where one belongs.
+The two file options are not scanned for credential-shaped keys and are not a general secret filter. Validation of LLM call properties rejects provider credential overrides such as `openai.api_key`; store provider credentials in a profile.
 `--property openai.api_key=...` would be in argv and in this shell's history before any masking could reach it, and the refusal names `blue-ops profile config OPENAI_API_KEY` instead.
 The whole decoded value is held to the same shape, not just the outer key: `--attribute properties={"password": "..."}` puts a credential in those same two places, so every key of every object and array a value decodes to is checked, at any depth.
 A refusal names the key and the path it was found at, and never the value, since printing it is the thing being prevented.
@@ -431,11 +445,12 @@ Credential-key detection uses the closed list below.
 | `user`, `username`, `login` | no | an account name is not key material, and a data source is configured with one |
 | `host`, `port`, `database`, `dsn` | no | connection settings, none of them secret |
 
-Discovery masks usernames conservatively. CLI validation allows username fields because they are valid connection settings. The connection settings in the last row are allowed in both contexts.
+Discovery returns only registry identifiers and does not return connection settings. CLI validation allows username fields because they are valid connection settings; the last row lists fields callers may supply to the CLI.
 
 The footer names each setting this invocation applied and the tier it came from.
-`--timeout` sets `execution.timeout_seconds` and `--model` sets `openai.model`; both fall back through the environment and the profile like everything else.
-`--reasoning-effort` sets `llm.reasoning_effort` only for the current run and has no default.
+`--timeout` sets `execution.timeout_seconds` and requires a finite positive value. Without the flag, it falls back through the environment and profile.
+For an LLM-backed operator, `--model` sets `openai.model` with the same fallback, and `--reasoning-effort` sets `llm.reasoning_effort` for the current run.
+Other operators receive no inherited model default and reject either LLM flag.
 
 Use the dedicated flags with any LLM-backed operator. `nl2llm` consumes no input records:
 
@@ -445,7 +460,7 @@ blue-ops operator run nl2llm@3.0.0 \
   --model gpt-5-mini --reasoning-effort low
 ```
 
-`workspaces.json`:
+[`examples/cli/workspaces.json`](../../examples/cli/workspaces.json):
 
 ```json
 [[{"name": "alpha", "summary": "quiet workspace"}]]
@@ -454,7 +469,7 @@ blue-ops operator run nl2llm@3.0.0 \
 Pass that bundle to `semantic_filter`:
 
 ```bash
-blue-ops operator run semantic_filter@3.0.0 --input-file workspaces.json \
+blue-ops operator run semantic_filter@3.0.0 --input-file examples/cli/workspaces.json \
   --attribute 'filter_conditions={"summary":"suited to focused work"}' \
   --model gpt-5-mini --reasoning-effort low
 ```
@@ -492,6 +507,8 @@ blue-ops operator resource export select@2.0.0 --level 3 --output-file select.md
 
 `--level` is a closed set of `2` and `3` because no package in this release declares a level 4; the library refuses one at runtime, and a closed set says so in `--help` instead.
 
+With `--output-file`, export writes `select.md` in the current directory. Without it, export prints the Markdown on standard output.
+
 `export` has no `--format`.
 An export emits the artifact as it is written — here, Markdown — and re-encoding it as a table or a sentence would not be an export.
 `pipeline export` follows the same rule and emits its serialized record.
@@ -504,7 +521,7 @@ A pipeline is a graph of operators, stored under the profile that made it.
 A planning request is a nested object: the goal, the discovery queries with their own tags and limits, the per-operator attributes, an optional data scope, an allowlist and five bounds.
 It arrives as a file rather than as a mini-language spread across the command line.
 
-`request.json`:
+`examples/cli/request.json`:
 
 ```json
 {
@@ -516,12 +533,13 @@ It arrives as a file rather than as a mini-language spread across the command li
   "operator_attributes": {
     "select": {"operand_key": "total", "operand": ">", "operand_val": 100},
     "avg": {"avg_key": "total", "output_key": "average_total"}
-  }
+  },
+  "allowed_operator_ids": ["select@2.0.0", "avg@3.0.0"]
 }
 ```
 
 ```bash
-blue-ops pipeline add nightly --request-file request.json
+blue-ops pipeline add nightly --request-file examples/cli/request.json
 ```
 
 ```text
@@ -536,9 +554,8 @@ stored as nightly in profile default
 settings: planner=rule (default)
 ```
 
-`--goal` replaces the goal the file carries, which is the one field that changes between otherwise identical runs.
-`--planner rule` uses the library's shipped templates.
-`--planner openai` calls a model, needs the `openai` extra, and needs `allowed_operator_ids` in the request file — that list is an authorization boundary rather than a filter, so the CLI does not supply one for you.
+`--goal` replaces the goal in the request file. The shipped rule template matches goals containing `average` and either `above` or `greater`; another goal can produce `NO_CANDIDATES`.
+`--planner rule` uses that template. `--planner openai` calls a model, needs the `openai` extra, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
 `--send-data-context` discloses the request's schema snapshot to that model and is off by default; without it a generator that has been handed a snapshot fails before it makes any provider traffic.
 
 ```bash
@@ -550,7 +567,7 @@ blue-ops pipeline inspect nightly
 ```
 
 ```bash
-blue-ops pipeline run nightly --input-file orders.json
+blue-ops pipeline run nightly --input-file examples/cli/orders.json
 ```
 
 ```text
@@ -560,12 +577,13 @@ blue-ops pipeline run nightly --input-file orders.json
 ┡━━━━━━━╇━━━━━━━━━━━━━━━┩
 │ 0     │ 167.5         │
 └───────┴───────────────┘
-invocation defaults: openai.model=gpt-4o (default)
+invocation defaults: (none)
 ```
 
-`pipeline run` also accepts `--model` and `--reasoning-effort`. They are invocation defaults for
-LLM-backed nodes. A value stored in the pipeline overrides that default, and a value on one operator
-node overrides the pipeline value. Deployment provider routing and the model allowlist still apply
+`pipeline run` also accepts `--model` and `--reasoning-effort` when the pipeline has an LLM-backed node.
+They are invocation defaults; a value stored in the pipeline overrides one, and a value on an operator node overrides the pipeline value.
+A pipeline without an LLM-backed node receives no model default and rejects either LLM flag.
+Deployment provider routing and the model allowlist still apply
 after those layers are merged. A node can set `llm.reasoning_effort` to `null` in an imported pipeline
 record to clear an inherited effort for a model that does not support it.
 The `--model` on `pipeline add --planner openai` selects the planning model instead; it does not set
@@ -574,7 +592,7 @@ the models used later by operator nodes.
 This stored pipeline sets a pipeline model and effort, then selects another model on its LLM node
 and clears the inherited effort there.
 
-`llm-pipeline.json`:
+[`examples/cli/llm-pipeline.json`](../../examples/cli/llm-pipeline.json):
 
 ```json
 {
@@ -616,15 +634,15 @@ and clears the inherited effort there.
 }
 ```
 
-`llm-input.json`:
+[`examples/cli/llm-input.json`](../../examples/cli/llm-input.json):
 
 ```json
 [[]]
 ```
 
 ```bash
-blue-ops pipeline import llm-example --pipeline-file llm-pipeline.json
-blue-ops pipeline run llm-example --input-file llm-input.json --model gpt-4o --reasoning-effort high
+blue-ops pipeline import llm-example --pipeline-file examples/cli/llm-pipeline.json
+blue-ops pipeline run llm-example --input-file examples/cli/llm-input.json --model gpt-6-luna --reasoning-effort high
 ```
 
 The run's `--model` and `--reasoning-effort` are only invocation defaults. The stored pipeline model
@@ -675,7 +693,7 @@ Four capabilities the library has are not on the command line.
 | Capability | Why not |
 |---|---|
 | Embedding discovery | The caller supplies the embedder and its `space_id`, and the library states that it does not choose or install an embedding model. A flag here would make this CLI choose one, which contradicts a documented library boundary and adds a second provider surface. Use `operator search` for keyword and tag discovery. |
-| The raw registry view | Its cards carry no tags and no `when_to_invoke`, and core 3.x rejects every one of them as planning authority. `--catalog raw` is refused with that reason rather than with an unknown-value message. |
+| The raw registry view | Its cards carry no tags and no `when_to_invoke`, and the core planner rejects every one of them as planning authority. `--catalog raw` is refused with that reason rather than with an unknown-value message. |
 | Data-source and registry management | `blue-data`'s own CLI owns `source add/sync/query/inspect`. `blue-ops` consumes a registry through `BLUE_DATA_REGISTRY_*` and does not manage one; a second, weaker interface to another repository's component would put the same word on different semantics. |
 | `csv` output | A record bundle is `list[list[dict]]` and CSV has no representation for the group boundary, so flattening one would silently merge groups into a single table. |
 
@@ -699,7 +717,7 @@ Storage operations follow these rules:
 
 - Writes use a temporary file in the destination directory and then rename it into place. Line breaks are rejected in line-oriented values. Successful writes are not flushed to disk, so a power loss may restore the previous value, but it cannot leave a torn file.
 - The CLI opens the home directory once and resolves descendants relative to open directory descriptors. It does not follow directory links during ordinary descent. A link within the home may target another location within the home; the target is resolved and checked by the same traversal. A link that resolves outside the home is refused. This prevents a directory swap from redirecting a later operation outside the home.
-- Wider directory permissions produce one warning and are otherwise left unchanged. Files return to mode 0600 on their next write. A write creates missing directories with mode 0700; reads do not create directories.
+- Wider directory permissions produce one warning and are otherwise left unchanged. Files return to mode 0600 on their next write. The first command creates the home directory, `.profiles`, and `.selected.profile` to initialize the default profile. Later reads do not create resource directories. Writes create missing directories with mode 0700.
 - Pipeline removal first renames the directory to a private claim name within `<profile>/pipeline/` and flushes that rename. If the flush fails, the original name is restored and the command fails before deleting content.
 - Deletion works through the opened claimed directory. Before the final `rmdir`, the CLI verifies that the claim name still refers to that directory; if the entry moved, removal stops. The final `rmdir` is flushed so a successful removal remains complete after a power loss. New pipeline names cannot begin with a dot because that namespace is reserved for claims.
 - A claim marker is written before any file is unlinked and removed last. After an interruption, the next `pipeline list` or `pipeline remove` resumes only entries carrying that marker. A claim-shaped entry without the marker is treated as a pipeline created by an older version: it is reported on standard error and remains available to list, inspect, export, or remove, but the name cannot be reused for a new pipeline. Failure to write the marker restores the original name.
@@ -710,7 +728,10 @@ Secrets follow a separate set of rules:
 - Secret values are not accepted as command-line arguments. `blue-ops profile config OPENAI_API_KEY` prompts without echo. Entering `$MY_KEY` stores an environment-variable reference; `profile inspect` reports `$MY_KEY (set)` or `$MY_KEY (unset)`.
 - A directly entered secret is stored as base64 behind an `enc:` prefix. This is obfuscation, not encryption; file permissions provide the protection.
 - Commands do not expose configured secret values through profile output, errors, or logs. Secret masking covers error lines, JSON error objects and their `detail`, logs, logged tracebacks, and `openai.model` in the `settings` envelope. It masks credential values found in the environment and strings with credential syntax. Ordinary model names are unchanged.
+- Masking also treats long opaque strings as possible credentials. This can replace UUID-like path components with `***` in messages; use the original command arguments or `BLUE_DATA_OPS_HOME` to recover the full path.
 - Operator records are not masked because they are computed output; a token-shaped record value may be a requested result.
+
+When embedded in a Python process, `operator run` and `pipeline run` temporarily route root and existing Blue library loggers through the CLI reporter during execution. The original handlers, package propagation flags, and Python fallback handler are restored when execution ends, including failures. Root logs from other threads can use the same temporary route.
 
 ## Output formats
 
@@ -762,7 +783,7 @@ Every format is safe to pipe, and the spinner is suppressed outright under `json
 
 ## Errors and exit codes
 
-Errors reach the terminal as one line on standard error, with no traceback unless `--log` is set:
+Errors reach the terminal as one line on standard error. `--log` also prints the CLI failure traceback. Registry and source failures use fixed diagnostic text; private backend exception text, SQL and paths are withheld before logging. Values that reach the logging formatter still pass through secret masking:
 
 ```text
 ERROR: REQUEST no card for 'selct@2.0.0' in the active catalog. Run `blue-ops operator search selct` to see what is there.
@@ -779,10 +800,10 @@ The CLI code is what a script branches on; the library code is what diagnoses th
 | `REQUEST` | 3 | `ResolveError`, `DiscoveryError` or `PipelineError`: the request names something that cannot be resolved, or input the library will not accept |
 | `CONFIG` | 4 | A resolved configuration value the library refused, including a planner dependency that is not installed |
 | `PROFILE` | 4 | A profile operation this CLI rejected: unknown profile, unknown parameter, a value that will not cast |
-| `TRANSPORT` | 5 | The provider timed out, rate-limited the call, or was unavailable |
+| `TRANSPORT` | 5 | The pipeline planner's provider timed out, rate-limited the call, or was unavailable |
 | `RESOURCE` | 6 | `OperatorSkillLoadError`: an operator's resource package is missing, mismatched or invalid |
 | `PLANNING` | 7 | Any other planning failure, with the `PlanningErrorCode` and its stage in the message |
-| `EXECUTION` | 8 | An operator run returned a failed `ErrorRecord`. A `RECOVERABLE` record is not one: the run keeps exit 0, and the record is written to standard error |
+| `EXECUTION` | 8 | An operator run returned a failed `ErrorRecord`, including a contained LLM provider failure. A `RECOVERABLE` record is not one: the run keeps exit 0, and the record is written to standard error |
 | `TIMEOUT` | 9 | An operator run exceeded its time allowance |
 
 `CONFIG` and `PROFILE` share exit 4 and are told apart by the code token.

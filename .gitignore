@@ -59,6 +59,9 @@ Thumbs.db
 # temp files
 *.tmp
 .tmp.driveupload
+/orders.json
+/request.json
+/select.md
 
 # obsidian
 .obsidian/

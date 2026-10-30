@@ -152,28 +152,41 @@ def test_readme_serializes_the_documented_llm_pipeline(
     }
 
 
-def test_root_readme_has_a_complete_source_install_and_mcp_route() -> None:
+def test_root_readme_routes_to_install_and_package_guides() -> None:
     root_readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     lib_readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
     examples_readme = (PROJECT_ROOT / "examples/README.md").read_text(encoding="utf-8")
     mcp_readme = (PROJECT_ROOT / "platform/ops-mcp/README.md").read_text(encoding="utf-8")
-    assert "python -m venv blue-data-ops/lib/.venv" in root_readme
+    headings = [line for line in root_readme.splitlines() if line.startswith("## ")]
+    assert headings == [
+        "## What it does",
+        "## Repository layout",
+        "## Requirements",
+        "## Quick start",
+        "## Packages",
+        "## Conduct and disclosures",
+    ]
+    assert "python3.12 -m venv blue-data-ops/lib/.venv" in root_readme
     assert "source blue-data-ops/lib/.venv/bin/activate" in root_readme
-    assert "python3 -m venv blue-data-ops/lib/.venv" in lib_readme
+    assert "./blue-data-ops/lib/scripts/install.sh" in root_readme
+    assert "python blue-data-ops/examples/quickstart/core_quickstart.py" in root_readme
+    assert "docs/installation.md" in root_readme
+    assert "docs/cli.md" in root_readme
+    assert "docs/mcp.md" in root_readme
+    assert "docs/features.md" in root_readme
+    assert "platform/ops-mcp/README.md" in root_readme
+    assert "platform/ops-cli/README.md" in root_readme
+    assert "python -m pytest" not in root_readme
+    assert "## Running tests" in lib_readme
+    assert "## Tests" in mcp_readme
+    assert "python3.12 -m venv blue-data-ops/lib/.venv" in lib_readme
     assert "source blue-data-ops/lib/.venv/bin/activate" in lib_readme
     assert "directory containing this README" in lib_readme
     assert "in an extracted source distribution" in lib_readme
     assert "cd blue-data-ops/lib" not in lib_readme
     assert "directory containing the main README" in examples_readme
     assert "from `lib/`" not in examples_readme
-    assert "python -m pip install -e ./blue-data/lib" in root_readme
-    assert 'python -m pip install -e "./blue-data-ops/lib[dev]"' in root_readme
-    assert "cd blue-data-ops/lib" in root_readme
-    assert "python -m pytest" in root_readme
-    assert "platform/ops-mcp/README.md" in root_readme
-    assert "lib/README.md#discovery" in root_readme
-    assert "lib/OPERATORS.md#tag-taxonomy" in root_readme
-    assert "python -m pip install ../blue-data/lib" in mcp_readme
+    assert 'python -m pip install "../blue-data/lib[server]"' in mcp_readme
 
 
 def test_readme_tag_discovery_uses_the_active_registry() -> None:
@@ -223,7 +236,7 @@ def test_wheel_metadata_readme_does_not_link_to_sdist_only_files() -> None:
 
     assert sdist_only_link.search(readme) is None
     assert "A wheel exposes this README through distribution metadata" in readme
-    assert "download and extract the matching `blue-data-ops==3.1.0` source distribution" in readme
+    assert "download and extract the matching `blue-data-ops==1.0.0` source distribution" in readme
     assert "The supported migration boundary is stated above" in readme
 
 
@@ -257,7 +270,7 @@ def test_readme_embedding_discovery_example() -> None:
 
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((LIB_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert metadata["project"]["version"] == "3.1.0"
+    assert metadata["project"]["version"] == "1.0.0"
     assert metadata["project"]["requires-python"] == ">=3.11"
     assert metadata["tool"]["ruff"]["target-version"] == "py311"
     assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"
@@ -545,8 +558,8 @@ def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
         "boundary against arbitrary same-process code that mutates private registry state."
     )
 
-    assert "blue-data-ops 3.1.0" in lib_readme
-    assert 'version("blue-data-ops") == "3.1.0"' in lib_readme
+    assert "blue-data-ops 1.0.0" in lib_readme
+    assert 'version("blue-data-ops") == "1.0.0"' in lib_readme
     assert "non-drop-in" in compatibility
     assert "DeclarativeOperator" in compatibility
     assert "`BlueDataOpsDeprecationWarning` remains importable" in compatibility
@@ -558,7 +571,7 @@ def test_readme_and_mcp_readme_carry_current_versions_and_migrations() -> None:
     assert "caller-created v2 cards" in lib_readme
     assert registry_integrity_boundary in lib_readme
     assert 'version("blue-data-ops-mcp") == "1.0.0"' in mcp_readme
-    assert "blue-data-ops==3.1.0" in mcp_readme
+    assert "blue-data-ops==1.0.0" in mcp_readme
     assert "33 primary tools and no refinement companions" in mcp_readme
     assert "select caller-created `@2.0.0` cards" in mcp_readme
     assert "supported raw package cards" in mcp_readme

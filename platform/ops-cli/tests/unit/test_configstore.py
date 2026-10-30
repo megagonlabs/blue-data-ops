@@ -16,6 +16,7 @@ from typing import Any, cast
 import pytest
 
 from blue_data_ops_cli import configstore
+from blue_data_ops_cli.config import CATALOGS
 from blue_data_ops_cli.configstore import (
     MASK,
     ConfigResolver,
@@ -29,6 +30,8 @@ from blue_data_ops_cli.configstore import (
     encode,
     load_spec,
 )
+from blue_data_ops_cli.formats import FORMATS
+from blue_data_ops_cli.pipeline import PLANNERS
 
 SPEC_PATH = Path(configstore.__file__).with_name("profile_spec.json")
 
@@ -63,7 +66,8 @@ def test_the_walked_list_is_the_two_parameters_a_first_run_is_asked_for() -> Non
 def test_the_family_parameters_keep_the_family_names_and_casts() -> None:
     spec = base_spec()
     assert spec["OPENAI_API_KEY"].is_secret
-    assert spec["BLUE_DATA_LLM_MODEL"].default == "gpt-4o"
+    assert spec["BLUE_DATA_LLM_MODEL"].default == "gpt-6-luna"
+    assert cli_spec()["BLUE_DATA_OPS_PLANNER_MODEL"].default == "gpt-6-luna"
     assert spec["BLUE_DATA_CLI_FORMAT"].default == "table"
     assert spec["BLUE_DATA_CLI_LOG_LIMIT"].cast == "int"
 
@@ -96,6 +100,43 @@ def test_an_unknown_parameter_names_itself() -> None:
 def test_a_cast_failure_names_the_parameter() -> None:
     with pytest.raises(SettingError, match="BLUE_DATA_OPS_TIMEOUT"):
         cli_spec()["BLUE_DATA_OPS_TIMEOUT"].cast_value("soon")
+
+
+def test_profile_choices_match_the_command_options() -> None:
+    spec = cli_spec()
+    assert spec["BLUE_DATA_CLI_FORMAT"].choices == FORMATS
+    assert spec["BLUE_DATA_OPS_CATALOG"].choices == CATALOGS
+    assert spec["BLUE_DATA_OPS_PLANNER"].choices == PLANNERS
+    assert spec["BLUE_DATA_REGISTRY_STORE"].validate_for_storage("REDIS") == "REDIS"
+
+
+def test_very_large_numeric_profile_values_report_a_setting_error() -> None:
+    huge = 10**1000
+    spec = cli_spec()
+    with pytest.raises(SettingError, match="must be <= 16384"):
+        spec["BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS"].validate_for_storage(huge)
+    with pytest.raises(SettingError, match="must be a number"):
+        spec["BLUE_DATA_OPS_TIMEOUT"].cast_value(huge)
+    with pytest.raises(SettingError, match="must be >="):
+        configstore.Parameter(name="X", cast="int", minimum=huge).validate_for_storage(1)
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ('{"X": {"choices": ["ok", 2]}}', "invalid choices"),
+        ('{"X": {"choices": ["a", "A"], "case_sensitive": false}}', "repeats a choice"),
+        ('{"X": {"cast": "str", "minimum": 0}}', "numeric cast"),
+        ('{"X": {"cast": "float", "minimum": 6, "maximum": 5}}', "inverted"),
+        ('{"X": {"cast": "float", "exclusive_minimum": true}}', "exclusive minimum"),
+        ('{"X": {"default": "bad", "choices": ["ok"]}}', "must be one of"),
+    ],
+)
+def test_invalid_profile_constraints_are_refused(tmp_path: Path, body: str, message: str) -> None:
+    path = tmp_path / "spec.json"
+    path.write_text(body)
+    with pytest.raises(SettingError, match=message):
+        load_spec(path)
 
 
 def test_merging_keeps_both_halves_and_lets_the_cli_win(tmp_path: Path) -> None:
@@ -499,7 +540,7 @@ def test_the_profile_outranks_the_default(store: ProfileStore) -> None:
 
 def test_the_default_is_the_last_tier(store: ProfileStore) -> None:
     config = resolver(store)
-    assert config.get("BLUE_DATA_LLM_MODEL") == "gpt-4o"
+    assert config.get("BLUE_DATA_LLM_MODEL") == "gpt-6-luna"
     assert config.source_of("BLUE_DATA_LLM_MODEL") == "default"
 
 

@@ -118,7 +118,7 @@ def test_empty_source_is_not_required(
     out = op.apply(INPUT, {**ATTRS, "source": ""}, _props(seam))
     [schema_call] = seam.calls_to("get_data_source_schema")
     assert schema_call["source"] == ""
-    assert out == [[{"role": "manager"}]]
+    assert out == [[{"sql": json.loads(SQL_RESPONSE)["query"]}]]
 
 
 def test_unsupported_protocol(op: NL2SQLOperator, seam: _RecordingSeam) -> None:
@@ -215,13 +215,8 @@ def test_undeclared_force_query_prefixes_reaches_prompt(
 def test_rendered_prompt_full_equality(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from string import Template
-
-    from jinja2 import BaseLoader, Environment
-
-    from blue_data_ops.operators.nl2sql_operator import (
-        _PROMPT,  # pyright: ignore[reportPrivateUsage]
-    )
+    import json
+    from pathlib import Path
 
     _content_provider(monkeypatch, SQL_RESPONSE)
     op.apply(
@@ -229,36 +224,22 @@ def test_rendered_prompt_full_equality(
         {**ATTRS, "context": "job postings", "additional_requirements": "- Limit to 10 rows."},
         _props(seam),
     )
-    templated = Template(_PROMPT).safe_substitute(
-        question=ATTRS["question"],
-        schema=json.dumps(seam.schema_result, indent=2),
-        protocol="postgres",
-        sensitivity="insensitive",
-        force_query_prefixes="SELECT",
-        additional_requirements="- Limit to 10 rows.",
-        context="job postings",
-        attr_names_section="",
+    frozen = json.loads(
+        (Path(__file__).parents[2] / "fixtures/llm_benign_prompts.json").read_text()
     )
-    expected = Environment(loader=BaseLoader()).from_string(templated).render()
+    expected = frozen["nl2sql"]["prompt"]
     assert _prompt() == expected
-    assert not _prompt().endswith("\n")
+    assert not expected.endswith("\n")
 
 
 # --- response parsing ---------------------------------------------------------------
-def test_execute_path_call_shape_and_output(
+def test_default_generation_has_no_execution(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _content_provider(monkeypatch, SQL_RESPONSE)
     out = op.apply(INPUT, dict(ATTRS), _props(seam))
-    assert out == [[{"role": "manager"}]]
-    [execute_call] = seam.calls_to("execute_query")
-    assert execute_call == {
-        "query": "SELECT role FROM jobs GROUP BY role ORDER BY COUNT(*) DESC LIMIT 1",
-        "source": "pg",
-        "database": "postgres",
-        "collection": "public",
-        "optional_properties": {},  # the facade's default; upstream passes nothing here
-    }
+    assert out == [[{"sql": json.loads(SQL_RESPONSE)["query"]}]]
+    assert seam.calls_to("execute_query") == []
 
 
 def test_execute_disabled_returns_sql_only(
@@ -279,7 +260,7 @@ def test_missing_query_raises(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch, content: str
 ) -> None:
     _content_provider(monkeypatch, content)
-    with pytest.raises(ValueError, match="No query found in LLM response"):
+    with pytest.raises(LLMError, match="generated SQL does not satisfy"):
         op.apply(INPUT, dict(ATTRS), _props(seam))
 
 
@@ -288,16 +269,20 @@ def test_invalid_json_str_response_raises(
 ) -> None:
     # With output_cast overridden to str the operator's own json.loads runs and
     # converts the decode failure to upstream's ValueError message.
+    class TextSQL(NL2SQLOperator):
+        DEFAULT_PROPERTIES = {**NL2SQLOperator.DEFAULT_PROPERTIES, "output_cast": "str"}
+
+    op = TextSQL()
     _content_provider(monkeypatch, "not json")
-    with pytest.raises(ValueError, match="Invalid JSON response from LLM"):
-        op.apply(INPUT, dict(ATTRS), _props(seam, **{"output_cast": "str"}))
+    with pytest.raises(LLMError, match="generated SQL does not satisfy"):
+        op.apply(INPUT, dict(ATTRS), _props(seam))
 
 
 def test_non_dict_response_raises(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _content_provider(monkeypatch, "[1, 2]")  # json-cast yields a list
-    with pytest.raises(ValueError, match=r"Invalid response from LLM: \[1, 2\]"):
+    with pytest.raises(LLMError, match="generated SQL does not satisfy"):
         op.apply(INPUT, dict(ATTRS), _props(seam))
 
 
@@ -306,7 +291,7 @@ def test_non_select_query_rejected(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _content_provider(monkeypatch, json.dumps({"query": "DROP TABLE jobs"}))
-    with pytest.raises(ValueError, match="Invalid query prefix: DROP TABLE jobs"):
+    with pytest.raises(LLMError, match="generated SQL does not satisfy"):
         op.apply(INPUT, dict(ATTRS), _props(seam))
     assert seam.calls_to("execute_query") == []
 
@@ -316,15 +301,18 @@ def test_prefix_check_is_case_insensitive(
 ) -> None:
     _content_provider(monkeypatch, json.dumps({"query": "select role from jobs"}))
     out = op.apply(INPUT, dict(ATTRS), _props(seam))
-    assert out == [[{"role": "manager"}]]
+    assert out == [[{"sql": "select role from jobs"}]]
 
 
 def test_custom_validate_query_prefixes(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _content_provider(monkeypatch, json.dumps({"query": "WITH c AS (SELECT 1) SELECT * FROM c"}))
-    out = op.apply(INPUT, dict(ATTRS), _props(seam, **{"validate_query_prefixes": ["WITH"]}))
-    assert out == [[{"role": "manager"}]]
+    with pytest.raises(LLMError) as raised:
+        op.apply(INPUT, dict(ATTRS), _props(seam, validate_query_prefixes=["WITH"]))
+    assert raised.value.code == "sql_policy_invalid"
+    assert seam.calls == []
+    assert litellm.calls == []
 
 
 # --- provider errors propagate ------------------------------------------------------
@@ -356,7 +344,9 @@ def test_execution_result_shapes(
 ) -> None:
     seam.query_result = query_result
     _content_provider(monkeypatch, SQL_RESPONSE)
-    assert op.apply(INPUT, dict(ATTRS), _props(seam)) == expected
+    from blue_data_ops.operators._query_results import format_execution_result
+
+    assert format_execution_result(query_result) == expected
 
 
 def test_inner_non_dict_result_returns_none_quirk(
@@ -366,7 +356,9 @@ def test_inner_non_dict_result_returns_none_quirk(
     # None operator return.
     seam.query_result = [["not-a-dict"]]
     _content_provider(monkeypatch, SQL_RESPONSE)
-    assert op.apply(INPUT, dict(ATTRS), _props(seam)) is None
+    from blue_data_ops.operators._query_results import format_execution_result
+
+    assert format_execution_result(seam.query_result) is None
 
 
 # --- provider defaults and caller overrides -----------------------------------------
@@ -376,9 +368,11 @@ def test_defaults_reach_provider(
     _content_provider(monkeypatch, SQL_RESPONSE)
     op.apply(INPUT, dict(ATTRS), _props(seam))
     call = litellm.calls[-1]
-    assert call["model"] == "gpt-4o"
-    assert call["max_tokens"] == 512  # nl2sql's own budget, distinct from the 4096 ops
-    assert call["temperature"] == 0
+    assert call["model"] == "gpt-6-luna"
+    assert call["max_completion_tokens"] == 512  # nl2sql's own budget, distinct from the 4096 ops
+    assert "max_tokens" not in call
+    assert "temperature" not in call
+    assert "reasoning_effort" not in call
     assert "api" not in call and "service_url" not in call
 
 
@@ -411,10 +405,10 @@ def test_default_properties_pinned_field_by_field() -> None:
     )
 
     assert NL2SQLOperator.DEFAULT_PROPERTIES == {
-        "execute_query": True,
+        "execute_query": False,
         "validate_query_prefixes": ["SELECT"],
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 512,
         "openai.temperature": 0,
@@ -426,8 +420,11 @@ def test_default_properties_pinned_field_by_field() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",

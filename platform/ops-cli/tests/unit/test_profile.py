@@ -145,7 +145,9 @@ def test_remove_touches_only_that_section(runner: CliRunner, cli_home: Path) -> 
     runner.invoke(cli, ["profile", "add", "staging"])
     runner.invoke(cli, ["profile", "add", "keep"])
     runner.invoke(cli, ["profile", "config", "--profile", "keep", "BLUE_DATA_OPS_PLANNER", "rule"])
-    runner.invoke(cli, ["profile", "config", "--profile", "staging", "BLUE_DATA_OPS_PLANNER", "x"])
+    runner.invoke(
+        cli, ["profile", "config", "--profile", "staging", "BLUE_DATA_OPS_PLANNER", "openai"]
+    )
     ProfileStore(cli_home).write_selection("staging", "catalog", "history")
 
     assert runner.invoke(cli, ["profile", "remove", "staging", "--confirm"]).exit_code == 0
@@ -268,12 +270,37 @@ def test_inspect_never_reports_a_flag_tier(runner: CliRunner) -> None:
 
 def test_inspect_can_report_on_another_profile(runner: CliRunner) -> None:
     runner.invoke(cli, ["profile", "add", "staging"])
-    runner.invoke(cli, ["profile", "config", "--profile", "staging", "BLUE_DATA_OPS_PLANNER", "s"])
+    runner.invoke(
+        cli, ["profile", "config", "--profile", "staging", "BLUE_DATA_OPS_PLANNER", "openai"]
+    )
     payload = json.loads(
         runner.invoke(cli, ["profile", "inspect", "staging", "--format", "json"]).stdout
     )
     assert payload["profile"] == "staging"
-    assert payload["parameters"]["BLUE_DATA_OPS_PLANNER"]["value"] == "s"
+    assert payload["parameters"]["BLUE_DATA_OPS_PLANNER"]["value"] == "openai"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("BLUE_DATA_CLI_FORMAT", "yaml"),
+        ("BLUE_DATA_OPS_CATALOG", "raw"),
+        ("BLUE_DATA_OPS_PLANNER", "other"),
+        ("BLUE_DATA_REGISTRY_STORE", "sqlite"),
+        ("BLUE_DATA_OPS_TIMEOUT", "0"),
+        ("BLUE_DATA_OPS_TIMEOUT", "nan"),
+        ("BLUE_DATA_OPS_PLANNER_TIMEOUT", "301"),
+        ("BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS", "255"),
+        ("BLUE_DATA_OPS_PLANNER_MAX_OUTPUT_TOKENS", "16385"),
+    ],
+)
+def test_config_rejects_invalid_values_before_creating_a_profile(
+    runner: CliRunner, cli_home: Path, name: str, value: str
+) -> None:
+    result = runner.invoke(cli, ["profile", "config", "--profile", "staging", name, value])
+    assert result.exit_code == config.EXIT_PROFILE
+    assert name in result.stderr
+    assert "[staging]" not in profiles(cli_home)
 
 
 # ------------------------------------------------------------------ config --

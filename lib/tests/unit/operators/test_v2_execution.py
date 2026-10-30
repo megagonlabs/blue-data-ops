@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from threading import Event
 from typing import Any, cast
@@ -19,6 +20,7 @@ from blue_data_ops import (
     FunctionResult,
     ValidationResult,
 )
+from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.operators import (
     Attributes,
     AttributeSpec,
@@ -376,6 +378,37 @@ def test_missing_litellm_uses_the_existing_code_with_actionable_fields() -> None
     assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
 
 
+def test_missing_llm_extras_keep_recoverable_errors_when_wrapped() -> None:
+    for missing in ("litellm", "jinja2", "diskcache"):
+        for code in (None, "provider_error", "cache_unavailable"):
+            for wrapped in (False, True):
+
+                class MissingExtraOperator(ProbeOperator):
+                    def _execute(
+                        self,
+                        input_data: DataBundle,
+                        attributes: Attributes,
+                        properties: Properties | None = None,
+                    ) -> FunctionResult:
+                        del input_data, attributes, properties
+                        dependency = ModuleNotFoundError("private import payload", name=missing)
+                        if wrapped:
+                            raise LLMError("private LLM payload", code=code) from dependency
+                        raise dependency
+
+                output, attributes, meta = MissingExtraOperator().run([[]], {"required": "given"})
+                [error] = meta.errors
+                assert output == [[]]
+                assert attributes == {}
+                assert error.category is ErrorCategory.RECOVERABLE
+                assert error.code is ErrorCode.EXECUTION_FAILED
+                assert error.stage is ErrorStage.EXECUTE
+                assert error.message == "LLM dependency is unavailable"
+                assert error.retryable is False
+                assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
+                assert "private" not in str(error)
+
+
 @pytest.mark.parametrize(
     "missing,properties",
     [
@@ -396,12 +429,23 @@ def test_real_llm_path_names_the_missing_extra_dependency(
             raise ModuleNotFoundError(f"blocked optional dependency {missing!r}", name=missing)
         return original_import(name, *args, **kwargs)
 
+    if missing == "jinja2":
+        from tests.unit.operators import test_nl2llm as nl2llm_tests
+
+        _json_provider = cast(
+            Callable[[str, pytest.MonkeyPatch], None], vars(nl2llm_tests)["_json_provider"]
+        )
+
+        _json_provider("[]", monkeypatch)
     monkeypatch.setattr(builtins, "__import__", blocked_import)
     _, _, meta = NL2LLMOperator().run(
         [[]],
         {"query": "Return an empty JSON array."},
         properties,
     )
+    if missing == "jinja2":
+        assert meta.errors == []
+        return
     [error] = meta.errors
     assert error.category is ErrorCategory.RECOVERABLE
     assert error.code is ErrorCode.EXECUTION_FAILED
@@ -416,7 +460,7 @@ def test_an_unrelated_missing_module_keeps_the_generic_contained_failure() -> No
     assert error.category is ErrorCategory.FAILED
     assert error.code is ErrorCode.EXECUTION_FAILED
     assert error.message == "operator execution failed"
-    assert error.suggestion is None
+    assert error.suggestion == "Check the declared inputs and backend configuration."
 
 
 def test_an_unsupported_llm_setting_is_actionable_without_provider_detail() -> None:
@@ -454,11 +498,62 @@ def test_an_unsupported_llm_setting_is_actionable_without_provider_detail() -> N
     assert error.stage is ErrorStage.EXECUTE
     assert error.message == "model rejected a requested generation setting"
     assert error.retryable is False
-    assert error.suggestion == "Remove the unsupported setting or choose a compatible model."
+    assert error.suggestion == (
+        "For temperature, set llm.temperature=null; otherwise remove the unsupported "
+        "setting or choose a compatible model."
+    )
     assert private_detail not in str(error)
     assert len(litellm.calls) == 1
     assert "cost" not in meta.traces
     assert "cost_basis" not in meta.traces
+
+
+def test_llm_execution_errors_are_actionable_without_provider_text() -> None:
+    cases = (
+        ("reserved_field", None, "operator template and transport controls are reserved"),
+        ("model_not_allowed", None, "model is not allowed"),
+        ("bad_override", None, "setting is not supported"),
+        ("provider_error", 401, "provider request failed"),
+        ("provider_error", 404, "provider request failed"),
+        ("provider_error", None, "provider request failed"),
+    )
+    for code, status, expected in cases:
+
+        class ProviderFailure(Exception):
+            status_code = status
+
+        error = operator_module._execution_error(  # pyright: ignore[reportPrivateUsage]
+            "nl2llm@3.0.0",
+            LLMError(
+                "private provider detail",
+                code=code,
+                provider_error=ProviderFailure("private provider detail"),
+            ),
+        )
+        assert error.code is ErrorCode.EXECUTION_FAILED
+        assert expected in error.message
+        assert error.suggestion
+        assert "private provider detail" not in str(error)
+
+
+def test_mock_response_refusal_has_a_safe_actionable_operator_message() -> None:
+    import litellm
+
+    litellm.calls.clear()
+    _, _, meta = NL2LLMOperator().run(
+        [[]],
+        {"query": "Return an empty JSON array."},
+        {"openai.mock_response": "private substituted response"},
+    )
+    [error] = meta.errors
+    assert error.code is ErrorCode.EXECUTION_FAILED
+    assert error.message == "operator template and transport controls are reserved"
+    assert error.suggestion == (
+        "Remove caller template, extraction and transport controls; use a host-configured operator."
+    )
+    assert error.retryable is False
+    assert "private substituted response" not in str(error)
+    assert litellm.calls == []
 
 
 def test_successful_empty_preserves_fresh_output_attributes() -> None:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -56,7 +58,12 @@ ${projection_instructions}
 
 
 class SemanticProjectOperator(Operator):
-    """Select and rename columns from a natural-language projection request."""
+    """Select and rename columns from a natural-language projection request.
+
+    Retained ``@1.0.0`` and ``@2.0.0`` use strict response validation.
+    Malformed replies raise through ``apply()`` and ``invoke()``; ``run()``
+    contains failures in ``exec_meta.errors``. Valid negative and empty replies remain valid.
+    """
 
     name: ClassVar[str] = "semantic_project"
     description: ClassVar[str] = (
@@ -74,7 +81,7 @@ class SemanticProjectOperator(Operator):
     MAPPING_PROMPT: ClassVar[str] = _MAPPING_PROMPT
     DEFAULT_PROPERTIES: ClassVar[dict[str, Any]] = {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0,
@@ -86,8 +93,11 @@ class SemanticProjectOperator(Operator):
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",
@@ -107,11 +117,15 @@ class SemanticProjectOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         projection_instructions = cast(str, attributes.get("projection_instructions", ""))
         if not input_data or not input_data[0] or not projection_instructions:
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = resolve_llm_client(merged)
         results: DataBundle = []
         for data_group in input_data:
@@ -130,7 +144,19 @@ class SemanticProjectOperator(Operator):
                     "projection_instructions": projection_instructions,
                 },
             )
-            resolved_mapping = cast(dict[Any, Any], result) if isinstance(result, dict) else {}
+            if not isinstance(result, dict):
+                raise_reply_failure()
+            resolved_mapping = cast(dict[Any, Any], result)
+            if any(
+                not isinstance(old, str)
+                or old not in schema
+                or not isinstance(new, str)
+                or not new.strip()
+                for old, new in resolved_mapping.items()
+            ):
+                raise_reply_failure()
+            if len(set(resolved_mapping.values())) != len(resolved_mapping):
+                raise_reply_failure()
             if not resolved_mapping:
                 results.append([])
                 continue

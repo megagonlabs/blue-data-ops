@@ -53,7 +53,9 @@ def test_guards_return_empty_without_provider(
 
 
 def test_simple_rename_strategy_uses_only_plan_call(
-    op: SemanticTransformOperator, monkeypatch: pytest.MonkeyPatch
+    op: SemanticTransformOperator,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _json_provider(
         '{"person": {"source_fields": ["name"], "transformation_type": '
@@ -78,6 +80,7 @@ def test_simple_rename_strategy_uses_only_plan_call(
     ]
     assert len(litellm.calls) == 1
     assert "You are a data transformation planner" in litellm.calls[0]["messages"][0]["content"]
+    assert capsys.readouterr().out == ""
 
 
 def test_per_record_strategy_parses_each_model_object(
@@ -214,14 +217,15 @@ def test_invalid_forced_strategy_falls_back_to_per_record(
         ],
         monkeypatch,
     )
-    assert op.apply(
-        [[{"score": 1}]],
-        {
-            "output_desc": {"label": {"description": "Label"}},
-            "strategy": "bogus",
-        },
-    ) == [[{"label": "low"}]]
-    assert "Invalid strategy 'bogus', falling back to 'per_record'" in capsys.readouterr().out
+    with pytest.warns(UserWarning, match="Unknown strategy; using per_record"):
+        assert op.apply(
+            [[{"score": 1}]],
+            {
+                "output_desc": {"label": {"description": "Label"}},
+                "strategy": "bogus",
+            },
+        ) == [[{"label": "low"}]]
+    assert capsys.readouterr().out == ""
 
 
 def test_plan_prompt_includes_input_metadata_and_mutates_nested_output_desc(
@@ -254,33 +258,35 @@ def test_plan_prompt_includes_input_metadata_and_mutates_nested_output_desc(
     assert output_desc["label"]["source_fields"] == ["score"]
 
 
-def test_auto_unclassified_plan_field_uses_empty_simple_rename(
+def test_auto_unclassified_plan_field_is_rejected(
     op: SemanticTransformOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider(
         '{"optional": {"source_fields": [], "transformation_type": "other"}}',
         monkeypatch,
     )
-    assert op.apply(
-        [[{"x": 1}]],
-        {"output_desc": {"optional": {"description": "Optional"}}},
-    ) == [[{}]]
+    with pytest.raises(ValueError, match="model reply"):
+        op.apply(
+            [[{"x": 1}]],
+            {"output_desc": {"optional": {"description": "Optional"}}},
+        )
 
 
-def test_forced_per_record_sets_unclassified_plan_field_to_none(
+def test_forced_per_record_unclassified_plan_field_is_rejected(
     op: SemanticTransformOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider(
         '{"optional": {"source_fields": [], "transformation_type": "other"}}',
         monkeypatch,
     )
-    assert op.apply(
-        [[{"x": 1}]],
-        {
-            "output_desc": {"optional": {"description": "Optional"}},
-            "strategy": "per_record",
-        },
-    ) == [[{"optional": None}]]
+    with pytest.raises(ValueError, match="model reply"):
+        op.apply(
+            [[{"x": 1}]],
+            {
+                "output_desc": {"optional": {"description": "Optional"}},
+                "strategy": "per_record",
+            },
+        )
 
 
 def test_later_empty_group_is_preserved(
@@ -328,11 +334,11 @@ def test_prompt_templates_and_defaults_are_pinned() -> None:
         == "742634bf42a3a57b8ed0742e99f6406f71058693a839dc3ac0771bbca101cdf7"
     )
     assert hashlib.sha256(SemanticTransformOperator.TRANSFORM_PROMPT.encode()).hexdigest() == (
-        "87656cfde6854ed87b8473ea8c0d2b947ec7e803d6c639cffb80b102cd3c4a15"
+        "978987e7146737ffe0d665af958d5e19fec840bc0df3a321b3e860f5786d2d50"
     )
     assert SemanticTransformOperator.DEFAULT_PROPERTIES == {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0.0,
@@ -344,8 +350,11 @@ def test_prompt_templates_and_defaults_are_pinned() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",

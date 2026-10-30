@@ -1,0 +1,1650 @@
+{
+  "schema_version": 1,
+  "source_instrument": {
+    "instrument_id": "blue-data-ops-core-3.10-active-reference",
+    "document_sha256": "dd8d4a6f0a251597e61bb3fbda867c995a03abf625f670b2ffda2423c83e2f1e",
+    "seal_sha256": "63a789e59716b22426db62ed1ee6afb7d060e56cd589a84fe0a24f40216c8e24"
+  },
+  "conversion": {
+    "row_order": "ASCII lexical order by logical operator name; exactly one row per active exact ID.",
+    "identity": "operator_id is the original accepted exact evidence ID; name and version are split without aliasing, latest lookup, or substitution. A live subject must resolve that exact ID and match type.__module__, type.__name__, inspect.getsourcefile(), and the bound source SHA-256 before any case can pass.",
+    "result_projection": {
+      "output_data": "Preserve list/group/record order, exact key sets, JSON scalar types, and values. A tensor [[]] is not itself proof of empty or failure.",
+      "output_attributes": "Preserve exact keys and ordinary value types. Counts are nonnegative integers; bool and float do not equal an integer count.",
+      "is_empty": "Require an actual Boolean. Successful-empty requires no errors; errors with [[]] require false.",
+      "errors": "Project each error to exact code and stage. Ignore message, traceback, logs, elapsed time, cost, input_shape, and output_shape.",
+      "floating_point": "Exact by default. The accepted avg output field alone allows absolute tolerance 1e-9, zero relative tolerance, finite int/float only, and excludes bool.",
+      "non_json_inputs": "Apply only evidence-declared typed transforms or deterministic doubles; never eval arbitrary descriptors."
+    },
+    "evidence_schemas": {
+      "cases": "Select by exact case id from cases[]; require case.operator_id to equal the row ID before projecting expected fields or predicates.",
+      "observations": "Select by exact case id from observations[]; map result.data, result.attributes, result.meta.is_empty, and result.meta.errors while preserving the recorded side-effect assertions."
+    }
+  },
+  "active_ids": [
+    "argmax@2.0.0",
+    "argmin@2.0.0",
+    "avg@3.0.0",
+    "classify@3.0.0",
+    "cluster@3.0.0",
+    "create_database@2.0.0",
+    "create_table@2.0.0",
+    "data_discover@2.0.0",
+    "delete@2.0.0",
+    "insert@3.0.0",
+    "insert_table@3.0.0",
+    "intersect@3.0.0",
+    "join@3.0.0",
+    "max@3.0.0",
+    "min@3.0.0",
+    "nl2bn@3.0.0",
+    "nl2llm@3.0.0",
+    "nl2sql@3.0.0",
+    "normalize_text@2.0.0",
+    "project@3.0.0",
+    "segment_text@2.0.0",
+    "select@2.0.0",
+    "semantic_extract@3.0.0",
+    "semantic_filter@3.0.0",
+    "semantic_join@3.0.0",
+    "semantic_project@3.0.0",
+    "semantic_transform@3.0.0",
+    "sum@2.0.0",
+    "union@2.0.0",
+    "vector_embed@3.0.0",
+    "vector_search@3.0.0",
+    "vector_similarity@3.0.0"
+  ],
+  "rows": [
+    {
+      "operator_id": "argmax@2.0.0",
+      "name": "argmax",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/argmax_operator.py",
+        "sha256": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
+        "symbol": "ArgmaxOperator",
+        "module": "blue_data_ops.operators.argmax_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "argmax@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "argmax-record-tie",
+          "summary": "First-group record mode preserves both tied maximum records as data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "argmax-empty-record-mode",
+          "summary": "Empty record mode produces successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "argmax-invalid-key",
+          "summary": "A missing argmax_key is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "argmax-malformed-bundle-failure",
+          "summary": "A non-record member is contained as EXECUTION_FAILED at EXECUTE."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Record-mode empty and index-mode empty are distinct.",
+        "Malformed non-record input cannot pass as successful-empty."
+      ]
+    },
+    {
+      "operator_id": "argmin@2.0.0",
+      "name": "argmin",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/argmin_operator.py",
+        "sha256": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
+        "symbol": "ArgminOperator",
+        "module": "blue_data_ops.operators.argmin_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "argmin@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "argmin-record-ties",
+          "summary": "First-group record mode preserves both tied minimum records as data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "argmin-empty-record-mode",
+          "summary": "Empty record mode produces successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "argmin-invalid-key",
+          "summary": "A missing argmin_key is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "argmin-malformed-bundle-failure",
+          "summary": "A non-record member is contained as EXECUTION_FAILED at EXECUTE."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Record-mode empty and index-mode empty are distinct.",
+        "Malformed non-record input cannot pass as successful-empty."
+      ]
+    },
+    {
+      "operator_id": "avg@3.0.0",
+      "name": "avg",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_avg_outcome.py",
+        "sha256": "3655c5f3a76d31e8fefc2db6482e4a8a8bbdd8d97c9070f5d69fc1e7e2ded140",
+        "symbol": "AvgOutcomeOperator",
+        "module": "blue_data_ops.operators._avg_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "avg@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_operator_outcome"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "avg_decimal_typed_input_discriminates_int_then_float",
+          "summary": "Decimal 3.9 follows int-before-float coercion and yields average 3.0 with count 1."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "avg_no_usable_values_successful_empty",
+          "summary": "No usable values yields [[]], count 0, and successful-empty rather than a zero row."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "avg_absent_avg_key_rejected",
+          "summary": "Missing avg_key is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "not_applicable",
+          "reason": "The exact active-ID fixture has no approved ordinary execution-failure coordinate for avg."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Decimal typed-input transform only for the selected success discriminator."
+      },
+      "discriminators": [
+        "Decimal 3.9 distinguishes int-first from float-first coercion.",
+        "No values and a real zero average have different tensor and metadata shapes."
+      ]
+    },
+    {
+      "operator_id": "classify@3.0.0",
+      "name": "classify",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_classify_outcome.py",
+        "sha256": "80b05f4bfce6d0ff812a62c89da8ff9c7bb356369df2c2cb99b4e0547d579230",
+        "symbol": "ClassifyOutcomeOperator",
+        "module": "blue_data_ops.operators._classify_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "classify@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_classify_rejects_calls_that_cannot_train"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "C01-decision-tree-success",
+          "summary": "Real decision-tree training uses the first group and predicts across supplied groups."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "C04-all-groups-empty",
+          "summary": "All groups empty is successful-empty without model work."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "C06-unsupported-algorithm-precedes-empty",
+          "summary": "Unsupported algorithm is INVALID_INPUT before the empty shortcut."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "C08-ragged-vectors-remain-model-failure",
+          "summary": "Ragged real-model vectors are contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-ml",
+        "setup": "Declared scikit-learn models; deterministic random_state where supplied."
+      },
+      "discriminators": [
+        "Unsupported algorithm is checked before empty execution.",
+        "Ragged-vector model failure cannot pass as invalid input or empty."
+      ]
+    },
+    {
+      "operator_id": "cluster@3.0.0",
+      "name": "cluster",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_cluster_outcome.py",
+        "sha256": "b33be4daeacab6b9fc393df2786c6c32f3ac67c40fbc6da7d0ed7cffe0d7224e",
+        "symbol": "ClusterOutcomeOperator",
+        "module": "blue_data_ops.operators._cluster_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "cluster@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_cluster_rejects_calls_that_cannot_fit"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "K01-kmeans-success",
+          "summary": "Real K-means produces stable cluster labels as record data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "K04-empty-first-group-ignores-later-groups",
+          "summary": "An empty first group produces successful-empty under the retained first-group boundary."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "K05-unsupported-algorithm-precedes-empty",
+          "summary": "Unsupported algorithm is INVALID_INPUT before empty handling."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "K08-ragged-vectors-remain-model-failure",
+          "summary": "Ragged vectors are contained as a real-model execution failure."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-ml",
+        "setup": "Declared scikit-learn models; deterministic random_state where supplied."
+      },
+      "discriminators": [
+        "Unsupported algorithm is checked before empty execution.",
+        "Real labels distinguish usable fit from pass-through."
+      ]
+    },
+    {
+      "operator_id": "create_database@2.0.0",
+      "name": "create_database",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/create_database_operator.py",
+        "sha256": "5ceaf84cff3d46f1f41d2642e110a0533484f32fa2501912d3db78a431ef8c90",
+        "symbol": "CreateDatabaseOperator",
+        "module": "blue_data_ops.operators.create_database_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "create_database@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "create-database-real-sqlite-empty-input",
+          "summary": "A real SQLite database is created while tensor output remains an empty pass-through."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "create-database-real-sqlite-empty-input",
+          "summary": "The empty tensor result is successful because the database side effect is separately observed."
+        },
+        "invalid": {
+          "status": "not_observed",
+          "reason": "Blank-source validation is not covered by these observations."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "create-database-registry-failure",
+          "summary": "An injected RegistrySeam failure is EXECUTION_FAILED; raw pass-through is not accepted as success proof."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-sqlite",
+        "setup": "Fresh RegistrySeam and SQLite source; side effect verified on disk."
+      },
+      "discriminators": [
+        "Filesystem creation distinguishes side-effect success from empty pass-through.",
+        "Injected registry failure distinguishes structured run from raw apply swallowing."
+      ]
+    },
+    {
+      "operator_id": "create_table@2.0.0",
+      "name": "create_table",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/create_table_operator.py",
+        "sha256": "4df34a0a7d6415b0cced1187c69c11714dffa556aa34188e2153b4973701d298",
+        "symbol": "CreateTableOperator",
+        "module": "blue_data_ops.operators.create_table_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "create_table@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "create-table-real-sqlite-empty-input",
+          "summary": "A real SQLite items(id,label) table is created with public-collection coercion."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "create-table-real-sqlite-empty-input",
+          "summary": "The empty tensor result is successful because the table side effect is separately observed."
+        },
+        "invalid": {
+          "status": "not_observed",
+          "reason": "Blank-source validation is not covered by these observations."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "create-table-registry-failure",
+          "summary": "An injected RegistrySeam failure is EXECUTION_FAILED; raw pass-through is not accepted as success proof."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-sqlite",
+        "setup": "Fresh RegistrySeam and SQLite source; sqlite_master and PRAGMA table_info verify the side effect."
+      },
+      "discriminators": [
+        "sqlite_master and PRAGMA columns distinguish side-effect success from empty pass-through.",
+        "Injected registry failure distinguishes structured run from raw apply swallowing."
+      ]
+    },
+    {
+      "operator_id": "data_discover@2.0.0",
+      "name": "data_discover",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/data_discover_operator.py",
+        "sha256": "dc667fa5cbe2dfb9914e80c893d66b8d8ba25e89459e154988baf5f30b772acb",
+        "symbol": "DataDiscoverOperator",
+        "module": "blue_data_ops.operators.data_discover_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "data_discover@2.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "tests/unit/operators/test_data_discover_projection.py"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "test_reference_catalog_success",
+          "summary": "A registry search returns catalog identity fields, an allowlisted source kind, and a score."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "test_reference_catalog_empty",
+          "summary": "A no-match registry search returns successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "test_reference_catalog_invalid",
+          "summary": "A blank query returns INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "test_reference_catalog_failure",
+          "summary": "A registry search failure returns EXECUTION_FAILED at EXECUTE."
+        }
+      },
+      "dependency_profile": {
+        "kind": "registry",
+        "setup": "A synthetic registry seam supplies deterministic search and failure cases."
+      },
+      "discriminators": [
+        "The exact success result omits stored descriptions, connection properties, and metadata.",
+        "No-match and registry failure have distinct ExecMeta outcomes."
+      ]
+    },
+    {
+      "operator_id": "delete@2.0.0",
+      "name": "delete",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/delete_operator.py",
+        "sha256": "ab33f67a6e072192556a493d6e8570735c28417e74b3590b666621c0bc64cd02",
+        "symbol": "DeleteOperator",
+        "module": "blue_data_ops.operators.delete_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "delete@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "delete-first-group",
+          "summary": "Deleting from the first group returns the remaining records and ignores later groups."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "delete-empty",
+          "summary": "An empty first group is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "delete-invalid-index",
+          "summary": "A non-integer delete index is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "not_applicable",
+          "reason": "The pure slicing body has no genuine execution-failure coordinate for a valid record bundle."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Deleting the first group distinguishes the out-of-range no-op.",
+        "Successful-empty is tied to empty input, not unchanged nonempty data."
+      ]
+    },
+    {
+      "operator_id": "insert@3.0.0",
+      "name": "insert",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_insert_outcome.py",
+        "sha256": "f1712192f95e3c0bcaa393acc2d4bea0d1ab34aad2f8e3acc57a9fba7b943806",
+        "symbol": "InsertOutcomeOperator",
+        "module": "blue_data_ops.operators._insert_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "insert@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_insert_populates_an_empty_base_that_the_prior_version_left_empty"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "I01-declared-record-populates-empty-base",
+          "summary": "Declared records populate an existing empty first group."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "I03-empty-base-with-nothing-supplied-is-noop",
+          "summary": "Empty base with no supplied records is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "I04-invalid-position-precedes-noop",
+          "summary": "Invalid insertion position is rejected before the no-op shortcut."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "I05-current-lax-string-position-fails-in-body",
+          "summary": "A lax string position that reaches the body is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Empty-base insertion differs from the predecessor body.",
+        "Group-less empty and failed body have different meta states."
+      ]
+    },
+    {
+      "operator_id": "insert_table@3.0.0",
+      "name": "insert_table",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_insert_table_outcome.py",
+        "sha256": "150d3c31cf4cae65e1d991671ca62ad3e7392a5a4625098fa05f633c6afc6cc1",
+        "symbol": "InsertTableOutcomeOperator",
+        "module": "blue_data_ops.operators._insert_table_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "insert_table@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_operator_outcome"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "insert_table_ordinary_rows_sqlite",
+          "summary": "Real SQLite writes preserve all records and report exact whole-call num_rows_insert."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "insert_table_all_empty_after_registry_setup",
+          "summary": "Empty input still performs registry setup then returns successful-empty with count 0."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "insert_table_non_record_rejected_before_write",
+          "summary": "A later non-record rejects the whole call before any write."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "insert_table_write_failure_after_first_batch_commit",
+          "summary": "A real second-batch UNIQUE failure exposes no partial count while the first committed row remains observable."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-sqlite",
+        "setup": "Fresh RegistrySeam and disposable SQLite database per case; rowcount masking only where declared."
+      },
+      "discriminators": [
+        "Later-group rows and persisted SQLite rows prevent first-group-only success.",
+        "Second-batch failure preserves a real partial write but never a partial count."
+      ]
+    },
+    {
+      "operator_id": "intersect@3.0.0",
+      "name": "intersect",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_intersect_outcome.py",
+        "sha256": "a5e3bf0061e73b316056ce65fd6c6d6b72a3e7072be0430ac9d46ad665e6bc73",
+        "symbol": "IntersectOutcomeOperator",
+        "module": "blue_data_ops.operators._intersect_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "intersect@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_intersect_treats_an_empty_middle_group_as_an_operand"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "X01-sequence-match-preserves-first-record",
+          "summary": "Sequence matching returns the exact first-group record."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "X02-empty-middle-operand-makes-intersection-empty",
+          "summary": "Any empty supplied operand makes the intersection successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "X03-fewer-than-two-operands-rejected",
+          "summary": "Fewer than two operands is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "not_applicable",
+          "reason": "The accepted pure-operation instrument names no separate execution-failure coordinate."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "An empty middle operand prevents implementations that drop empty groups.",
+        "Single operand rejection distinguishes invalid from empty intersection."
+      ]
+    },
+    {
+      "operator_id": "join@3.0.0",
+      "name": "join",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_join_outcome.py",
+        "sha256": "b66d0e30b9c21e682f256c63c8a0fb281ffdd2e79345a33ed824bb7a17b3299c",
+        "symbol": "JoinOutcomeOperator",
+        "module": "blue_data_ops.operators._join_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "join@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_operator_outcome"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "join_inner_match_on_id_default_suffix",
+          "summary": "Inner join keeps the left key once and uses generated suffix defaults."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "join_no_match_empty_suffix_list_keeps_defaults",
+          "summary": "No matching keys with an explicit empty suffix list is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "join_invalid_suffixes_with_empty_group_rejected",
+          "summary": "Invalid duplicate suffixes are rejected before an empty-group shortcut."
+        },
+        "failure": {
+          "status": "not_applicable",
+          "reason": "The exact active-ID fixture has no approved ordinary execution-failure coordinate for join."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Explicit empty suffix list is valid while duplicate suffixes fail before empty execution.",
+        "No-match empty differs from a matched zero-like record."
+      ]
+    },
+    {
+      "operator_id": "max@3.0.0",
+      "name": "max",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_max_outcome.py",
+        "sha256": "10750c9e1fe7b2800782eb367ff0688bf386c24716b822e39125d5a29fbd1e32",
+        "symbol": "MaxOutcomeOperator",
+        "module": "blue_data_ops.operators._max_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "max@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_extrema_distinguish_no_numeric_value_from_real_zero"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "M01-max-coercion-custom-key-and-first-group",
+          "summary": "First-group coercion and custom output naming produce the real maximum."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "M02-max-no-usable-value-is-empty",
+          "summary": "No usable comparable value is successful-empty rather than a null record."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "M03-max-required-key-missing",
+          "summary": "Missing max_key is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "M04-max-unrelated-coercion-error-contained",
+          "summary": "An unrelated coercion exception is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls with a narrow coercion double for the failure coordinate."
+      },
+      "discriminators": [
+        "No usable value differs from a real zero maximum.",
+        "A coercion exception is not normalized to empty."
+      ]
+    },
+    {
+      "operator_id": "min@3.0.0",
+      "name": "min",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_min_outcome.py",
+        "sha256": "9a385caba7ab721e082382b07d4c44a5128abb68190e88740880d7a5b59f347c",
+        "symbol": "MinOutcomeOperator",
+        "module": "blue_data_ops.operators._min_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "min@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_extrema_distinguish_no_numeric_value_from_real_zero"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "N01-min-coercion-custom-key-and-first-group",
+          "summary": "First-group coercion and custom output naming produce the real minimum."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "N02-min-no-usable-value-is-empty",
+          "summary": "No usable comparable value is successful-empty rather than a null record."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "N03-min-required-key-missing",
+          "summary": "Missing min_key is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "N04-min-unrelated-coercion-error-contained",
+          "summary": "An unrelated coercion exception is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls with a narrow coercion double for the failure coordinate."
+      },
+      "discriminators": [
+        "No usable value differs from a real zero minimum.",
+        "A coercion exception is not normalized to empty."
+      ]
+    },
+    {
+      "operator_id": "nl2bn@3.0.0",
+      "name": "nl2bn",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_nl2bn_outcome.py",
+        "sha256": "24a13f64ad56a20244426361c7eca61197cfcd009952f58a4eb09e0bb593a19c",
+        "symbol": "NL2BNOutcomeOperator",
+        "module": "blue_data_ops.operators._nl2bn_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "nl2bn@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_nl2bn_distinguishes_no_rows_missing_probability_and_real_zero"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "BN01-zero-probability-remains-data",
+          "summary": "A backend probability of zero remains tensor data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "BN02-zero-backend-rows-is-source-confirmed-no-answer",
+          "summary": "Zero backend rows is source-confirmed successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "BN04-blank-question-is-invalid",
+          "summary": "A blank required question is INVALID_INPUT before provider work."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "BN03-nonempty-backend-record-needs-probability",
+          "summary": "A nonempty result without probability is EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider-and-registry",
+        "setup": "Scripted LLMClient plus deterministic RegistrySeam result."
+      },
+      "discriminators": [
+        "Zero probability is data while zero backend rows is empty.",
+        "Missing probability cannot masquerade as no answer."
+      ]
+    },
+    {
+      "operator_id": "nl2llm@3.0.0",
+      "name": "nl2llm",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_nl2llm_outcome.py",
+        "sha256": "706001762f6726246ce4e5becb0c2d15b66ced0ab1b1618d72e36de0fd054834",
+        "symbol": "NL2LLMOutcomeOperator",
+        "module": "blue_data_ops.operators._nl2llm_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "nl2llm@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_nl2llm_distinguishes_empty_records_from_invalid_or_malformed_results"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "LL01-requested-records-remain-data",
+          "summary": "A provider array of requested records remains tensor data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "LL02-explicit-empty-array-is-valid-empty",
+          "summary": "An explicit provider empty array is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "LL03-blank-query-is-invalid",
+          "summary": "A blank required query is INVALID_INPUT before provider work."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "LL04-object-instead-of-array-fails-normalization",
+          "summary": "A provider object where an array is required is EXECUTION_RESULT_INVALID at NORMALIZE."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider",
+        "setup": "Scripted LLMClient; no live provider."
+      },
+      "discriminators": [
+        "Provider [] is valid empty while provider {} is invalid normalized output.",
+        "Blank query must not call the provider."
+      ]
+    },
+    {
+      "operator_id": "nl2sql@3.0.0",
+      "name": "nl2sql",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_nl2sql_outcome.py",
+        "sha256": "4aaa21ec4ba700621e55d5ec7464f550b8cb16011a41c806f7e973ec5e75bf75",
+        "symbol": "NL2SQLOutcomeOperator",
+        "module": "blue_data_ops.operators._nl2sql_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "nl2sql@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_nl2sql_validates_routing_and_distinguishes_backend_result_shapes"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "SQL01-query-only-sql-remains-data",
+          "summary": "Query-only SQL remains a tensor record."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "SQL03-zero-executed-rows-is-valid-empty",
+          "summary": "A successful backend query with zero rows is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "SQL04-blank-question-is-invalid",
+          "summary": "A blank question is INVALID_INPUT before routing."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "SQL07-provider-response-must-contain-query-object",
+          "summary": "A malformed provider response is EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider-and-registry",
+        "setup": "Scripted LLMClient plus deterministic RegistrySeam result."
+      },
+      "discriminators": [
+        "Query-only SQL is data while zero executed rows is empty.",
+        "Malformed provider and backend shapes cannot pass as no rows."
+      ]
+    },
+    {
+      "operator_id": "normalize_text@2.0.0",
+      "name": "normalize_text",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/normalize_text_operator.py",
+        "sha256": "3ba875420c503489f90865e655ea5494161be9cec59eff6702d259470db43014",
+        "symbol": "NormalizeTextOperator",
+        "module": "blue_data_ops.operators.normalize_text_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "normalize_text@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "normalize-all-groups-blank-versus-empty",
+          "summary": "All groups are preserved; blank field data normalizes to an empty string record."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "normalize-all-empty",
+          "summary": "No input records is successful-empty, distinct from blank-field data."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "normalize-invalid-fields",
+          "summary": "An empty text_field list is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "normalize-malformed-bundle-failure",
+          "summary": "A non-record member is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Blank normalized text remains a record; no records is empty.",
+        "Group preservation prevents first-group-only normalization."
+      ]
+    },
+    {
+      "operator_id": "project@3.0.0",
+      "name": "project",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_project_outcome.py",
+        "sha256": "e5e1c57715c4e424e5d0fff215c89dd302bb526ce89d3445b179ef218318aa3b",
+        "symbol": "ProjectOutcomeOperator",
+        "module": "blue_data_ops.operators._project_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "project@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_project_rejects_an_empty_key_request_before_empty_data"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "P01-first-group-projection-keeps-empty-record",
+          "summary": "Projection uses the first group and an empty projected record remains data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "P03-valid-project-with-no-source-rows",
+          "summary": "A valid projection with no source rows is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "P02-empty-request-rejected-before-empty-data",
+          "summary": "An empty requested-key list is INVALID_INPUT before empty execution."
+        },
+        "failure": {
+          "status": "not_applicable",
+          "reason": "The accepted pure projection instrument names no separate execution-failure coordinate."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "An empty projected record is data; no source rows is empty.",
+        "Empty requested keys fail before the empty-data shortcut."
+      ]
+    },
+    {
+      "operator_id": "segment_text@2.0.0",
+      "name": "segment_text",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/segment_text_operator.py",
+        "sha256": "8565aa50bed2e1124ee0d29b041453debbb05a89aac9fdc0323482eb64297153",
+        "symbol": "SegmentTextOperator",
+        "module": "blue_data_ops.operators.segment_text_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "segment_text@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "segment-all-groups-blank-skip",
+          "summary": "Segments preserve groups while blank or missing text records are skipped."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "segment-blank-only",
+          "summary": "Producing no segments from blank-only input is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "segment-invalid-text-field",
+          "summary": "A blank text_field is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "segment-format-execution-failure",
+          "summary": "An unknown format placeholder on nonblank input is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Blank rows are skipped while nonblank later-group rows yield segments.",
+        "Bad format placeholder is failure, not no-segment empty."
+      ]
+    },
+    {
+      "operator_id": "select@2.0.0",
+      "name": "select",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/select_operator.py",
+        "sha256": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c",
+        "symbol": "SelectOperator",
+        "module": "blue_data_ops.operators.select_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "select@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "select-first-group-missing-skip",
+          "summary": "Selection uses the first group, returns matching records, and skips missing fields."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "select-no-match",
+          "summary": "A valid no-match selection is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "select-invalid-operand",
+          "summary": "An unsupported operand is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "select-validator-exception",
+          "summary": "The accepted lax eps string boundary is contained as VALIDATION_FAILED at VALIDATE."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Missing fields are skipped without admitting later groups.",
+        "String eps validator failure is distinct from unsupported-operand invalid input."
+      ]
+    },
+    {
+      "operator_id": "semantic_extract@3.0.0",
+      "name": "semantic_extract",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_semantic_extract_outcome.py",
+        "sha256": "98a98ad53ff42eb820a8aad0946d08777655fc92edc40a82eb5ec153e135ffbe",
+        "symbol": "SemanticExtractOutcomeOperator",
+        "module": "blue_data_ops.operators._semantic_extract_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "semantic_extract@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_semantic_extract_processes_a_later_group"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "EX01-first-empty-later-group-processed",
+          "summary": "A leading empty group is preserved while a later group is extracted."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "EX03-all-supplied-groups-empty",
+          "summary": "All supplied groups empty skips the provider and is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "EX06-malformed-input-bundle-is-rejected",
+          "summary": "A malformed input bundle is INVALID_INPUT."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "EX04-combined-response-must-be-object",
+          "summary": "A non-object combined provider response is EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider",
+        "setup": "Scripted LLMClient; no live provider."
+      },
+      "discriminators": [
+        "A valid empty entity list remains record data; all groups empty is tensor empty.",
+        "Non-object provider results fail instead of becoming empty entities."
+      ]
+    },
+    {
+      "operator_id": "semantic_filter@3.0.0",
+      "name": "semantic_filter",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_semantic_filter_outcome.py",
+        "sha256": "2a4a1ef785b01aa5b0fbf68995a28b05664d467de0b4969105a048e02e0569b7",
+        "symbol": "SemanticFilterOutcomeOperator",
+        "module": "blue_data_ops.operators._semantic_filter_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "semantic_filter@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_semantic_filter_preserves_empty_groups_and_rejects_boolean_aliases"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "FI01-index-mode-preserves-empty-and-later-groups",
+          "summary": "Index mode emits one indices record per group, including an empty group."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "FI02-valid-false-is-no-match",
+          "summary": "A valid false predicate result is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "FI04-index-mode-setting-must-be-boolean",
+          "summary": "return_idx must be an actual Boolean."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "FI03-undocumented-boolean-alias-fails",
+          "summary": "An undocumented Boolean alias fails instead of becoming false."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider",
+        "setup": "Scripted LLMClient; no live provider."
+      },
+      "discriminators": [
+        "Index mode preserves one indices record per group.",
+        "Provider false is empty while unrecognized Boolean aliases fail."
+      ]
+    },
+    {
+      "operator_id": "semantic_join@3.0.0",
+      "name": "semantic_join",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_semantic_join_outcome.py",
+        "sha256": "2a4b5eba7f5a873248b5e7c37606bd5a16ab660fc6792adf46a992c7fb58177e",
+        "symbol": "SemanticJoinOutcomeOperator",
+        "module": "blue_data_ops.operators._semantic_join_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "semantic_join@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_semantic_join_distinguishes_no_pairs_from_a_malformed_response"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "SJ01-valid-batch-produces-joined-record",
+          "summary": "A valid JSON-Boolean batch response produces joined record data."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "SJ02-valid-false-batch-is-no-match",
+          "summary": "A valid false batch response is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "SJ07-exactly-two-groups-required",
+          "summary": "Group arity other than two is INVALID_INPUT."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "SJ04-unparseable-batch-fails",
+          "summary": "An unparseable batch response is EXECUTION_FAILED, not no-match."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider",
+        "setup": "Scripted LLMClient; optional embedding failure is a separately labeled double."
+      },
+      "discriminators": [
+        "No pairs skips the provider while malformed nonempty-pair response fails.",
+        "Two-group validation prevents arity errors from reaching raw body semantics."
+      ]
+    },
+    {
+      "operator_id": "semantic_project@3.0.0",
+      "name": "semantic_project",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_semantic_project_outcome.py",
+        "sha256": "68b96c63b90d6f40326918b4843b92895dba8cf8b37f90f93e6a4ddec0a50535",
+        "symbol": "SemanticProjectOutcomeOperator",
+        "module": "blue_data_ops.operators._semantic_project_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "semantic_project@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_semantic_project_processes_a_later_group"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "PJ01-first-empty-later-group-projected",
+          "summary": "A leading empty group is preserved while a later group is projected."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "PJ02-explicit-empty-mapping-is-drop-all",
+          "summary": "A valid explicit empty mapping has the documented successful-empty drop-all meaning."
+        },
+        "invalid": {
+          "status": "not_observed",
+          "reason": "The accepted family instrument names no separate validation-stage invalid case."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "PJ03-mapping-response-must-be-object",
+          "summary": "A non-object provider mapping is EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider",
+        "setup": "Scripted LLMClient; no live provider."
+      },
+      "discriminators": [
+        "Explicit empty mapping is documented drop-all empty.",
+        "Non-object mapping fails instead of becoming an empty mapping."
+      ]
+    },
+    {
+      "operator_id": "semantic_transform@3.0.0",
+      "name": "semantic_transform",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_semantic_transform_outcome.py",
+        "sha256": "12f63ddc55cd5737f2dbae22e2aadad9bd73cb004eb6cec7ef16c90f91fb33af",
+        "symbol": "SemanticTransformOutcomeOperator",
+        "module": "blue_data_ops.operators._semantic_transform_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "semantic_transform@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_semantic_transform_processes_a_later_group"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "TR01-first-empty-later-group-simple-rename",
+          "summary": "A leading empty group is preserved while later data is transformed."
+        },
+        "empty": {
+          "status": "not_observed",
+          "reason": "The accepted family instrument has no successful-empty tensor coordinate; an empty object is record data."
+        },
+        "invalid": {
+          "status": "not_observed",
+          "reason": "The accepted family instrument names no separate validation-stage invalid case."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "TR02-plan-response-must-be-object",
+          "summary": "A non-object transformation plan is EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "scripted-provider",
+        "setup": "Scripted LLMClient; no live provider."
+      },
+      "discriminators": [
+        "Empty object for an optional target is record data, not tensor empty.",
+        "Malformed plan fails rather than producing an empty-dict fallback."
+      ]
+    },
+    {
+      "operator_id": "sum@2.0.0",
+      "name": "sum",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/sum_operator.py",
+        "sha256": "57de9ac53c365356fa76ed8eb4e1968a9342daabb172eaeadcb934dafabbfeac",
+        "symbol": "SumOperator",
+        "module": "blue_data_ops.operators.sum_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "sum@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "sum-first-group-coercion",
+          "summary": "First-group numeric coercion produces the exact sum record."
+        },
+        "empty": {
+          "status": "not_applicable",
+          "reason": "No-contribution and empty inputs produce the domain identity record {sum: 0}, not successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "sum-invalid-key",
+          "summary": "A missing sum_key is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "sum-malformed-bundle-failure",
+          "summary": "A non-record member is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Empty contributions yield a zero identity record rather than successful-empty.",
+        "Malformed bundle failure cannot pass as identity data."
+      ]
+    },
+    {
+      "operator_id": "union@2.0.0",
+      "name": "union",
+      "version": "2.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/union_operator.py",
+        "sha256": "b08bffdd9a6bb397c7764e68fec8e41f103b4404338ce2b2c7a71baccd2fe95b",
+        "symbol": "UnionOperator",
+        "module": "blue_data_ops.operators.union_operator"
+      },
+      "evidence": {
+        "source_kind": "accepted runtime observation",
+        "schema": "observations",
+        "original_operator_id": "union@2.0.0",
+        "test_locator": {
+          "kind": "acceptance probe",
+          "node": "def main()"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "union-key-match",
+          "summary": "key_match flattens all groups while retaining records with different field names."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "union-all-empty",
+          "summary": "All empty groups produce successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "union-invalid-mode",
+          "summary": "An unsupported match mode is INVALID_INPUT."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "union-malformed-bundle-failure",
+          "summary": "A non-record member is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "none",
+        "setup": "Pure exact-ID direct calls."
+      },
+      "discriminators": [
+        "Different match modes have distinct deduplication behavior.",
+        "Malformed member failure cannot pass as all-empty."
+      ]
+    },
+    {
+      "operator_id": "vector_embed@3.0.0",
+      "name": "vector_embed",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_vector_embed_outcome.py",
+        "sha256": "684777c7e5a497374281ed49b43ff0f98b59721e218f989edd869305d89e0b8b",
+        "symbol": "VectorEmbedOutcomeOperator",
+        "module": "blue_data_ops.operators._vector_embed_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "vector_embed@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_vector_embed_processes_a_later_group"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "E01-ordinary-embedding",
+          "summary": "Deterministic embeddings are appended to each ordinary record."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "E03-all-groups-empty",
+          "summary": "All groups empty skips model construction and is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "E04-invalid-policy-precedes-empty",
+          "summary": "Invalid control policy is rejected before the empty shortcut."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "E05-model-construction-failure",
+          "summary": "Model construction failure is contained as EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "deterministic-embedder",
+        "setup": "Construction and encode doubles; no model download."
+      },
+      "discriminators": [
+        "Leading empty groups are preserved and later groups still embed.",
+        "All-empty skips construction while construction failure is an error."
+      ]
+    },
+    {
+      "operator_id": "vector_search@3.0.0",
+      "name": "vector_search",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_vector_search_outcome.py",
+        "sha256": "9a368dacb786dae1e463d018c769c08752a2c584892297e535bafa05b2eccdfb",
+        "symbol": "VectorSearchOutcomeOperator",
+        "module": "blue_data_ops.operators._vector_search_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "vector_search@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_vector_search_declared_attribute_top_k_changes_the_result"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "Q01-attribute-top-k-is-effective",
+          "summary": "Declared top_k truncates sorted hit records and discriminates from the v2 body."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "Q05-attribute-min-score-can-produce-no-hits",
+          "summary": "A valid threshold with no hits is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "Q04-missing-required-query",
+          "summary": "Missing query is INVALID_INPUT at VALIDATE."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "Q06-candidate-metadata-failure-is-not-empty",
+          "summary": "Candidate metadata failure is EXECUTION_FAILED, not successful-empty."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-numpy-and-deterministic-embedder",
+        "setup": "Existing vectors use real NumPy; generated-vector cases use a deterministic embedder."
+      },
+      "discriminators": [
+        "Attribute top_k changes output relative to the predecessor body.",
+        "No-hit threshold empty differs from malformed candidate failure."
+      ]
+    },
+    {
+      "operator_id": "vector_similarity@3.0.0",
+      "name": "vector_similarity",
+      "version": "3.0.0",
+      "implementation": {
+        "path": "src/blue_data_ops/operators/_vector_similarity_outcome.py",
+        "sha256": "b409bed083680b95afc7412dc22732fec3a9455ce44d522f50fdb4e7f6cd467c",
+        "symbol": "VectorSimilarityOutcomeOperator",
+        "module": "blue_data_ops.operators._vector_similarity_outcome"
+      },
+      "evidence": {
+        "source_kind": "accepted expected case",
+        "schema": "cases",
+        "original_operator_id": "vector_similarity@3.0.0",
+        "test_locator": {
+          "kind": "product regression test",
+          "node": "def test_vector_similarity_zero_cartesian_pairs_skip_optional_dependencies"
+        }
+      },
+      "claims": {
+        "success": {
+          "status": "supported",
+          "case_id": "S01-pairwise-cosine-existing-vectors",
+          "summary": "Pairwise cosine emits exact pair identities, order, metrics, and scores."
+        },
+        "empty": {
+          "status": "supported",
+          "case_id": "S03-pairwise-both-empty",
+          "summary": "Both pairwise operands empty is successful-empty."
+        },
+        "invalid": {
+          "status": "supported",
+          "case_id": "S06-pairwise-one-empty-is-invalid",
+          "summary": "One empty pairwise operand is INVALID_INPUT."
+        },
+        "failure": {
+          "status": "supported",
+          "case_id": "S08-generated-vector-dimension-mismatch",
+          "summary": "Generated vector dimension mismatch is EXECUTION_FAILED."
+        }
+      },
+      "dependency_profile": {
+        "kind": "real-numpy-and-deterministic-embedder",
+        "setup": "Existing-vector scoring uses real NumPy; generated-vector cases use a deterministic embedder."
+      },
+      "discriminators": [
+        "Both-empty pairwise is valid while one-empty pairwise is invalid.",
+        "No-pair cartesian skips optional imports while dimension mismatch fails."
+      ]
+    }
+  ],
+  "projection_seal_sha256": "d3d9b6e061f46b547441827275bc05a51303e9c7754e7d687ee4705314a9d1eb"
+}

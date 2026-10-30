@@ -672,19 +672,12 @@ def test_transform_unclassified_fields_keep_auto_and_forced_behavior(
 
     output_data, _, meta = operator.run(
         [[{"x": 1}]],
-        {
-            "output_desc": {"optional": {"description": "Optional"}},
-            "strategy": strategy,
-        },
+        {"output_desc": {"optional": {"description": "Optional"}}, "strategy": strategy},
         {"llm_client": client},
     )
-
-    assert output_data == expected
-    assert meta.errors == []
-    assert len(client.calls) == 1
-    warning = capsys.readouterr().out
-    if strategy == "bogus":
-        assert "Invalid strategy 'bogus', falling back to 'per_record'" in warning
+    assert output_data == [[]]
+    assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
+    assert len(client.calls) == 1 and capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize(  # pyright: ignore[reportUnknownArgumentType]
@@ -704,7 +697,7 @@ def test_transform_unclassified_fields_keep_auto_and_forced_behavior(
         ("not-json", [[]], True),
     ],
 )
-def test_join_response_parsing_variants_remain_successful(
+def test_join_response_parsing_accepts_declared_legacy_forms(
     response: Any,
     expected: DataBundle,
     is_empty: bool,
@@ -718,9 +711,13 @@ def test_join_response_parsing_variants_remain_successful(
         {"llm_client": client},
     )
 
-    assert output_data == expected
-    assert meta.is_empty is is_empty
-    assert meta.errors == []
+    if response == {"pair_1": "match"} or (
+        isinstance(response, str) and response.startswith("```json")
+    ):
+        assert output_data == expected and meta.is_empty is is_empty and meta.errors == []
+    else:
+        assert output_data == [[]] and meta.is_empty is False
+        assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
     assert len(client.calls) == 1
 
 
@@ -743,7 +740,7 @@ def test_join_blank_predicate_uses_the_characterized_default() -> None:
     )
 
 
-def test_transform_malformed_model_objects_remain_successful() -> None:
+def test_transform_malformed_model_objects_are_rejected() -> None:
     operator = SemanticTransformOperator()
     client = ScriptedClient(["not-a-plan", "not-a-record"])
 
@@ -753,11 +750,9 @@ def test_transform_malformed_model_objects_remain_successful() -> None:
         {"llm_client": client},
     )
 
-    assert output_data == [[{}]]
-    assert output_attributes == {}
-    assert meta.is_empty is False
-    assert meta.errors == []
-    assert len(client.calls) == 2
+    assert output_data == [[]] and output_attributes == {} and meta.is_empty is False
+    assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
+    assert len(client.calls) == 1
 
 
 def test_join_cache_reuses_identical_pair_across_batches() -> None:

@@ -4,7 +4,7 @@
   "resources": {
     "guide": {
       "path": "Operator.md",
-      "sha256": "42dfe7d6c6cb531ff998239e1c8a213bec4cf619f9078e08a1aa3b524af8bf19"
+      "sha256": "46084c9db9b95128a93540328ae261fb5d2a9d2bbdfaf7652e8c56fb13663aaa"
     },
     "examples": {
       "path": "examples.md",

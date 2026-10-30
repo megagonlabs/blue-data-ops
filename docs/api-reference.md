@@ -70,6 +70,7 @@ The thirty-third active operator, `sklearn_estimator`, is implemented by `Sklear
 | `FunctionResult` | named tuple | `(output_data, output_attributes)`, what an operator's internal `_execute()` hook returns |
 | `ValidationResult` | named tuple | `(ok, reason)`, what the internal `_validate_input()` hook returns |
 | `ErrorRecord` | named tuple | One contained operator failure, see [Result and error types](#result-and-error-types) |
+| `OperatorExecutionError` | exception | Trusted-author public execution diagnostic; see [Extending](extending.md#intentional-public-execution-diagnostics) |
 | `ExecMeta` | named tuple | `(is_empty, errors, logs, traces)`, the metadata every `run()` returns |
 | `ErrorCategory` | str enum | `RECOVERABLE`, `FAILED`, `TIMEOUT` |
 | `ErrorCode` | str enum | The frozen failure vocabulary, nine values |
@@ -156,6 +157,11 @@ The two `REFINEMENT_*` codes and the `REFINE` stage are retained vocabulary: no 
 The 21 operators active at `@3.0.0` may add `input_shape`, `output_shape`, and `elapsed_ms` measurements to `ExecMeta.traces`.
 A missing measurement means unavailable, not zero.
 
+Transient provider records may set `retryable=True`; this is advice for another call, not an
+additional automatic retry or a guarantee that repeating a write is safe. Trusted custom authors
+can publish validated constants through `OperatorExecutionError`; its constructor does not redact
+or recognize deliberately supplied private text.
+
 ---
 
 ## Registry and discovery
@@ -219,9 +225,12 @@ The six tag namespaces and their closed vocabularies are listed in [`lib/OPERATO
 | `UpgradeError` | exception | That conversion found nothing, or found something ambiguous |
 | `ResolveError` | exception | `resolve()` was given a non-pinned or unregistered reference |
 | `OperatorError` | exception | The base class for operator errors raised rather than contained |
+| `OperatorExecutionError` | exception | `OperatorError` subclass; also exported at the package root. Signature: `(message, *, suggestion=None, retryable=False)` |
 | `OperatorValidationError` | exception | Attribute validation failed as a system error |
 | `AttributeSpec` | frozen dataclass | One declared attribute: `type`, `description`, `required`, `default`, `has_default`, `materialize_default` |
 | `Record`, `Data`, `DataBundle`, `Attributes`, `Properties` | type aliases | `dict[str, Any]`, `list[Record]`, `list[Data]`, `dict[str, Any]`, `dict[str, Any]` |
+
+`AttributeSpec.type` accepts Blue type strings. Basic names are `str`, `int`, `float`, `bool`, `dict`, `list`, `tuple`, `set`, `none`, and `any`; compound forms include `list[int]`, `dict[str, int]`, `optional[int]`, and `union[int, str]` (or `int | str`). Unknown names fall back to `Any`. Validation uses lax Pydantic acceptance: `"1"` passes `int`, `float`, and `bool` checks, but the original attribute value remains a string. Operators must convert accepted values or check exact runtime types themselves.
 
 `OperatorEmbeddingIndex.build()` sends every card's name, invocation guidance, description, and ordered tags to the embedder in one batch.
 `find()` applies no threshold and no limit, so callers slice the returned list themselves.
@@ -310,7 +319,12 @@ Execution mutates node values and statuses on the supplied plan, so round-trip a
 | `SELECT_THEN_AVERAGE_TEMPLATE` | `RulePlanTemplate` | The shipped filter-then-average rule |
 | `project_then_aggregate_template(name)` | function | The project-to-aggregate template for `"avg"`, `"sum"`, `"min"`, or `"max"` |
 | `RequireSinglePlan` | class | The shipped selector; it accepts exactly one candidate |
-| `OpenAIPlanGenerator(model, ...)` | class | One non-streaming Responses call per `generate()`; needs the `[openai]` extra |
+| `OpenAIPlanGenerator(model, *, registry, allowed_operator_ids, ...)` | class | One non-streaming Responses call per `generate()`; needs the `[openai]` extra and a nonempty allowlist |
+
+Nonempty `PlanningRequest.input_label` and `output_label` must differ; an equal pair
+returns `INVALID_REQUEST` before generation. During compilation, `PipelinePlanner`
+keeps the endpoint labels and gives any colliding step label a deterministic `_2`,
+`_3`, … suffix, checking each suffix against labels already used.
 
 Planning raises rather than returning a partial plan, because no pipeline exists yet to carry the record.
 
@@ -321,8 +335,8 @@ Planning raises rather than returning a partial plan, because no pipeline exists
 | `PlanningStage` | str enum | `VALIDATION`, `DISCOVERY`, `DATA_CONTEXT`, `GENERATION`, `SELECTION`, `COMPILATION`, `PREFLIGHT` |
 | `PlanningErrorCode` | str enum | 29 stable codes, including `INVALID_REQUEST`, `NO_CANDIDATES`, `AMBIGUOUS_CANDIDATES`, `PLAN_LIMIT_EXCEEDED`, `GENERATOR_TIMEOUT`, `GENERATOR_RATE_LIMITED`, and `GENERATOR_UNAVAILABLE` |
 
-`allowed_operator_ids` on a request, and the same argument on `OpenAIPlanGenerator`, are authorization boundaries rather than filters.
-Without one, package built-ins are limited to the `active_registry()` selection.
+`allowed_operator_ids` on a request and on `OpenAIPlanGenerator` are authorization boundaries rather than filters.
+The generator requires a nonempty list of pinned `@2.0.0` or `@3.0.0` IDs even when the request leaves its allowlist empty. In that case, planning limits package built-ins to the `active_registry()` selection.
 Records exclude response bodies, request payloads, credentials, and provider-specific exception text.
 
 ### Data context for planning
@@ -374,6 +388,7 @@ Supplying your own `DataRegistryProvider` is covered in [extending.md](extending
 
 ```python
 from blue_data_ops.llm import CachingLLMClientProvider, LLMClient, LLMError, resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties
 ```
 
 The LiteLLM-backed client the `nl2*` and `semantic_*` operators use.
@@ -387,15 +402,35 @@ The module imports without the `[llm]` extra; LiteLLM is imported lazily at the 
 | `LLMError` | exception | Transport failures and rejected adapter configuration. Carries `message`, `code`, `provider_error`, `retryable` |
 | `LLMClientProvider` | abstract class | `get_client(properties) -> LLMClient` |
 | `CachingLLMClientProvider` | class | Opt-in per-config client reuse; the cache's lifetime belongs to whoever holds the provider |
+| `prepare_llm_operator_properties(merged, defaults, supplied)` | function | Prepares an operator's property map before client resolution. Removes overridden defaults and, for recognized OpenAI reasoning models, incompatible inherited sampling fields. It reconciles lower-priority token caps while leaving explicit caller settings for client validation. |
 | `resolve_llm_client(properties, provider=None)` | function | An injected `properties["llm_client"]`, then the provider, then a fresh client |
+
+`merged` is the operator's combined property map, `defaults` is its default map, and `supplied` is the invocation map or `None`. Callers normally set the properties described below; this helper is for operator implementations.
+
+With the default `openai` service prefix, operator defaults use `openai.*` keys. For example, on an OpenAI deployment:
+
+```python
+from blue_data_ops.llm import prepare_llm_operator_properties
+
+defaults = {"openai.model": "gpt-6-luna", "openai.temperature": 0, "openai.max_tokens": 512}
+supplied = {"openai.max_completion_tokens": 256}
+merged = {**defaults, **supplied}
+
+prepared = prepare_llm_operator_properties(merged, defaults, supplied)
+assert prepared == {"openai.model": "gpt-6-luna", "openai.max_completion_tokens": 256}
+```
+
+The inherited temperature is omitted for this model, and the explicit completion-token cap replaces the inherited `max_tokens`. `merged` is unchanged. An explicitly supplied sampling field remains in `prepared` for client validation.
 
 The default lifetime is one client per invocation rather than a module-level singleton.
 Built-in operators call `resolve_llm_client` without a provider, so inside an operator call the reachable seam is `properties["llm_client"]`.
 Accepted `llm.*` override keys are `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`; an unknown one raises `LLMError` with code `bad_override`.
+Forbidden settings under that namespace, such as `llm.api_key` and `llm.mock_response`, also produce `bad_override`.
 `llm.reasoning_effort=None` removes an inherited effort value instead of forwarding `None`.
 The last four are consumed by the client and never forwarded to the provider.
 A prefixed namespace admits the generation parameters and nothing else.
-A property outside that set — `api_key`, `api_base`, `base_url`, `custom_llm_provider`, the Vertex and Bedrock selectors, and every other routing or identity field — raises `LLMError` with code `reserved_field`, as does one that would substitute the provider's answer, `mock_response` or `mock_timeout`.
+A property outside that set in the service namespace, such as `openai.api_key`, `openai.api_base`, `openai.base_url`, or `openai.custom_llm_provider`, raises `LLMError` with code `reserved_field`. This also rejects the Vertex and Bedrock selectors, other routing and identity fields, and properties that would substitute the provider's answer, such as `openai.mock_response` or `openai.mock_timeout`.
+Both `bad_override` and `reserved_field` refusals have `retryable=False` and happen before any provider request or cache write.
 `model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`.
 A bare model name selects a provider too, so the check is on the outcome — what the provider library would actually dispatch to — as well as on the spelling.
 A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.
@@ -424,8 +459,8 @@ The Blue-compatible helpers the operator surface depends on.
 | `convert_type_string_to_mcp` | `(type_str) -> dict[str, Any]` | A Blue type string to an MCP JSON-schema shape |
 | `merge_json` | `(original_json, update_json) -> Any` | `jsonmerge`'s default object-merge strategy |
 | `json_query` | `(...) -> Any` | JSONPath read |
-| `json_query_set` | `(...) -> Any` | JSONPath write at every match |
-| `safe_substitute` | `(template, **kwargs) -> str` | Repeated `string.Template` and Jinja substitution until stable |
+| `json_query_set` | `(...) -> None` | JSONPath write at every match |
+| `safe_substitute` | `(template, **kwargs) -> str` | One dollar-placeholder pass; inserted data, unknown names, and Jinja syntax remain literal |
 | `create_uuid` | `() -> str` | A short lowercase-hex identifier |
 | `split_ids` | `(canonical_id) -> list[str]` | Split a canonical ID into components |
 | `extract_sid` | `(canonical_id) -> str` | The trailing name and id pair as a short id |
@@ -437,7 +472,7 @@ The Blue-compatible helpers the operator surface depends on.
 
 ## Not part of the public API
 
-The repository provides no REST API or `platform/api/`; [api.md](api.md) describes the current boundary.
+There is no REST API. The supported interfaces are the Python library, `blue-ops`, and the MCP server.
 
 The `blue-ops` command is a separate distribution with its own reference, [cli.md](cli.md); nothing on this page is reachable through it except by running an operator.
 

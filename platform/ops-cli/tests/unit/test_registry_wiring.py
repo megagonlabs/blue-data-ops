@@ -10,6 +10,7 @@ in-memory and the construction path is exercised once, offline.
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -50,7 +51,9 @@ def test_the_data_registry_class_is_where_the_seam_expects_it() -> None:
 
 def test_the_seam_is_built_from_the_same_four_arguments_blue_data_s_own_cli_uses() -> None:
     """Same helpers, same keywords, so the same variables produce the same registry."""
-    source = inspect.getsource(config.build_registry_seam)
+    from blue_data_ops.data.config import build_environment_registry
+
+    source = inspect.getsource(build_environment_registry)
     for keyword in ("store=", "metadata_enricher=", "hybrid_config=", "vector_dim="):
         assert keyword in source, keyword
 
@@ -111,3 +114,56 @@ def test_the_backend_is_read_from_the_variable_blue_data_reads(
 ) -> None:
     monkeypatch.setenv("BLUE_DATA_REGISTRY_STORE", "REDIS")
     assert config.registry_backend() == "redis"
+
+
+def test_cli_missing_sources_path_is_a_fixed_configuration_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, runner: CliRunner
+) -> None:
+    import json
+
+    path = tmp_path / "input.json"
+    path.write_text("[[]]")
+    missing = tmp_path / "missing-sources.json"
+    monkeypatch.setenv("BLUE_DATA_SOURCES_CONFIG", str(missing))
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "data_discover@2.0.0",
+            "--input-file",
+            str(path),
+            "--attribute",
+            "search_query=items",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == config.EXIT_CONFIG
+    document = json.loads(result.stdout)
+    assert document["error"]["code"] == "CONFIG"
+    assert "data registry configuration failed" in document["error"]["message"]
+    assert str(missing) not in result.output
+
+
+def test_cli_unconfigured_memory_default_still_warns_and_runs(
+    tmp_path: Path, runner: CliRunner
+) -> None:
+    path = tmp_path / "input.json"
+    path.write_text("[[]]")
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "data_discover@2.0.0",
+            "--input-file",
+            str(path),
+            "--attribute",
+            "search_query=items",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "memory" in result.stderr.lower()

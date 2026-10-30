@@ -370,10 +370,11 @@ class OpenAIPlanGenerator:
             raise _disclosure_required()
 
         authorized = self._authorized_cards(discovery)
-        payload = self._request_payload(request, authorized, data_context)
+        declarations = {key: self._attribute_declarations(key) for key in authorized}
+        payload = self._request_payload(request, authorized, data_context, declarations)
         client = self._resolve_client()
         raw = self._call_provider(client, payload)
-        return self._decode(raw, request, authorized, data_context)
+        return self._decode(raw, request, authorized, data_context, declarations)
 
     def _authorized_cards(self, discovery: DiscoverySnapshot) -> dict[str, OperatorCard]:
         """The model-visible catalog: allowlisted, discovered, built-in, current, active, read-only.
@@ -402,10 +403,6 @@ class OpenAIPlanGenerator:
                 # Default-deny: a write card is never offered to the model, and the
                 # decoder rejects one anyway. Planning performs no write either way.
                 continue
-            # Read the live declaration now, not at decode time. A malformed declaration
-            # has to fail before the optional import, the client, and any provider
-            # request, so the check belongs on this side of the call.
-            self._declared_attribute_names(card.operator_id)
             authorized[card.operator_id] = card
         if not authorized:
             raise _no_authorized_operators()
@@ -413,29 +410,53 @@ class OpenAIPlanGenerator:
 
     def _resolve_exact_operator(self, operator_id: str) -> Operator:
         try:
-            resolved = self._registry.resolve(operator_id)
-            exact = resolved.operator_id == operator_id
+            resolved = cast(object, self._registry.resolve(operator_id))
+            exact = isinstance(resolved, Operator) and resolved.operator_id == operator_id
         except Exception:
             raise _builtin_cards_required() from None
         if exact is not True:
             raise _builtin_cards_required()
-        return resolved
+        return cast(Operator, resolved)
 
-    def _declared_attribute_names(self, operator_id: str) -> frozenset[str]:
+    def _attribute_declarations(self, operator_id: str) -> dict[str, Any]:
         resolved = self._resolve_exact_operator(operator_id)
         try:
-            declared = resolved.attributes
+            projected = resolved._project_attribute_specs()  # pyright: ignore[reportPrivateUsage]
+            definitions = resolved.get_attributes()
+            declarations: dict[str, Any] = {}
+            for name, spec in projected.items():
+                hidden = definitions[name].get("hidden", False)
+                if type(hidden) is not bool or type(spec.materialize_default) is not bool:
+                    raise ValueError
+                declaration = {
+                    "type": spec.type,
+                    "description": spec.description,
+                    "required": spec.required,
+                    "hidden": hidden,
+                    "has_default": spec.has_default,
+                    "materialize_default": spec.materialize_default,
+                }
+                if not spec.has_default:
+                    state = "absent"
+                elif spec.required or not spec.materialize_default:
+                    state = "deferred"
+                elif _is_portable_attribute(spec.default):
+                    state = "portable"
+                    declaration["default"] = json.loads(_canonical_json(spec.default))
+                else:
+                    state = "unavailable"
+                declaration["default_state"] = state
+                declarations[name] = declaration
+            return declarations
         except Exception:
             raise _builtin_cards_required() from None
-        if type(declared) is not dict or any(type(key) is not str for key in declared):
-            raise _builtin_cards_required()
-        return frozenset(cast("dict[str, Any]", declared))
 
     def _request_payload(
         self,
         request: PlanningRequest,
         authorized: Mapping[str, OperatorCard],
         data_context: DataContextSnapshot | None,
+        declarations: Mapping[str, Mapping[str, Any]],
     ) -> str:
         operators = [
             {
@@ -444,6 +465,7 @@ class OpenAIPlanGenerator:
                 "description": card.description,
                 "tags": list(card.tags),
                 "when_to_invoke": card.when_to_invoke,
+                "attributes": declarations[card.operator_id],
             }
             # Discovery order, not allowlist order: the model sees the ranking discovery
             # produced rather than an ordering the allowlist happens to have.
@@ -548,6 +570,7 @@ class OpenAIPlanGenerator:
         request: PlanningRequest,
         authorized: Mapping[str, OperatorCard],
         data_context: DataContextSnapshot | None,
+        declarations: Mapping[str, Mapping[str, Any]],
     ) -> Sequence[PlanDraft]:
         text = _single_output_text(response)
         if not _within_bytes(text, _MAX_RAW_RESPONSE_BYTES):
@@ -565,11 +588,13 @@ class OpenAIPlanGenerator:
                 PlanningErrorCode.CANDIDATE_LIMIT_EXCEEDED,
                 "plan generator returned too many candidates",
                 category=ErrorCategory.RECOVERABLE,
-                suggestion="Raise the candidate limit or narrow the planning goal.",
+                suggestion="Retry with a narrower goal; this generator accepts one candidate.",
             )
         drafts: list[PlanDraft] = []
         for candidate in candidates:
-            drafts.append(self._decode_candidate(candidate, request, authorized, data_context))
+            drafts.append(
+                self._decode_candidate(candidate, request, authorized, data_context, declarations)
+            )
         return tuple(drafts)
 
     def _decode_candidate(
@@ -578,6 +603,7 @@ class OpenAIPlanGenerator:
         request: PlanningRequest,
         authorized: Mapping[str, OperatorCard],
         data_context: DataContextSnapshot | None,
+        declarations: Mapping[str, Mapping[str, Any]],
     ) -> PlanDraft:
         label = candidate["label"]
         if label is not None and not _within_bytes(label, _MAX_LABEL_BYTES):
@@ -591,7 +617,8 @@ class OpenAIPlanGenerator:
                 suggestion="Raise the step limit or narrow the planning goal.",
             )
         decoded = tuple(
-            self._decode_step(step, request, authorized, data_context) for step in steps
+            self._decode_step(step, request, authorized, data_context, declarations)
+            for step in steps
         )
         return PlanDraft(steps=decoded, label=label)
 
@@ -601,6 +628,7 @@ class OpenAIPlanGenerator:
         request: PlanningRequest,
         authorized: Mapping[str, OperatorCard],
         data_context: DataContextSnapshot | None,
+        declarations: Mapping[str, Mapping[str, Any]],
     ) -> PlanStep:
         step_id = step["step_id"]
         operator_id = step["operator_id"]
@@ -637,7 +665,9 @@ class OpenAIPlanGenerator:
                 category=ErrorCategory.RECOVERABLE,
                 suggestion="Supply a data context and set send_data_context=True.",
             )
-        attributes = self._decode_attributes(step["attributes_json"], operator_id, request)
+        attributes = self._decode_attributes(
+            step["attributes_json"], operator_id, request, declarations[operator_id]
+        )
         return PlanStep(
             step_id=step_id,
             operator_id=operator_id,
@@ -651,6 +681,7 @@ class OpenAIPlanGenerator:
         encoded: str,
         operator_id: str,
         request: PlanningRequest,
+        declared: Mapping[str, Any],
     ) -> dict[str, Any]:
         if not _within_bytes(encoded, _MAX_ATTRIBUTES_JSON_BYTES):
             raise _response_invalid()
@@ -662,9 +693,9 @@ class OpenAIPlanGenerator:
             raise _response_invalid()
         model_attributes = cast("dict[str, Any]", parsed)
 
+        self._resolve_exact_operator(operator_id)
         name = operator_id.partition("@")[0]
         caller = request.operator_attributes.get(name) or {}
-        declared = self._declared_attribute_names(operator_id)
 
         # Caller values are constraints, not defaults. They are copied first, an omitted
         # caller key is never removed by the model's silence, and an overlapping key must

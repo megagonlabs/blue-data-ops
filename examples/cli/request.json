@@ -7,5 +7,6 @@
   "operator_attributes": {
     "select": {"operand_key": "total", "operand": ">", "operand_val": 100},
     "avg": {"avg_key": "total", "output_key": "average_total"}
-  }
+  },
+  "allowed_operator_ids": ["select@2.0.0", "avg@3.0.0"]
 }

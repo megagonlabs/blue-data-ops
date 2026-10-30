@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -34,16 +36,16 @@ class _StrictExtractClient:
         )
         if self._combined:
             if not isinstance(result, dict):
-                raise ValueError("semantic extract response must be an object")
+                raise_reply_failure()
             response = cast(dict[Any, Any], result)
             if set(response) != self._entity_names or any(
                 not isinstance(value, list) for value in response.values()
             ):
-                raise ValueError("semantic extract response has invalid entity fields")
+                raise_reply_failure()
         elif not isinstance(result, list) or any(
             not isinstance(value, str) for value in cast(list[Any], result)
         ):
-            raise ValueError("semantic extract response must be a string array")
+            raise_reply_failure()
         return cast(Any, result)
 
 
@@ -56,6 +58,9 @@ class SemanticExtractOutcomeOperator(_OutcomeOperator, SemanticExtractOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         entities = cast(list[dict[str, Any]], attributes.get("entities", []))
         context = cast(str, attributes.get("context", ""))
         demonstrations = cast(str, attributes.get("demonstrations", ""))
@@ -64,6 +69,7 @@ class SemanticExtractOutcomeOperator(_OutcomeOperator, SemanticExtractOperator):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = _StrictExtractClient(
             resolve_llm_client(merged),
             {entity["name"] for entity in entities},

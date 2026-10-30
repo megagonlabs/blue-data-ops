@@ -51,11 +51,11 @@ def test_guards_return_empty_without_provider(
     assert litellm.calls == []
 
 
-def test_single_prompt_outputs_and_nondict_fallback(
+def test_single_prompt_outputs_and_valid_empty_entities(
     op: SemanticExtractOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider(
-        ['{"skill": ["Python"], "person": ["Ada"]}', '["not-a-dict"]'],
+        ['{"skill": ["Python"], "person": ["Ada"]}', '{"skill": [], "person": []}'],
         monkeypatch,
     )
     output = op.apply(
@@ -88,10 +88,10 @@ def test_single_prompt_outputs_and_nondict_fallback(
     assert "'missing'" not in first_prompt
 
 
-def test_individual_mode_skips_empty_fields_and_normalizes_shapes(
+def test_individual_mode_skips_empty_fields_and_accepts_string_lists(
     op: SemanticExtractOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _json_provider(['["Python"]', '"Ada"', "[]"], monkeypatch)
+    _json_provider(['["Python"]', '["Ada"]', "[]"], monkeypatch)
     output = op.apply(
         DATA,
         {
@@ -173,7 +173,7 @@ def test_prompt_templates_and_defaults_are_pinned() -> None:
     )
     assert SemanticExtractOperator.DEFAULT_PROPERTIES == {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 4096,
         "openai.temperature": 0,
@@ -185,8 +185,11 @@ def test_prompt_templates_and_defaults_are_pinned() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",

@@ -1,56 +1,19 @@
-"""The profile and configuration engine, as a local stand-in for ``blue_data.utils.config``.
+"""Store blue-ops CLI profiles and resolve settings.
 
-Every Blue CLI in the family sits on one shared engine — ``ProfileStore``,
-``ConfigResolver``, ``base_spec``, ``load_spec``, ``MASK``, ``encode`` and ``display`` —
-imported from ``blue_data.utils.config``. That module is not in the pinned ``blue-data``
-release this repository depends on, and reimplementing the family's configuration story per
-CLI is how three CLIs end up with three precedence orders. So the names here are the
-engine's names, with the behaviour the family's ``profile.py`` depends on, and
-``profile.py`` imports them from here. When the shared engine ships, this module is deleted
-and the import at the top of ``profile.py`` changes to point at it — that swap is the whole
-point of the naming, and anything added here has to keep it possible.
+Command-line values outrank environment variables, saved profiles, and defaults.
+The CLI rejects blank values when setting a profile and rejects blank environment
+variables rather than treating them as unset. Stored values cannot contain line
+breaks. Profile and setting errors appear as ``ERROR: PROFILE``; library
+configuration errors remain ``ERROR: CONFIG``.
 
-What the engine owns: the parameter spec and its casts, the ``.profiles`` file and the
-selections beside and below it, the precedence chain below the command line, and the on-disk
-form of a secret. What it does not own: any Click, any output, any of this CLI's own
-vocabulary.
-
-**Errors.** Two, and neither is named ``ConfigError``. This CLI reports a configuration
-value the *library* refused as ``ERROR: CONFIG``, and a second exception class carrying that
-name, reachable from the same handler, is how a handler ends up catching the wrong failure.
-Here, :class:`ProfileError` is a profile operation that could not be carried out — no such
-profile, one that already exists, a store that cannot be read — and :class:`SettingError` is
-a parameter one: an unknown name, or a value that will not cast. The CLI reports both as
-``ERROR: PROFILE``.
-
-**Blank values.** A setting that is present but empty is refused at both ends rather than
-read as absent. On disk it stores, reports success and is then skipped by every read; in the
-environment it wins its tier and then hands the answer down to the profile. Both are the
-same silence, and the whole point of a precedence chain is that the tier that answered is
-the tier that had something to say.
-
-**Storage.** ``~/.blue-ops`` is created at mode 0700 and every file in it at 0600, because a
-profile can hold a provider credential. Every write goes to a temporary file in the same
-directory, is flushed and fsynced, and is moved into place with ``os.replace``: a partial
-write must never leave a profiles file a later run cannot parse. A complete write must not
-either, which is why a value holding a line break is refused rather than stored — the
-profiles file is line-oriented, and configparser escapes a newline on the way out but not a
-carriage return, so one pasted from a CRLF file came back as a second setting.
-
-Nothing inside the home is reached by name twice. The home is opened once, each directory
-below it is opened from the one above with ``O_NOFOLLOW``, and every read, write, creation
-and removal is then performed against that descriptor. Checking a path and handing the same
-string to the next syscall asks the kernel to look it up again, and a directory swapped for
-a link between the two answers is followed — which is why this is a walk rather than a
-check. :class:`HomeDir` holds an opened directory and :func:`home_directory` and
-:func:`made_directory` are how one is reached. A name below the home may still point
-somewhere else below the home; that link is followed by walking to where it lands, not by
-handing its own name back.
-
-An existing path whose mode is wider than the above is reported once. The directory is then
-left exactly as found; a file is rewritten at 0600 by the next write, because the write goes
-through a fresh temporary file and installs its mode with it. Both are said in the warning,
-because narrowing a file the user widened on purpose is a surprise worth naming.
+Profiles live under ``~/.blue-ops``. Directories use mode 0700 and files use
+0600. File writes use a same-directory temporary file, ``fsync``, and
+``os.replace``. Directory traversal uses descriptors and ``O_NOFOLLOW``.
+A symlink is followed only if it resolves within ``~/.blue-ops``; it is then
+reached by walking from that directory.
+A symlink named as the directory to remove is refused. Wider permissions warn
+once per path. Existing directories stay unchanged, while the next file write
+installs mode 0600.
 """
 
 from __future__ import annotations
@@ -62,6 +25,7 @@ import contextlib
 import errno
 import io
 import json
+import math
 import os
 import re
 import secrets
@@ -113,12 +77,7 @@ class ProfileError(StoreError):
 
 
 class SettingError(StoreError):
-    """A configuration parameter is unknown, or its value will not cast.
-
-    The family engine calls this one ``ConfigError``. Renamed here because this CLI already
-    publishes ``ERROR: CONFIG`` for a value the *library* refused, and the two are reachable
-    from the same handler.
-    """
+    """A configuration parameter is unknown, or its value will not cast."""
 
 
 # -------------------------------------------------------------- parameters --
@@ -148,10 +107,13 @@ def _cast_float(name: str, value: object) -> float:
     if isinstance(value, bool):
         raise SettingError(f"{name} must be a number, got {value!r}")
     if isinstance(value, (int, float)):
-        return float(value)
+        try:
+            return float(value)
+        except OverflowError:
+            raise SettingError(f"{name} must be a number, got {value!r}") from None
     try:
         return float(str(value).strip())
-    except ValueError:
+    except (OverflowError, ValueError):
         raise SettingError(f"{name} must be a number, got {value!r}") from None
 
 
@@ -176,6 +138,12 @@ class Parameter:
     required: bool = False
     cast: str = "str"
     inherits: tuple[str, ...] = ()
+    choices: tuple[str, ...] = ()
+    case_sensitive: bool = True
+    minimum: float | None = None
+    maximum: float | None = None
+    exclusive_minimum: bool = False
+    finite: bool = False
 
     @property
     def is_secret(self) -> bool:
@@ -198,6 +166,39 @@ class Parameter:
         if self.cast in {"directory", "file"}:
             return _cast_path(self.name, value)
         return str(value)
+
+    def validate_for_storage(self, value: object) -> Any:
+        """Check a new profile value before it is written."""
+        converted = self.cast_value(value)
+        if converted is None:
+            return None
+        if self.choices:
+            candidate = converted if self.case_sensitive else str(converted).casefold()
+            allowed = (
+                self.choices
+                if self.case_sensitive
+                else tuple(choice.casefold() for choice in self.choices)
+            )
+            if candidate not in allowed:
+                raise SettingError(f"{self.name} must be one of {', '.join(self.choices)}")
+        if (
+            (self.finite or self.minimum is not None or self.maximum is not None)
+            and isinstance(converted, float)
+            and not math.isfinite(converted)
+        ):
+            raise SettingError(f"{self.name} must be finite")
+        if self.minimum is not None:
+            below_minimum = (
+                converted <= self.minimum if self.exclusive_minimum else converted < self.minimum
+            )
+            if below_minimum:
+                sign = ">" if self.exclusive_minimum else ">="
+                bound = str(self.minimum) if isinstance(self.minimum, int) else f"{self.minimum:g}"
+                raise SettingError(f"{self.name} must be {sign} {bound}")
+        if self.maximum is not None and converted > self.maximum:
+            bound = str(self.maximum) if isinstance(self.maximum, int) else f"{self.maximum:g}"
+            raise SettingError(f"{self.name} must be <= {bound}")
+        return converted
 
 
 class Spec:
@@ -260,7 +261,7 @@ def base_spec() -> Spec:
             ),
             Parameter(
                 "BLUE_DATA_LLM_MODEL",
-                default="gpt-4o",
+                default="gpt-6-luna",
                 required=True,
                 prompt="Model the language-model operators call",
             ),
@@ -295,16 +296,64 @@ def load_spec(path: str | os.PathLike[str]) -> Spec:
         if declared_cast not in CASTS:
             raise SettingError(f"{path}: parameter {name} declares unknown cast {declared_cast!r}")
         inherits: Any = entry.get("inherits") or ()
-        parameters.append(
-            Parameter(
-                name=str(name),
-                default=entry.get("default"),
-                prompt=str(entry.get("prompt", "")),
-                required=bool(entry.get("required", False)),
-                cast=declared_cast,
-                inherits=tuple(str(item) for item in inherits),
-            )
+        raw_choices = entry.get("choices", [])
+        if not isinstance(raw_choices, list):
+            raise SettingError(f"{path}: parameter {name} has invalid choices")
+        if any(
+            not isinstance(choice, str) or not choice
+            for choice in cast("list[object]", raw_choices)
+        ):
+            raise SettingError(f"{path}: parameter {name} has invalid choices")
+        choices = cast("list[str]", raw_choices)
+        if choices and declared_cast != "str":
+            raise SettingError(f"{path}: parameter {name} needs a str cast for choices")
+        case_sensitive = entry.get("case_sensitive", True)
+        if not isinstance(case_sensitive, bool):
+            raise SettingError(f"{path}: parameter {name} has invalid case_sensitive")
+        normalized_choices = [choice if case_sensitive else choice.casefold() for choice in choices]
+        if len(set(normalized_choices)) != len(choices):
+            raise SettingError(f"{path}: parameter {name} repeats a choice")
+        minimum = entry.get("minimum")
+        maximum = entry.get("maximum")
+        finite = entry.get("finite", False)
+        exclusive_minimum = entry.get("exclusive_minimum", False)
+        if not isinstance(finite, bool) or not isinstance(exclusive_minimum, bool):
+            raise SettingError(f"{path}: parameter {name} has invalid numeric constraints")
+        if any(bound is not None for bound in (minimum, maximum)) or finite:
+            if declared_cast not in {"int", "float"}:
+                raise SettingError(f"{path}: parameter {name} needs a numeric cast for bounds")
+            for bound in (minimum, maximum):
+                if bound is not None and (
+                    isinstance(bound, bool)
+                    or not isinstance(bound, (int, float))
+                    or (isinstance(bound, float) and not math.isfinite(bound))
+                ):
+                    raise SettingError(f"{path}: parameter {name} has an invalid numeric bound")
+            if (
+                minimum is not None
+                and maximum is not None
+                and (minimum > maximum or (minimum == maximum and exclusive_minimum))
+            ):
+                raise SettingError(f"{path}: parameter {name} has inverted numeric bounds")
+        if exclusive_minimum and minimum is None:
+            raise SettingError(f"{path}: parameter {name} has no exclusive minimum")
+        parameter = Parameter(
+            name=str(name),
+            default=entry.get("default"),
+            prompt=str(entry.get("prompt", "")),
+            required=bool(entry.get("required", False)),
+            cast=declared_cast,
+            inherits=tuple(str(item) for item in inherits),
+            choices=tuple(choices),
+            case_sensitive=case_sensitive,
+            minimum=minimum,
+            maximum=maximum,
+            exclusive_minimum=exclusive_minimum,
+            finite=finite,
         )
+        if parameter.default is not None:
+            parameter.validate_for_storage(parameter.default)
+        parameters.append(parameter)
     return Spec(parameters)
 
 
@@ -952,7 +1001,10 @@ def _walked(home: Path, below: Sequence[str], create: bool) -> Generator[HomeDir
             except OSError as error:
                 target = _link_target(current, name) if error.errno in _NOT_OPENED else None
                 if target is not None:
-                    pending = [*_landing(walked, walk.root, name, target, links), *pending]
+                    pending = [
+                        *_landing(walked, walk.root, name, target, links),
+                        *pending,
+                    ]
                     links += 1
                     current, walked = walk.back_to_anchor(), walk.root
                     continue
@@ -1138,14 +1190,20 @@ class ProfileStore:
     def read_selection(self, profile: str, resource: str) -> str | None:
         """``<profile>/.selected.<resource>``, or None where nothing has been selected."""
         path = self._selection_file(profile, resource)
-        with _readable(path, "read"), home_directory(self.home, (profile,)) as directory:
+        with (
+            _readable(path, "read"),
+            home_directory(self.home, (profile,)) as directory,
+        ):
             written = None if directory is None else directory.read(path.name)
         return None if written is None else written.strip() or None
 
     def write_selection(self, profile: str, resource: str, value: str) -> None:
         """Record *value* as this profile's selected *resource*, at mode 0600."""
         path = self._selection_file(profile, resource)
-        with _readable(path, "write"), made_directory(self.home, (profile,)) as directory:
+        with (
+            _readable(path, "write"),
+            made_directory(self.home, (profile,)) as directory,
+        ):
             directory.write(path.name, value)
 
     def _selection_file(self, profile: str, resource: str) -> Path:

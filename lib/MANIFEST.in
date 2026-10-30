@@ -5,3 +5,17 @@ include tests/fixtures/sklearn_estimator_active_reference.json
 include tests/fixtures/v2_operator_outcomes.json
 recursive-include scripts *.py
 recursive-include scripts *.sh
+include tests/fixtures/operator_outcomes_legacy.json
+include tests/fixtures/operator_discovery_legacy.json
+include tests/fixtures/operator_outcomes_current.json
+include tests/fixtures/operator_discovery_current.json
+include tests/fixtures/active_operator_reference.json
+include tests/fixtures/registry_compatibility_baseline/data/registry_seam.py.txt
+include tests/fixtures/registry_compatibility_baseline/operators/insert_table_operator.py.txt
+include tests/fixtures/registry_compatibility_baseline/operators/create_database_operator.py.txt
+include tests/fixtures/registry_compatibility_baseline/operators/create_table_operator.py.txt
+include tests/fixtures/registry_compatibility_baseline/operators/nl2bn_operator.py.txt
+include tests/fixtures/registry_compatibility_baseline/manifest.json
+include tests/unit/operators/test_semantic_reply_validation.py
+
+include scripts/python315-constraints.txt

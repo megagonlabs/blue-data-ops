@@ -28,7 +28,7 @@ class LocalSearchSeam(RegistrySeam):
             return None
         return {
             "description": "local source",
-            "properties": {"protocol": "memory"},
+            "properties": {"kind": "json", "protocol": "memory"},
             "metadata": {"owner": "example"},
         }
 
@@ -44,14 +44,20 @@ output, output_attributes, meta = operator.run(
         "search_query": "local",
         "approximate": True,
         "threshold": 0.5,
-        "include_metadata": True,
     },
     {"data_registry": seam},
 )
 
 assert skill.card.operator_id == "data_discover@2.0.0"
 assert [record["name"] for record in output[0]] == ["near"]
-assert output[0][0]["metadata"] == {"owner": "example"}
+assert output[0][0] == {
+    "type": "source",
+    "name": "near",
+    "id": "/source/near",
+    "scope": "/",
+    "score": 0.2,
+    "properties": {"kind": "json"},
+}
 assert seam.calls[0]["scope"] is None
 assert output_attributes == {}
 assert meta.errors == []

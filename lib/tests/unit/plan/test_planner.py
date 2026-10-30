@@ -15,6 +15,7 @@ from blue_data_ops.plan import (
     DataScope,
     DiscoveryQuery,
     DiscoverySnapshot,
+    NodeType,
     PipelineExecutor,
     PipelinePlanner,
     PlanDraft,
@@ -166,6 +167,43 @@ def test_preflight_resolves_the_plan_without_entering_operator_bodies() -> None:
     execution = planner.execute(planning, [[{"x": 1}]])
     assert execution.succeeded
     assert operator.calls == 1
+
+
+def test_generated_step_labels_cannot_collide_with_pipeline_nodes() -> None:
+    cases = (
+        ("orders", "answer", "orders_2", "answer_2"),
+        ("orders", "orders", "orders_2", "orders_3"),
+    )
+    for first_label, second_label, first_materialized, second_materialized in cases:
+        original = _order_draft()
+        draft = PlanDraft(
+            (
+                replace(original.steps[0], label=first_label),
+                replace(original.steps[1], label=second_label),
+            )
+        )
+        planner = PipelinePlanner(versioned_registry(), RulePlanGenerator((_fixed_rule(draft),)))
+
+        result = planner.plan(_order_request())
+
+        for label, node_type in (
+            ("orders", NodeType.INPUT),
+            ("answer", NodeType.OUTPUT),
+            (first_materialized, NodeType.OPERATOR),
+            (second_materialized, NodeType.OPERATOR),
+        ):
+            node = result.pipeline.get_node_by_label(label)
+            assert node is not None
+            assert node.get_type() == str(node_type)
+        assert result.preflight.operator_ids == ("select@2.0.0", "avg@2.0.0")
+
+
+def test_request_endpoint_labels_must_differ_before_generation() -> None:
+    planner = PipelinePlanner(versioned_registry(), RulePlanGenerator())
+    request = replace(_order_request(), output_label="orders")
+
+    with pytest.raises(PlanningError, match="input and output labels must differ"):
+        planner.plan(request)
 
 
 class _RaisingGenerator:

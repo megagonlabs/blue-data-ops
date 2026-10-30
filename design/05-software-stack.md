@@ -16,7 +16,7 @@ The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md
 | Project config | `pyproject.toml`, one per distribution |
 | Build backend | `setuptools.build_meta` |
 
-Python 3.11 is the tested minimum and is declared in `requires-python`, the Ruff
+Python 3.12 is recommended; release verification covers 3.11 and 3.12. Python 3.11 is the minimum and is declared in `requires-python`, the Ruff
 `target-version`, and the Pyright `pythonVersion` for all three distributions. Adding Python 3.10
 requires adding it to the supported test matrix and updating
 `lib/scripts/check_real_llm_install.py`, which currently rejects earlier versions.
@@ -29,9 +29,9 @@ The repository publishes three packages from one source tree.
 
 | Package | Version | Path | Requires |
 |---|---|---|---|
-| `blue-data-ops` | `3.1.0` | `lib/` | Python >= 3.11 |
-| `blue-data-ops-mcp` | `1.0.0` | `platform/ops-mcp/` | Python >= 3.11, `blue-data-ops==3.1.0` |
-| `blue-data-ops-cli` | `1.0.0` | `platform/ops-cli/` | Python >= 3.11, `blue-data-ops[ml,vector,llm]==3.1.0` |
+| `blue-data-ops` | `1.0.0` | `lib/` | Python >= 3.11 |
+| `blue-data-ops-mcp` | `1.0.0` | `platform/ops-mcp/` | Python >= 3.11, `blue-data-ops==1.0.0` |
+| `blue-data-ops-cli` | `1.0.0` | `platform/ops-cli/` | Python >= 3.11, `blue-data-ops[ml,vector,llm]==1.0.0` |
 
 ### The core carries no server dependency
 
@@ -40,7 +40,7 @@ The repository publishes three packages from one source tree.
 ```python
 # lib/pyproject.toml
 dependencies = [
-    "blue-data>=0.1.0",
+    "blue-data>=1.0.0",
     "pydantic>=2",
     "jsonmerge==1.9.2",
     "jsonpath-ng",
@@ -129,14 +129,14 @@ It is a planner-only seam: nothing else in the package imports the SDK, and the 
 |---|---|---|---|
 | `litellm` | `>=1.98,<2` | `llm/client.py` | inside `_call_provider`, `_acall_provider`, and the cost helpers |
 | `diskcache` | unpinned | `llm/client.py` | inside `_cache_lookup`, only when `llm.cache` is set |
-| `jinja2` | unpinned | `llm/templating.py` | inside `safe_substitute` |
+| `jinja2` | unpinned | compatibility bundle | renderer does not import it |
 | `numpy` | unpinned | the ML and vector operators, `semantic_join`, and their outcome variants | inside the executing method, via `importlib.import_module` |
 | `scikit-learn` | unpinned | `classify`, `cluster`, `sklearn_estimator` | inside the executing method, via `importlib.import_module` |
 | `sentence-transformers` | unpinned | the vector operators, `semantic_join`, and their outcome variants | inside the model loader, via `importlib.import_module` |
 | `openai` | `>=2.54,<3` | `plan/openai_generator.py` | inside `_resolve_client`, only when no client was injected |
 
 LiteLLM is the provider abstraction for operator-level calls, which keeps those operators provider-agnostic and injectable through `properties["llm_client"]`.
-The model is chosen per call through properties, defaulting to `openai.model: gpt-4o`.
+The model is chosen per call through properties, defaulting to `openai.model: gpt-6-luna`.
 Credentials are read by the provider library from its own environment variables; this package neither reads nor stores one.
 
 ---
@@ -147,9 +147,9 @@ Credentials are read by the provider library from its own environment variables;
 |---|---|
 | Protocol library | `mcp`, bounded `>=1.28.1,<2` |
 | Server class | `mcp.server.fastmcp.FastMCP` |
-| Transport | streamable HTTP, stateful, default `127.0.0.1:8000/mcp` |
+| Transport | streamable HTTP, stateful, default `127.0.0.1:8010/mcp` |
 | Result modelling | `pydantic`, pinned `>=2.11,<3` |
-| Core pin | `blue-data-ops==3.1.0` |
+| Core pin | `blue-data-ops==1.0.0` |
 
 The adapter's own Pydantic floor is higher than the core's because it declares response models with `ConfigDict(extra="forbid")` and a JSON-schema annotation on the attributes parameter.
 `RunResult`, `ExecMetaModel`, and `ErrorRecordModel` are the three models, and together they are the wire contract.
@@ -219,20 +219,21 @@ The gates above are run locally, and [11-testing-strategy.md](11-testing-strateg
 ## Scripts
 
 Each distribution carries `build.sh`, `install.sh`, and `publish.sh` under its own `scripts/` directory, which is the family's convention.
-They wrap `python -m build`, `pip install -e`, and `twine upload`; none of them is installed as a command, and none is a deployment tool.
+They wrap `python -m build`, `pip install -e`, and a checked `twine upload`; none of them is installed as a command, and none is a deployment tool.
 
 | Script | Role |
 |---|---|
-| `build.sh` | `python -m build` from that package's root |
+| `build.sh` | clear the component's `build/` and `dist/`, run `python -m build`, then check wheel membership and bytes against `src/` |
 | `install.sh` | an editable install of that package and whatever it needs first — the library's resolves `blue-data` from its checkout, and the two service scripts install the library ahead of themselves |
-| `publish.sh` | `twine upload dist/*` from that package's root |
+| `publish.sh` | require `TWINE_REPOSITORY_URL`, check the current wheel and source distribution, then upload only those files |
 
-`lib/scripts/` also holds two Python development tools, invoked with `python`.
+`lib/scripts/` also holds three Python development tools, invoked with `python`.
 
 | Script | Role |
 |---|---|
 | `generate_operator_reference.py` | regenerates `lib/OPERATORS.md` from the active registry and generator fixtures. `OPERATORS.md` is never hand-edited |
 | `check_real_llm_install.py` | confirms LiteLLM resolves to a real installation rather than the test stub, and fails on a Python version below 3.11 |
+| `check_wheel_contents.py` | checks every core wheel member against expected source/resources; see [the boundary and limits](12-deployment-ops.md) |
 
 ---
 
@@ -253,7 +254,7 @@ They wrap `python -m build`, `pip install -e`, and `twine upload`; none of them 
 | `sentence-transformers` | unpinned | PyPI | `vector` extra, embedding generation only |
 | `litellm` | `>=1.98,<2` | PyPI | `llm` extra, provider dispatch for LLM-backed operators |
 | `diskcache` | unpinned | PyPI | `llm` extra, opt-in response cache |
-| `jinja2` | unpinned | PyPI | `llm` extra, template substitution |
+| `jinja2` | unpinned | PyPI | retained `llm` compatibility declaration |
 | `openai` | `>=2.54,<3` | PyPI | `openai` extra, plan generation only |
 | `setuptools` | `>=68` | PyPI | build backend |
 | `wheel` | unpinned | PyPI | build requirement |
@@ -261,3 +262,7 @@ They wrap `python -m build`, `pip install -e`, and `twine upload`; none of them 
 | `pytest-recording` | unpinned | PyPI | cassette support in the core `dev` extra; no cassettes are tracked |
 | `ruff`, `pyright` | unpinned | PyPI | lint, import order, strict type checking |
 | `build`, `twine` | unpinned | PyPI | distribution build and checks |
+
+HTTP requires the shared API key by default on both streamable HTTP and SSE.
+See the [HTTP bind, authentication and mounted lifespan contract](../docs/mcp.md#http-authentication-and-bind-settings)
+for environment overrides, the explicit no-key opt-out and the SDK Host/Origin limits.

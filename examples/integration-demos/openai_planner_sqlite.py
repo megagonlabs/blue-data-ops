@@ -133,7 +133,7 @@ def run_example(
     )
     properties: dict[str, Any] = {
         "data_registry": seam,
-        "execute_query": True,
+        "execute_query": False,
         "validate_query_prefixes": ["SELECT"],
         "openai.model": nl2sql_model,
     }
@@ -159,13 +159,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Discover the active operator catalog, ask an LLM to plan, and execute "
-            "the selected NL2SQL plan against a temporary SQLite database."
+            "the selected NL2SQL generation plan using a temporary SQLite schema."
         )
     )
     parser.add_argument("--question", default=DEFAULT_QUESTION)
-    parser.add_argument("--planner-model", default="gpt-4o")
+    parser.add_argument("--planner-model", default="gpt-6-luna")
     parser.add_argument("--embedding-model", default="text-embedding-3-small")
-    parser.add_argument("--nl2sql-model", default="gpt-4o-mini")
+    parser.add_argument("--nl2sql-model", default="gpt-6-luna")
     args = parser.parse_args()
 
     if "OPENAI_API_KEY" not in os.environ:

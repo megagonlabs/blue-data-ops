@@ -829,7 +829,7 @@
       "name": "data_discover",
       "operator_id": "data_discover@2.0.0",
       "source_file": "src/blue_data_ops/operators/data_discover_operator.py",
-      "source_sha256": "d1649e9a53b50bcdcf8525c82e0c51bc688b95b94c6ce719aaccfed8a6f6d132"
+      "source_sha256": "66471bfdca6446603fc062dd2aeced62ed5d3e215fec9d5d1998ce09915e7680"
     },
     {
       "cases": {
@@ -1153,7 +1153,7 @@
       "name": "insert_table",
       "operator_id": "insert_table@2.0.0",
       "source_file": "src/blue_data_ops/operators/insert_table_operator.py",
-      "source_sha256": "8737a51c3055df4d8d5f55bc5f7e45d767393506c403a3fcc09814b40696db84"
+      "source_sha256": "53fa1fd28f8141d9e10799c77c2cd9c87821dd4b30d76ed0db49d0113be820db"
     },
     {
       "cases": {
@@ -1811,7 +1811,7 @@
       "name": "nl2bn",
       "operator_id": "nl2bn@2.0.0",
       "source_file": "src/blue_data_ops/operators/nl2bn_operator.py",
-      "source_sha256": "2f7d03c95a7d330a18f5ae1f593fb820559a6a17fd927c137a530707c1556a31"
+      "source_sha256": "2227b3cdc7aa4eb0019d34e9fcc3255415506d2772120bd82047e6df6bec5d1a"
     },
     {
       "cases": {
@@ -1902,7 +1902,7 @@
       "name": "nl2llm",
       "operator_id": "nl2llm@2.0.0",
       "source_file": "src/blue_data_ops/operators/nl2llm_operator.py",
-      "source_sha256": "123b9b10041d9c89dadc0ad3abae25e3fef65e9397fbf8729c743c618ff564f4"
+      "source_sha256": "3d066975ec63d45cada90adb159fe916e1a8a713c982f685f2be9f29afa7cc44"
     },
     {
       "cases": {
@@ -2138,7 +2138,7 @@
       "name": "nl2sql",
       "operator_id": "nl2sql@2.0.0",
       "source_file": "src/blue_data_ops/operators/nl2sql_operator.py",
-      "source_sha256": "24e45552027691d0e1da3f526e9fe4a49af92a112c0ff5c5aeecd2b024df5b73"
+      "source_sha256": "a571fe26a2cfd80d3038cf5014dc802b72fe983136107a0bde8cef4bb78f1520"
     },
     {
       "cases": {
@@ -2869,7 +2869,7 @@
       "name": "semantic_extract",
       "operator_id": "semantic_extract@2.0.0",
       "source_file": "src/blue_data_ops/operators/semantic_extract_operator.py",
-      "source_sha256": "bcd21ac95965245564c7dd77d054e71de22bb245f47c264595e26a8efe0c9a9e"
+      "source_sha256": "d5f799e8f9fd73a56877ad4aba386d3c3b6f5b8c15634e731268ddc6c4a83304"
     },
     {
       "cases": {
@@ -2974,7 +2974,7 @@
       "name": "semantic_filter",
       "operator_id": "semantic_filter@2.0.0",
       "source_file": "src/blue_data_ops/operators/semantic_filter_operator.py",
-      "source_sha256": "6c84a8124dabc1d7bdc981fbca98a18149174d5a59aba9ab29323459d37e5e5f"
+      "source_sha256": "76cbf115c16e56bc8c4599c3b93231a2466471ab0b4e7667229023bca473679b"
     },
     {
       "cases": {
@@ -3131,7 +3131,7 @@
       "name": "semantic_join",
       "operator_id": "semantic_join@2.0.0",
       "source_file": "src/blue_data_ops/operators/semantic_join_operator.py",
-      "source_sha256": "755f1776a1cb3f0658aca7680076844343e7045be9cf49cc7eef3e1f1b773053"
+      "source_sha256": "c6ee780dff3a3da05d9232472b380b99fdab4e9f507b087b2368810b6738e102"
     },
     {
       "cases": {
@@ -3233,7 +3233,7 @@
       "name": "semantic_project",
       "operator_id": "semantic_project@2.0.0",
       "source_file": "src/blue_data_ops/operators/semantic_project_operator.py",
-      "source_sha256": "cfb78fef257f905931a1b96cfa3245b5648201e436764c6de16d7e972056cc64"
+      "source_sha256": "795b20ca7bb9beab7dda515a47dbe319c661bb6edb640bb40b6b51a9e24ef40b"
     },
     {
       "cases": {
@@ -3366,7 +3366,7 @@
       "name": "semantic_transform",
       "operator_id": "semantic_transform@2.0.0",
       "source_file": "src/blue_data_ops/operators/semantic_transform_operator.py",
-      "source_sha256": "328292737735a6e7cad47a3d1bd347facd4175cb01726896add23d65b5a63360"
+      "source_sha256": "db276ac6c44a97ac19649b20252e90b057caed438b0d038ef51f2c1265db1308"
     },
     {
       "cases": {
@@ -3862,7 +3862,7 @@
     "timeout": "TIMEOUT / OPERATOR_TIMEOUT; body runs once; late result discarded"
   },
   "source_manifest": {
-    "aggregate_sha256": "519b8403b84ab4a642d930a6b9b9b4d84bd7884c269b62410d1c6835079cc11c",
+    "aggregate_sha256": "409221e0a46627385e69fa12ce2ceea28cd9176cb6b9dbd96172791b89b1bb50",
     "files": {
       "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
       "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
@@ -3871,30 +3871,30 @@
       "cluster": "2ac4fdbbf672da3cdc0b50bce4f3ad712a877609dd5f493ba2a02d43a650babf",
       "create_database": "ce5eb3429058756222d6cd93b7d26e80ff4a904898ab2375b22ddfed71d12277",
       "create_table": "13a3fb1922b4d882212df5b274c757bb2a4159414405cee12ef766efe5e17a4c",
-      "data_discover": "d1649e9a53b50bcdcf8525c82e0c51bc688b95b94c6ce719aaccfed8a6f6d132",
+      "data_discover": "66471bfdca6446603fc062dd2aeced62ed5d3e215fec9d5d1998ce09915e7680",
       "delete": "ab33f67a6e072192556a493d6e8570735c28417e74b3590b666621c0bc64cd02",
       "insert": "5b77700cb7a1d56b7e57fd38e73f833da89ab382e17753a6f2e2383b001e7e32",
-      "insert_table": "8737a51c3055df4d8d5f55bc5f7e45d767393506c403a3fcc09814b40696db84",
+      "insert_table": "53fa1fd28f8141d9e10799c77c2cd9c87821dd4b30d76ed0db49d0113be820db",
       "intersect": "08b04aac356d9935778653b98b22acbdd5d48a7dfd6a6dfa7fa085a9a16241a9",
       "join": "c28ff17ee207b271a671a054f5585c7606d5b8773d4b0b892a5965bd8d272401",
       "max": "5d9a4d2de8b402ca848e5553a726deeff18c18d28a54d4cb96b4ac2c61c6e4e2",
       "min": "5ad7edbfc06b5d61af50c29c9255b48825679f94ca856bf9a4e0b631aa7a9c5c",
       "multipart_query": "a9a134cea558c5e0f2b4f1d9dcc57fae3355269bf6c50fe816e1837c5ad375eb",
-      "nl2bn": "2f7d03c95a7d330a18f5ae1f593fb820559a6a17fd927c137a530707c1556a31",
-      "nl2llm": "123b9b10041d9c89dadc0ad3abae25e3fef65e9397fbf8729c743c618ff564f4",
+      "nl2bn": "2227b3cdc7aa4eb0019d34e9fcc3255415506d2772120bd82047e6df6bec5d1a",
+      "nl2llm": "3d066975ec63d45cada90adb159fe916e1a8a713c982f685f2be9f29afa7cc44",
       "nl2query_router": "e3c4c25b46e2f0e1950c84fbcb3f43998dc6136070574686dc305dbffe8934d0",
-      "nl2sql": "24e45552027691d0e1da3f526e9fe4a49af92a112c0ff5c5aeecd2b024df5b73",
+      "nl2sql": "a571fe26a2cfd80d3038cf5014dc802b72fe983136107a0bde8cef4bb78f1520",
       "normalize_text": "3ba875420c503489f90865e655ea5494161be9cec59eff6702d259470db43014",
       "plan_discover": "3b1414db7579ab85a17a7bd3a24c58c883d61506f70f0cb87d76d475de7af68d",
       "project": "ededc1a16f129310f44047b1fa013624ebc4d466c619d4712d1cb1583c239000",
       "query_breakdown": "2ca98aabeb34a874fc7a7db57f0c58f6994afef4126298fd4528f4bf5d120356",
       "segment_text": "8565aa50bed2e1124ee0d29b041453debbb05a89aac9fdc0323482eb64297153",
       "select": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c",
-      "semantic_extract": "bcd21ac95965245564c7dd77d054e71de22bb245f47c264595e26a8efe0c9a9e",
-      "semantic_filter": "6c84a8124dabc1d7bdc981fbca98a18149174d5a59aba9ab29323459d37e5e5f",
-      "semantic_join": "755f1776a1cb3f0658aca7680076844343e7045be9cf49cc7eef3e1f1b773053",
-      "semantic_project": "cfb78fef257f905931a1b96cfa3245b5648201e436764c6de16d7e972056cc64",
-      "semantic_transform": "328292737735a6e7cad47a3d1bd347facd4175cb01726896add23d65b5a63360",
+      "semantic_extract": "d5f799e8f9fd73a56877ad4aba386d3c3b6f5b8c15634e731268ddc6c4a83304",
+      "semantic_filter": "76cbf115c16e56bc8c4599c3b93231a2466471ab0b4e7667229023bca473679b",
+      "semantic_join": "c6ee780dff3a3da05d9232472b380b99fdab4e9f507b087b2368810b6738e102",
+      "semantic_project": "795b20ca7bb9beab7dda515a47dbe319c661bb6edb640bb40b6b51a9e24ef40b",
+      "semantic_transform": "db276ac6c44a97ac19649b20252e90b057caed438b0d038ef51f2c1265db1308",
       "sum": "57de9ac53c365356fa76ed8eb4e1968a9342daabb172eaeadcb934dafabbfeac",
       "union": "b08bffdd9a6bb397c7764e68fec8e41f103b4404338ce2b2c7a71baccd2fe95b",
       "vector_embed": "6a15fe204e50c63b343f9f991c844077fc8a6a86b7550268a4805ea9820288af",

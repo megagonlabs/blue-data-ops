@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from types import MethodType
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import resolve_registry
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.data.errors import RegistryNotConfigured
+from blue_data_ops.data.registry_seam import (
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+    diagnose_generation_target,
+)
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.sql_execution import SQL_REGISTRY_SELECTORS, ReadOnlySQLExecutor, sql_error
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators._query_results import format_execution_result
 from blue_data_ops.operators.operator import Operator
@@ -21,7 +30,7 @@ from blue_data_ops.operators.types import (
 logger = logging.getLogger(__name__)
 
 
-class _MissingRegistryError(RuntimeError):
+class _MissingRegistryError(RegistryNotConfigured):
     pass
 
 
@@ -65,15 +74,9 @@ ${attr_names_section}
 class NL2SQLOperator(Operator):
     """Translate a natural language question into a SQL query and optionally run it."""
 
-    # Faithful to Blue source's nl2sql operator: a blank question returns [[]] with no
-    # provider call; protocol/database/collection are required while `source` is NOT
-    # part of that check (upstream quirk, kept); a missing registry returns [[]];
-    # the schema is ALWAYS fetched from the registry — the declared `schema`
-    # attribute is accepted but never used (upstream reads it and immediately
-    # overwrites it); LLM errors PROPAGATE. Upstream's module also carries
-    # direct-connection schema helpers explicitly marked not for production — those
-    # (and their database-driver imports) are dropped; schema access goes through
-    # the registry.
+    # Raw blank questions and missing generation registries keep their empty return.
+    # Schema comes from the selected registry or host capability; the compatibility
+    # schema attribute does not replace it.
 
     name: ClassVar[str] = "nl2sql"
     description: ClassVar[str] = (
@@ -125,10 +128,10 @@ class NL2SQLOperator(Operator):
     }
 
     DEFAULT_PROPERTIES: ClassVar[dict[str, Any]] = {
-        "execute_query": True,
+        "execute_query": False,
         "validate_query_prefixes": ["SELECT"],
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 512,
         "openai.temperature": 0,
@@ -140,12 +143,59 @@ class NL2SQLOperator(Operator):
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",
     }
+
+    def __init__(
+        self, *args: Any, read_only_executor: ReadOnlySQLExecutor | None = None, **kwargs: Any
+    ) -> None:
+        if read_only_executor is not None and type(read_only_executor) is not ReadOnlySQLExecutor:
+            raise sql_error("sql_policy_invalid")
+        self._read_only_executor = read_only_executor
+        super().__init__(*args, **kwargs)
+
+    def _preflight_execution(self, attributes: Attributes, properties: Properties | None) -> bool:
+        """Check original caller policy and bound target before schema or client work."""
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
+        caller = properties or {}
+        execute = caller.get("execute_query", False)
+        if type(execute) is not bool or "read_only_executor" in caller:
+            raise sql_error("sql_policy_invalid")
+        if "validate_query_prefixes" in caller:
+            value = caller["validate_query_prefixes"]
+            if type(value) is not list:
+                raise sql_error("sql_policy_invalid")
+            prefixes = cast(list[object], value)
+            if (
+                len(prefixes) != 1
+                or type(prefixes[0]) is not str
+                or not prefixes[0].isascii()
+                or prefixes[0].upper() != "SELECT"
+            ):
+                raise sql_error("sql_policy_invalid")
+        if execute:
+            if SQL_REGISTRY_SELECTORS.intersection(caller):
+                raise sql_error("sql_policy_invalid")
+            if self._read_only_executor is None:
+                raise sql_error("sql_execution_unavailable")
+            self._read_only_executor.preflight(self._execution_target(attributes))
+        return execute
+
+    @staticmethod
+    def _execution_target(attributes: Attributes) -> tuple[str, str, str]:
+        target = tuple(attributes.get(key, "") for key in ("source", "database", "collection"))
+        if any(type(part) is not str or not part for part in target):
+            raise sql_error("sql_target_denied")
+        return cast(tuple[str, str, str], target)
 
     def apply(
         self,
@@ -154,7 +204,10 @@ class NL2SQLOperator(Operator):
         properties: Properties | None = None,
     ) -> DataBundle:
         try:
-            return self._execute(input_data, attributes, properties).output_data
+            execute = self._execute
+            if type(execute) is MethodType and execute.__func__ is _BUILTIN_EXECUTE:
+                return self._execute_sql(input_data, attributes, properties).output_data
+            return execute(input_data, attributes, properties).output_data
         except _MissingRegistryError:
             return [[]]
 
@@ -164,6 +217,18 @@ class NL2SQLOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        return self._execute_sql(input_data, attributes, properties, _diagnose_registry=True)
+
+    def _execute_sql(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+        *,
+        _diagnose_generation_target: bool = False,
+        _diagnose_registry: bool = False,
+    ) -> FunctionResult:
+        execute_query = self._preflight_execution(attributes, properties)
         question = cast(str, attributes.get("question", ""))
         source = cast(str, attributes.get("source", ""))
         protocol = cast(str, attributes.get("protocol", "postgres"))
@@ -183,13 +248,18 @@ class NL2SQLOperator(Operator):
         if not protocol or not database or not collection:
             raise ValueError("Protocol, database, and collection are required")
 
-        registry = resolve_registry(properties)
-        if not registry:
-            raise _MissingRegistryError
-
-        # get schema from data registry (unconditionally — the schema attribute is
-        # accepted but not consulted, matching upstream)
-        schema = registry.get_data_source_schema(source, database, collection)
+        if execute_query:
+            assert self._read_only_executor is not None
+            schema = self._read_only_executor.get_schema(self._execution_target(attributes))
+        else:
+            registry = resolve_registry(properties)
+            if not registry:
+                raise _MissingRegistryError
+            if _diagnose_registry or _diagnose_generation_target:
+                _diagnose_source(registry, source)
+            if _diagnose_generation_target:
+                diagnose_generation_target(registry, source, database, collection)
+            schema = registry.get_data_source_schema(source, database, collection)
         logger.debug("SCHEMA:")
         logger.debug(schema)
         if isinstance(schema, dict):
@@ -200,10 +270,7 @@ class NL2SQLOperator(Operator):
         # Caller properties override the operator defaults (Blue source merges the same
         # values through its instance properties; same observable, different shell).
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
-        execute_query = merged.get("execute_query", True)
-        validate_query_prefixes = cast(
-            "list[str]", merged.get("validate_query_prefixes", ["SELECT"])
-        )
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         if protocol not in ["postgres", "mysql", "sqlite"]:
             raise ValueError(
                 f"Unsupported protocol: {protocol}. "
@@ -237,30 +304,26 @@ class NL2SQLOperator(Operator):
         if isinstance(sql_result, str):
             try:
                 sql_data = json.loads(sql_result)
-            except json.JSONDecodeError as e:
-                # implicit exception context only, as upstream raises it
-                raise ValueError(f"Invalid JSON response from LLM: {str(e)}")
+            except json.JSONDecodeError:
+                raise sql_error("sql_query_rejected") from None
         elif isinstance(sql_result, dict):
             sql_data = cast("dict[str, Any]", sql_result)
         else:
-            raise ValueError("Invalid response from LLM: " + str(sql_result))
+            raise sql_error("sql_query_rejected")
 
-        generated_query = cast(str, sql_data.get("query", ""))
-        if not generated_query:
-            raise ValueError("No query found in LLM response")
-
-        if not any(
-            generated_query.upper().startswith(prefix.upper()) for prefix in validate_query_prefixes
+        if not isinstance(sql_data, dict):
+            raise sql_error("sql_query_rejected")
+        generated_query = cast(dict[str, Any], sql_data).get("query")
+        if not isinstance(generated_query, str) or not re.match(
+            r"\A\s*[Ss][Ee][Ll][Ee][Cc][Tt]\b", generated_query
         ):
-            raise ValueError(f"Invalid query prefix: {generated_query}")
+            raise sql_error("sql_query_rejected")
 
-        if execute_query and generated_query:
-            logger.info("Generated Query: " + generated_query)
-            result = registry.execute_query(generated_query, source, database, collection)
-            logger.debug("Result: ")
-            logger.debug(result)
-            # The formatter's case-4 fallthrough can yield None at runtime (an upstream
-            # quirk, kept and pinned); the cast keeps the declared operator contract.
+        if execute_query:
+            assert self._read_only_executor is not None
+            result = self._read_only_executor.execute(
+                generated_query, self._execution_target(attributes)
+            )
             return FunctionResult(cast(DataBundle, format_execution_result(result)), {})
         return FunctionResult([[{"sql": generated_query}]], {})
 
@@ -306,3 +369,6 @@ DISCOVERY = DiscoverySpec(
         "requires-query-backend",
     ),
 )
+
+
+_BUILTIN_EXECUTE = NL2SQLOperator.__dict__["_execute"]

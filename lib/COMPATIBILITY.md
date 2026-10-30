@@ -58,6 +58,24 @@ The ordinary three-argument `Operator.validate(input_data, attributes, propertie
 
 Operators expose the Blue Tool/Operator metadata surface, including the signature dictionary from `get_signature()`, the parameter and return accessors, and live property access, alongside the declarative attribute schema. Signatures are generated with the same rules Blue uses, including the way it renders typing-annotated parameters and treats a falsy default as a required parameter.
 
+## Legacy semantic response handling
+
+Default v1 and explicit v1/v2 semantic operators now reject malformed replies at runtime. This intentionally removes legacy coercions; operator IDs, schemas and version selection remain unchanged. Active v3 keeps its existing validation.
+
+- `semantic_filter`: Accept booleans or trimmed, case-insensitive strings: `true`/`false`, `yes`/`no`, `1`/`0` and `include`/`exclude` select or exclude a record. Numeric values, punctuated strings such as `Yes.` and other replies are rejected. A false decision remains a successful exclusion. Active `@3.0.0` accepts only booleans and `true`/`false` strings.
+- `semantic_extract`: Combined replies must contain exactly the requested entity names, with list values; list elements retain their existing types. Individual replies must be string lists. Empty lists remain valid.
+- `semantic_project`: Replies must map existing schema names to unique nonblank string destinations. Unknown source names and duplicate destinations are rejected. An empty object selects no columns and remains valid.
+- `semantic_transform`: Plans must include every requested target, string-list `source_fields`, and a known `transformation_type`. Missing classifications and invalid extra plan values are rejected. Extra valid plan keys are allowed. Generated objects must include fields marked `required is True` only when requested in that call. Optional omissions and explicit nulls remain valid.
+- `semantic_join`: Batch replies must contain exactly `pair_1` through `pair_N`, with native booleans or trimmed, case-insensitive strings. `true`, `yes`, `1`, `match` and `join` mean match; `false`, `no`, `0` and `exclude` mean non-match. `include` is rejected: the previous join parser did not accept it as a positive answer. Positional arrays, numeric values and unknown strings are rejected. Active `@3.0.0` still requires native booleans. All-false replies remain valid. An embedding preparation exception falls back to all Cartesian pairs, requiring ceil(N*M/batch) model calls, where N and M are the two group sizes and batch is `batch_size`. A failure after optimization sampling can add the sample call to that fallback. The `estimate_cost`/`max_llm_calls` check uses the up-front estimate; a fallback can make more calls than the limit. Successful all-low-score embedding passes still make zero model calls.
+
+Inspect `exec_meta.errors` after `run()` and each pipeline node. A malformed reply fails the whole call without partial output; raw `apply()` and valid-input `invoke()` raise the operator's format exception. Arbitrary provider exceptions retain their existing diagnostic contract. Validation checks reply shape. A well-formed empty reply passes even when the model did not provide useful data.
+
+## Operator deadlines and registry configuration
+
+The bare `timeout: 300` instance seed has been removed, so it no longer appears in `get_properties()`. Operator execution reads only finite positive `execution.timeout_seconds`; absent or legacy-only controls leave the call unbounded. A timeout stops waiting without terminating the worker or rolling back backend effects. The LLM client's provider `timeout` is separate, and raw `apply()`/`invoke()` do not acquire a deadline.
+
+MCP uses one deployment registry per server and refuses unconfigured registry calls with an operator failure. Configure it through `data_registry=` or the shared environment builder. Ordinary Python default-provider resolution remains unchanged. See [MCP setup](../docs/mcp.md#deployment-data-registry) for initialization effects, async admission and the timeout drain. The CLI also uses the shared builder but retains an empty-memory default and its ephemeral warning. Unsupported store selectors, surrounding selector whitespace and explicit missing source files now fail instead of silently falling back or doing nothing.
+
 ## Semantic transform grouping
 
 `semantic_transform` keys value mappings by `(target_field, combination)`, so targets that share a dependency combination do not overwrite each other; the reference implementation keys by combination only. Merged-group lookups use the group's own dependency fields; the reference implementation reuses the last target's source-field list, which can silently drop results.
@@ -136,6 +154,8 @@ from blue_data_ops.operators import ResolveError, active_registry
 from blue_data_ops.llm import LLMError
 
 op = active_registry().resolve("select@2.0.0")
+data = [[{"total": 2}, {"total": 5}]]
+attributes = {"operand_key": "total", "operand": ">", "operand_val": 3}
 output_data, output_attributes, meta = op.run(data, attributes)
 for error in meta.errors:  # structured records instead of a raised BlueError
     print(error.category, error.code, error.message)
@@ -161,10 +181,54 @@ Code that depended on Blue-exact similarity numbers should treat `blue-data`'s r
 
 The reduce key is spelled six ways across the arithmetic operators: `argmax_key`, `argmin_key`, `avg_key`, `max_key`, `min_key` and `sum_key`. They name the same thing — the key whose values an operator reduces — and a caller moving between two of those operators has to change the attribute name as well as the operator.
 
-These names remain unchanged in 3.1.
+These names remain unchanged in this release.
 
 Attribute names are part of the operator contract. They appear in the card each operator publishes, in the generated reference, in the resource package that documents each exact version, in the schema every MCP client reads, and in the attributes map of every existing caller. Collapsing six names to one `key` is a breaking change to all of those at once, and a breaking change to an operator contract belongs in a major release with a migration, not in a minor release whose subject is packaging and documentation.
 
 When it happens, the shape is already decided: accept both spellings for one release with the old name undocumented and the new one published, then drop the old name in the release after. That gives a caller a version in which either spelling works, which a straight rename does not.
 
 Until then, the mapping is the obvious one — each operator's reduce key is its own name followed by `_key`, and `operator inspect` on the command line or the tool schema over MCP will show it.
+
+## LLM prompt and SQL execution security changes
+
+`utils.safe_substitute(template, **kwargs)` keeps its public import and signature
+but now applies one dollar-placeholder pass. Unknown names, inserted dollar tokens,
+Jinja syntax, and line endings remain literal. Chained and Jinja evaluation from
+Blue's older helper is no longer supported.
+
+Operator callers cannot override prompt, extraction, or transport controls. Define
+custom prompts in trusted operator defaults. An injected client's stored prompt
+and `output_template` cannot replace another operator's defaults.
+
+NL2SQL generates SQL by default across retained versions. Execution requires a
+host-bound `ReadOnlySQLExecutor`, an exact approved target, and boolean
+`execute_query=True`. Caller registry selectors cannot grant or redirect execution.
+See [SQL execution](../docs/llm-settings.md#sql-execution) for Python migration and
+connection limits. Stock CLI/MCP instances have no executor. The OpenAI planner
+example generates SQL only because its generator requires built-in card provenance;
+custom rule planning can share a host-configured instance with its executor.
+
+
+## Execution diagnostics
+
+Malformed built-in model replies now produce fixed format diagnostics. Shared decoder failures
+remain catchable as `JSONDecodeError`, `ValueError` or `TypeError`, with fixed arguments and no
+linked original exception. Legacy v1/v2 semantic coercions now fail validation; raw calls raise operator format errors;
+structured v2 calls gain the diagnostic when their existing shared decoder rejects a reply.
+Invalid `nl2llm@3.0.0` record shapes still use `EXECUTION_RESULT_INVALID / NORMALIZE`.
+
+Structured `nl2sql@3.0.0` may reject an absent local SQLite database or collection before generation
+when populated registered peers and a directory name listing prove absence. Missing or unavailable
+directories, remote/custom sources and unsynchronized metadata remain inconclusive. Remote target
+names can still generate SQL until host execution reports a supported failure. Raw `apply()`, v2
+and host-bound SQL execution retain their routing and capability checks.
+
+Genuine loaded database/provider classes receive fixed diagnostics. Classifiers do not load drivers
+or providers. Transient provider records may advise another call; client retry attempts and delays
+are unchanged. Pipeline CLI summaries retain a stopped node's recoverable record. Escaped custom
+`run()` exceptions in MCP receive the same generic metadata as PipelineExecutor, while deadlines,
+cancellation and worker admission keep their existing behavior.
+
+Custom authors may explicitly publish fixed constants with `OperatorExecutionError`; see
+[the authoring contract](../docs/extending.md#intentional-public-execution-diagnostics). This is a
+trusted-author channel, not a redaction mechanism. It cannot detect deliberate dynamic text.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-data-ops"
-version = "3.1.0"
+version = "1.0.0"
 description = "Blue Data Operators — self-contained operator library"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,7 +15,7 @@ requires-python = ">=3.11"
 # relied on transitively through blue-data.
 # llm.client imports tenacity at package import time, so it remains a core dependency.
 dependencies = [
-    "blue-data>=0.1.0",
+    "blue-data>=1.0.0",
     "pydantic>=2",
     "jsonmerge==1.9.2",
     "jsonpath-ng",

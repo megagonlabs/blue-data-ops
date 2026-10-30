@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "source_instrument": {
-    "instrument_id": "blue-data-ops-core-3.9-active-reference",
-    "document_sha256": "6e3948b973daaaec2c075c47de14cdf37e30bfd810d2e550ab2eab1109f34217",
-    "seal_sha256": "7cc8eeeca1e3c5e80acb3464194371ad4071e88369c462d85f7e2b9ce6ffd2c6"
+    "instrument_id": "blue-data-ops-core-3.10-active-reference",
+    "document_sha256": "dd8d4a6f0a251597e61bb3fbda867c995a03abf625f670b2ffda2423c83e2f1e",
+    "seal_sha256": "63a789e59716b22426db62ed1ee6afb7d060e56cd589a84fe0a24f40216c8e24"
   },
   "conversion": {
     "row_order": "ASCII lexical order by logical operator name; exactly one row per active exact ID.",
@@ -337,7 +337,7 @@
         },
         "invalid": {
           "status": "not_observed",
-          "reason": "The frozen 46-case receipt did not include the supplementary blank-source validation call."
+          "reason": "Blank-source validation is not covered by these observations."
         },
         "failure": {
           "status": "supported",
@@ -386,7 +386,7 @@
         },
         "invalid": {
           "status": "not_observed",
-          "reason": "The frozen 46-case receipt did not include the supplementary blank-source validation call."
+          "reason": "Blank-source validation is not covered by these observations."
         },
         "failure": {
           "status": "supported",
@@ -409,48 +409,48 @@
       "version": "2.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/data_discover_operator.py",
-        "sha256": "d1649e9a53b50bcdcf8525c82e0c51bc688b95b94c6ce719aaccfed8a6f6d132",
+        "sha256": "66471bfdca6446603fc062dd2aeced62ed5d3e215fec9d5d1998ce09915e7680",
         "symbol": "DataDiscoverOperator",
         "module": "blue_data_ops.operators.data_discover_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
-        "schema": "observations",
+        "source_kind": "accepted expected case",
+        "schema": "cases",
         "original_operator_id": "data_discover@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
-          "node": "def main()"
+          "kind": "product regression test",
+          "node": "tests/unit/operators/test_data_discover_projection.py"
         }
       },
       "claims": {
         "success": {
           "status": "supported",
-          "case_id": "data-discover-real-database-hit",
-          "summary": "A real registry search returns the created confirmation database."
+          "case_id": "test_reference_catalog_success",
+          "summary": "A registry search returns catalog identity fields, an allowlisted source kind, and a score."
         },
         "empty": {
           "status": "supported",
-          "case_id": "data-discover-real-no-match",
-          "summary": "A real no-match registry search is successful-empty."
+          "case_id": "test_reference_catalog_empty",
+          "summary": "A no-match registry search returns successful-empty."
         },
         "invalid": {
           "status": "supported",
-          "case_id": "data-discover-invalid-query",
-          "summary": "A blank query is INVALID_INPUT at VALIDATE."
+          "case_id": "test_reference_catalog_invalid",
+          "summary": "A blank query returns INVALID_INPUT at VALIDATE."
         },
         "failure": {
           "status": "supported",
-          "case_id": "data-discover-registry-failure",
-          "summary": "A labeled registry failure double is contained as EXECUTION_FAILED."
+          "case_id": "test_reference_catalog_failure",
+          "summary": "A registry search failure returns EXECUTION_FAILED at EXECUTE."
         }
       },
       "dependency_profile": {
         "kind": "registry",
-        "setup": "Real RegistrySeam for success/empty; labeled failure double only for failure."
+        "setup": "A synthetic registry seam supplies deterministic search and failure cases."
       },
       "discriminators": [
-        "Real hit and real no-match separate data from successful-empty.",
-        "Failure double separates structured failure from raw empty collapse."
+        "The exact success result omits stored descriptions, connection properties, and metadata.",
+        "No-match and registry failure have distinct ExecMeta outcomes."
       ]
     },
     {
@@ -806,7 +806,7 @@
       "version": "3.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/_nl2bn_outcome.py",
-        "sha256": "315278d597f760c4bb0f56ee5ef55fc233c6a1015668c2123378f3407fdccd4d",
+        "sha256": "2b34c7c28bf26f4fb233329bad2e8286b9fa36ab267918a436a3fe846a13ce67",
         "symbol": "NL2BNOutcomeOperator",
         "module": "blue_data_ops.operators._nl2bn_outcome"
       },
@@ -1155,7 +1155,7 @@
       "version": "3.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/_semantic_extract_outcome.py",
-        "sha256": "918f83be1367f31fd798ee152a77b45ae0b721b9e519f85ac179bf57e2d00130",
+        "sha256": "12cc2ab6d6ee298902e6fac50ac941343421d19621b8215a775367ad1f203bb9",
         "symbol": "SemanticExtractOutcomeOperator",
         "module": "blue_data_ops.operators._semantic_extract_outcome"
       },
@@ -1205,7 +1205,7 @@
       "version": "3.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/_semantic_filter_outcome.py",
-        "sha256": "65bbec5d93600bf485f68386be4474e91d9709b7ea658f9e51fe360acdeb1fab",
+        "sha256": "cd4b22721f09e8fb14a696de22fba0f262ab4e583ff1e408588e998da125c84c",
         "symbol": "SemanticFilterOutcomeOperator",
         "module": "blue_data_ops.operators._semantic_filter_outcome"
       },
@@ -1255,7 +1255,7 @@
       "version": "3.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/_semantic_join_outcome.py",
-        "sha256": "0b16edbcfb32e4f9f8be3bfe153c469dc65d8bd1af151e47d11a0028bba91e13",
+        "sha256": "e77c8dfc4665f9a387b9a62464251874b3368df795786b6131ce70350a4a9300",
         "symbol": "SemanticJoinOutcomeOperator",
         "module": "blue_data_ops.operators._semantic_join_outcome"
       },
@@ -1305,7 +1305,7 @@
       "version": "3.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/_semantic_project_outcome.py",
-        "sha256": "d0713bf19ad086ad8691d268262316a11b0329fc21f45e21c6ef3f6fe9a93ac3",
+        "sha256": "d272a0b35f52dcd6934ff1ec8b362d849931856ee62b4d7da4c695651e0f8f2c",
         "symbol": "SemanticProjectOutcomeOperator",
         "module": "blue_data_ops.operators._semantic_project_outcome"
       },
@@ -1354,7 +1354,7 @@
       "version": "3.0.0",
       "implementation": {
         "path": "src/blue_data_ops/operators/_semantic_transform_outcome.py",
-        "sha256": "c583bd24b2a7efec96bb322e3c4af13b037780dfcab769576f6cc1c0c2855659",
+        "sha256": "7b9ba3cbb6de1ae5805c2cc615005a0b958f2ab0221e21e232b536ac58b49011",
         "symbol": "SemanticTransformOutcomeOperator",
         "module": "blue_data_ops.operators._semantic_transform_outcome"
       },
@@ -1646,5 +1646,5 @@
       ]
     }
   ],
-  "projection_seal_sha256": "ddb9538db426602ece191717a70991e920494adf0cd82ba33f034e9523f48a1c"
+  "projection_seal_sha256": "4acad01e1f4d48079fe815b660b5973f533a6785e994b836109cbf4cea7e93d2"
 }

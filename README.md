@@ -1,42 +1,48 @@
 # blue-data-ops
 
-A Python library of Blue data operators addressed by exact version: record transforms, registry-backed database operations, vector and ML operators, and a local pipeline planner.
+Reusable data operators for Blue's agentic data flows.
 
-[Documentation](docs/README.md) | [Quick start](docs/quickstart.md) | [Examples](examples/README.md)
+Blue coordinates AI agents that use existing data and tools, while `blue-data` catalogs the structure and meaning of available sources. `blue-data-ops` gives agents and applications a standard atomic unit for each data operation: an operator performs a defined step through a shared execution contract, whether called directly, connected in a pipeline, or selected by a planner.
+
+→ **[Full documentation](docs/README.md)** · **[Quick start](docs/quickstart.md)** · **[Installation](docs/installation.md)** · **[Examples](examples/README.md)** · **[CLI](docs/cli.md)** · **[MCP](docs/mcp.md)**
 
 ## What it does
 
-- Resolves operators by exact ID, so `avg@3.0.0` means one implementation and keeps meaning it after the next release. The active registry holds 33 cards: 12 at `@2.0.0` and 21 at `@3.0.0`.
-- Keeps 87 historical cards in a separate registry view. Migration code can resolve an older version without changing what ordinary discovery returns.
-- Finds operators by keyword and by six tag axes, or by cosine distance over an embedding index the caller supplies. See [tag discovery](lib/README.md#discovery) and the generated [tag reference](lib/OPERATORS.md#tag-taxonomy).
-- Returns one shape from every operator: output records, output attributes, and execution metadata that carries errors instead of raising them.
-- Plans and runs small pipelines from a stated goal and a set of discovery queries. The rule-based generator does this without calling a provider.
-- Carries 54 resource packages keyed by exact operator ID, read only when a caller asks for one, so operator documentation never lands in a prompt by accident.
-- Exposes the 33 active operators as MCP execution tools from a second distribution, each named `ops_` plus its operator name.
-- Runs the same operators, catalogs and pipelines from a shell through `blue-ops`, a third distribution with 24 commands.
+- **Standardize data operations** with reusable operators that share an execution contract across eight families: filtering and shaping, joins and set operations, aggregation, text processing, machine learning, vector operations, LLM and semantic operations, and registry-backed discovery and database operations.
+- **Work with registered data**: discover sources, create databases and tables, insert records, and turn natural-language requests into queries that can be executed against a configured backend when enabled.
+- **Use ML, vector, and LLM operators** for classification, clustering, embeddings, vector search and similarity, semantic filtering, extraction, and other LLM-based operations when their optional dependencies are installed.
+- **Discover** operators by keyword, six tag axes, or a caller-supplied embedding index. The active registry holds 33 cards, and a versioned registry retains 87. An exact ID such as `avg@3.0.0` continues to identify the same implementation after a release.
+- **Plan and run** data flows with `DataPipeline`, `PipelineExecutor`, and a rule-based or OpenAI-backed `PipelinePlanner`.
+- **Call** the active operators from Python, the `blue-ops` command, or MCP clients. The MCP server exposes 33 `ops_`-prefixed tools. The library's `run()` result carries output records, optional output attributes, and execution metadata, including errors.
+
+See [features](docs/features.md) for the capabilities, [examples](examples/README.md) for runnable programs, and the [library guide](lib/README.md) for operator contracts, settings, and the 54 exact-version reference packages.
 
 ## Repository layout
 
 ```text
 blue-data-ops/
-├── README.md              # this file
-├── CHANGELOG.md           # one entry per released version, newest first
-├── LICENSE                # BSD 3-Clause with a NOTICE clause, covering all three
-├── design/                # architecture and the decisions behind it
-├── docs/                  # user documentation, starting at docs/README.md
-├── examples/              # runnable scripts, grouped by purpose
-├── lib/                   # the blue-data-ops library
-├── platform/ops-cli/      # the blue-ops command
-├── platform/ops-mcp/      # the blue-data-ops-mcp server
-├── ruff.toml              # repository-root lint scope, extending lib/pyproject.toml
-└── .gitignore             # build output, environments, caches, local databases
+├── README.md              # this overview
+├── CHANGELOG.md           # release history
+├── LICENSE                # repository license
+├── design/                # architecture and design decisions
+├── docs/                  # user guides and API reference
+├── examples/              # runnable programs and CLI sample inputs
+│   └── cli/               # order records and planning request used by the CLI guide
+├── lib/                   # blue-data-ops Python library and install script
+├── platform/
+│   ├── ops-cli/           # blue-ops command
+│   └── ops-mcp/           # blue-data-ops-mcp server
+├── ruff.toml              # repository lint configuration
+└── .gitignore             # local output and environment exclusions
 ```
 
 ## Requirements
 
-- Python 3.11 or later.
-- `blue-data` 0.1.0 or later. The library imports it eagerly, so it has to be installed before `blue_data_ops` will import.
-- A source checkout of `blue-data` beside this one, under a shared parent directory:
+- Python 3.12 recommended; release verification covers Python 3.11 and 3.12.
+- A `blue-data` checkout beside this repository for the source installer. The library requires `blue-data>=1.0.0` at import time.
+- Provider credentials for LLM-backed operators and OpenAI planning; record transforms and the rule-based planner need none.
+
+For the source-install commands, keep the two checkouts under one parent:
 
 ```text
 workspace/
@@ -44,70 +50,50 @@ workspace/
 └── blue-data-ops/
 ```
 
-The core declares `pydantic`, `jsonmerge`, `jsonpath-ng`, and `tenacity`, which pip installs along with it.
-Optional extras pull the heavier dependencies only when you want those operators.
+The installer looks for `../blue-data/lib` relative to this checkout. If that checkout is elsewhere, set `BLUE_DATA_PATH` to its `lib` directory.
 
-| Extra | Adds | Needed for |
-|---|---|---|
-| `ml` | numpy, scikit-learn | `classify`, `cluster`, `sklearn_estimator` |
-| `vector` | numpy, sentence-transformers | `vector_embed`, `vector_search`, `vector_similarity` |
-| `llm` | litellm, tenacity, diskcache, jinja2 | `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators |
-| `openai` | openai | `OpenAIPlanGenerator` |
-| `dev` | pytest, ruff, pyright, build, twine | working on this repository |
+OpenAI-backed calls read `OPENAI_API_KEY`. See [model settings](docs/llm-settings.md) for other providers. Enter the key without putting its value in shell history:
 
-`dev` also brings in the `ml` and `openai` dependencies, so add `llm` and `vector` on top of it when you need those operators.
+```bash
+# export BLUE_DATA_PATH=/absolute/path/to/blue-data/lib  # for a non-sibling checkout
+printf 'OpenAI API key: '
+read -rs OPENAI_API_KEY && export OPENAI_API_KEY
+printf '\n'
+```
+
+Optional extras:
+
+| Extra | Used for |
+|---|---|
+| `ml` | classification, clustering, and scikit-learn estimators |
+| `vector` | embeddings, vector search, and vector similarity |
+| `llm` | natural-language and semantic operators |
+| `openai` | the OpenAI-backed pipeline generator |
+
+The [installation guide](docs/installation.md) lists the dependencies, the development extra, and the separate CLI and MCP installers.
 
 ## Quick start
 
-From the directory that holds `blue-data/` and `blue-data-ops/`, create and activate either a standard virtual environment:
+From the directory containing both `blue-data/` and `blue-data-ops/`:
 
 ```bash
-python -m venv blue-data-ops/lib/.venv
+python3.12 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
-```
-
-or a Conda environment. If Conda says the shell is not initialized, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to this directory:
-
-```bash
-conda create --name blue-data-ops python=3.12 pip
-conda activate blue-data-ops
-```
-
-With either environment active, run the library's installer:
-
-```bash
 ./blue-data-ops/lib/scripts/install.sh
+python blue-data-ops/examples/quickstart/core_quickstart.py
 ```
 
-The script installs `blue-data` from the sibling checkout, then this library with its `dev` extra.
-Set `BLUE_DATA_PATH` if `blue-data` is not beside this checkout, or run the two commands yourself:
-
-```bash
-python -m pip install -e ./blue-data/lib
-python -m pip install -e "./blue-data-ops/lib[dev]"
-```
-
-The MCP server and the `blue-ops` command are separate packages, each with its own `scripts/install.sh`.
-[docs/installation.md](docs/installation.md) covers the package-specific installation paths.
-
-Check the install from the library directory, then come back up and run the first example:
-
-```bash
-cd blue-data-ops/lib
-python -m pytest
-cd ..
-python examples/quickstart/core_quickstart.py
-```
-
-That prints a filtered record group, its average, a normalized text field, and a union.
-
-The full walkthrough, with a pipeline and the planner, is in [docs/quickstart.md](docs/quickstart.md).
-The other two interfaces have a page each: [docs/mcp.md](docs/mcp.md) and [docs/cli.md](docs/cli.md).
+The example filters order records, computes their average, normalizes a text field, and unions record groups. The install script first installs the sibling `blue-data` checkout, then the library with its development dependencies. For Conda, package-specific installs, pipelines, and planning, continue with the [full quick start](docs/quickstart.md).
 
 ## Packages
 
 | Package | Description |
 |---|---|
-| [lib/](lib/README.md) | `blue-data-ops` 3.1.0 — the operator library, its registries, the resource packages, and the local planner |
-| [platform/ops-mcp/](platform/ops-mcp/README.md) | `blue-data-ops-mcp` 1.0.0 — an MCP server exposing 33 primary execution tools, one per active operator |
-| [platform/ops-cli/](platform/ops-cli/README.md) | `blue-data-ops-cli` 1.0.0 — the `blue-ops` command, 24 commands over five components |
+| [lib/](lib/README.md) | `blue-data-ops` 1.0.0: the Python `blue_data_ops` library, operator registry, resources, and local planner; installs no console command |
+| [platform/ops-cli/](platform/ops-cli/README.md) | `blue-data-ops-cli` 1.0.0: installs the `blue-ops` command for profiles, catalogs, operators, pipelines, and metadata |
+| [platform/ops-mcp/](platform/ops-mcp/README.md) | `blue-data-ops-mcp` 1.0.0: installs the `blue-data-ops-mcp` command serving the active operators as MCP tools |
+
+## Conduct and disclosures
+
+See the [Code of Conduct](CODE_OF_CONDUCT.md),
+[disclosures](docs/disclosures.md), and [NOTICE](NOTICE).

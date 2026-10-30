@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import logging
+from types import MethodType
 from typing import Any, ClassVar, cast
 
 from blue_data_ops.data import RegistrySeam, resolve_registry
+from blue_data_ops.data.errors import RegistryFailure, RegistryReason
+from blue_data_ops.data.local_names import sqlite_connect_missing
+from blue_data_ops.data.registry_seam import (
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+)
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -19,11 +25,11 @@ from blue_data_ops.operators.types import (
 logger = logging.getLogger(__name__)
 
 
-class _InsertTablePassThroughFailure(Exception):
+class _InsertTablePassThroughFailure(RegistryFailure):
     pass
 
 
-class _InsertTableEmptyFailure(Exception):
+class _InsertTableEmptyFailure(RegistryFailure):
     pass
 
 
@@ -78,7 +84,10 @@ class InsertTableOperator(Operator):
         properties: Properties | None = None,
     ) -> DataBundle:
         try:
-            return self._execute(input_data, attributes, properties).output_data
+            execute = self._execute
+            if type(execute) is MethodType and execute.__func__ is _BUILTIN_EXECUTE:
+                return self._execute_insert(input_data, attributes, properties).output_data
+            return execute(input_data, attributes, properties).output_data
         except _InsertTableEmptyFailure:
             return [[]]
         except _InsertTablePassThroughFailure:
@@ -90,6 +99,16 @@ class InsertTableOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        return self._execute_insert(input_data, attributes, properties, _diagnose_registry=True)
+
+    def _execute_insert(
+        self,
+        input_data: DataBundle,
+        attributes: Attributes,
+        properties: Properties | None = None,
+        *,
+        _diagnose_registry: bool = False,
+    ) -> FunctionResult:
         source = cast(str, attributes.get("source", "default_source"))
         database = cast(str, attributes.get("database", "default"))
         collection = cast(str, attributes.get("collection", "public"))
@@ -99,7 +118,7 @@ class InsertTableOperator(Operator):
         registry = resolve_registry(properties)
         if not registry:
             logger.error("Error: Data registry not found")
-            raise _InsertTablePassThroughFailure
+            raise _InsertTablePassThroughFailure(RegistryReason.NOT_CONFIGURED)
 
         # SQLite sources report 'public' as the collection name; the probe runs even
         # though collection only affects the log line below (lookup errors ignored).
@@ -124,7 +143,14 @@ class InsertTableOperator(Operator):
                     continue
 
                 group_inserted = _insert_data_group(
-                    registry, source, database, table, row_group, batch_size, group_idx
+                    registry,
+                    source,
+                    database,
+                    table,
+                    row_group,
+                    batch_size,
+                    group_idx,
+                    _diagnose_registry=_diagnose_registry,
                 )
                 if group_inserted is None:
                     raise _InsertTableEmptyFailure
@@ -143,8 +169,8 @@ class InsertTableOperator(Operator):
         except _InsertTableEmptyFailure:
             raise
         except Exception as error:
-            logger.exception("insert_table failed; passing input through")
-            raise _InsertTablePassThroughFailure from error
+            logger.error("insert_table failed; passing input through")
+            raise _InsertTablePassThroughFailure(error) from None
 
     def validate(
         self,
@@ -218,6 +244,8 @@ def _insert_data_group(
     row_group: list[Record],
     batch_size: int,
     group_idx: int,
+    *,
+    _diagnose_registry: bool = False,
 ) -> int | None:
     # Ignore empty and non-mapping entries before constructing SQL rows.
     data_rows = [
@@ -237,17 +265,24 @@ def _insert_data_group(
         # Column set comes from the batch's FIRST row; later rows fill missing
         # columns with None and drop extra keys.
         columns = list(batch[0].keys())
-        columns_str = ", ".join([f'"{col}"' for col in columns])
+        columns_str = ", ".join('"' + str(col).replace('"', '""') + '"' for col in columns)
         placeholders = ", ".join(["?" for _ in columns])
-        insert_query = f'INSERT INTO "{table}" ({columns_str}) VALUES ({placeholders})'
+        table_sql = '"' + str(table).replace('"', '""') + '"'
+        insert_query = f"INSERT INTO {table_sql} ({columns_str}) VALUES ({placeholders})"
 
         batch_data = [tuple(row.get(col) for col in columns) for row in batch]
 
         try:
             # Reopen the source connection for every batch.
-            source_connection = registry.connect_source(source)
+            checked = _diagnose_source(registry, source) if _diagnose_registry else None
+            source_connection = checked if checked is not None else registry.connect_source(source)
             if source_connection:
-                db_connection = source_connection._db_connect(database)
+                try:
+                    db_connection = source_connection._db_connect(database)
+                except FileNotFoundError as error:
+                    if sqlite_connect_missing(error, database):
+                        raise RegistryFailure(RegistryReason.DATABASE_NOT_FOUND) from None
+                    raise
                 cursor = db_connection.cursor()
                 cursor.executemany(insert_query, batch_data)
                 db_connection.commit()
@@ -255,12 +290,9 @@ def _insert_data_group(
                 source_connection._db_disconnect(db_connection)
             else:
                 return None
-        except Exception as e:
-            logger.error(
-                "Error inserting group %d, batch %d: %s", group_idx + 1, i // batch_size + 1, e
-            )
-            logger.exception("insert batch failed")
-            return None
+        except Exception as error:
+            logger.error("insert batch failed")
+            raise _InsertTableEmptyFailure(error) from None
 
     return group_inserted
 
@@ -278,3 +310,6 @@ DISCOVERY = DiscoverySpec(
         "requires-database-backend",
     ),
 )
+
+
+_BUILTIN_EXECUTE = InsertTableOperator.__dict__["_execute"]

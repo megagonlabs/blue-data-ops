@@ -341,7 +341,7 @@ def test_actual_sql_inherited_sources_restore_prompt_registry_and_provider_rows(
         force_prefixes.kind,
     ) == ("no", '"SELECT"', "none", "scalar")
     for name in ("data_registry", "data_registry.name", "platform.name"):
-        assert rows[(name, "properties")].validation == "helper:resolve_registry"
+        assert rows[(name, "properties")].validation == "denied-for-execution"
     assert rows[("llm_client", "properties")].validation == "helper:resolve_llm_client"
     assert rows[("llm.*", "properties:llm.*")].kind == "namespace"
 

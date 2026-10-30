@@ -1,18 +1,22 @@
 # blue-data-ops
 
-`blue-data-ops 3.1.0` is a standalone Python package for Blue data operators. It includes record transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`, a list of record groups.
+`blue-data-ops 1.0.0` is a standalone Python package for Blue data operators. It includes record transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`, a list of record groups.
+
+Its eight active families cover filtering and shaping, joins and set operations, aggregation, text processing, machine learning, vector operations, LLM and semantic operations, and registry-backed discovery and database operations. The active registry has 33 cards; the versioned registry retains 87 cards for callers that need older behavior.
+
+Every active operator has a reference package. The library ships 54 exact-version packages in all. Callers load their guides and examples explicitly. Reference text is not added to a model prompt automatically. The separate CLI and MCP packages expose these operations through `blue-ops` and 33 `ops_`-prefixed MCP tools.
 
 ## Requirements
 
-- Python 3.11+
-- `blue-data` 0.1.0 or later. This is an eager dependency and must be importable with `blue_data_ops`.
+- Python 3.12 recommended; Python 3.11 is the minimum
+- `blue-data` 1.0.0 or later. This is an eager dependency and must be importable with `blue_data_ops`.
 
 ## Installation
 
 For a source checkout, place `blue-data` and `blue-data-ops` under the same parent directory. Create and activate either a standard virtual environment:
 
 ```bash
-python3 -m venv blue-data-ops/lib/.venv
+python3.12 -m venv blue-data-ops/lib/.venv
 source blue-data-ops/lib/.venv/bin/activate
 ```
 
@@ -28,8 +32,8 @@ If Conda reports that activation is unavailable, run `conda init zsh` once (repl
 With either environment active, run:
 
 ```bash
-python -m pip install -e ./blue-data/lib
-python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]"
+python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
+python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]" "blue-data-ops==1.0.0"
 ```
 
 Installation, runtime use, and pytest work in either environment. The repository's Pyright configuration still looks for `lib/.venv`, so use the standard virtual-environment path when running the documented Pyright gate.
@@ -37,22 +41,22 @@ Installation, runtime use, and pytest work in either environment. The repository
 Install the `dev` extra when working on this package:
 
 ```bash
-python -m pip install -e "./blue-data-ops/lib[dev]"
+python -m pip install -e "./blue-data-ops/lib[dev]" "blue-data-ops==1.0.0"
 ```
 
 If your artifact index is configured separately, install the released artifact instead:
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
-  "blue-data-ops[ml,vector,llm]==3.1.0"
+  "blue-data-ops[ml,vector,llm]==1.0.0"
 ```
 
-The artifact index must also provide `blue-data>=0.1.0`. The sibling-checkout commands are the direct path for a contributor.
+The artifact index must also provide `blue-data>=1.0.0`. The sibling-checkout commands are the direct path for a contributor.
 
 The optional extras are `ml` for `classify`, `cluster`, and `sklearn_estimator`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators, and `openai` for `OpenAIPlanGenerator`.
 
 ```bash
-python -m pip install -e "./blue-data-ops/lib[openai]"
+python -m pip install -e "./blue-data-ops/lib[openai]" "blue-data-ops==1.0.0"
 ```
 
 The `openai` extra pins `openai>=2.54,<3`. The SDK is imported only when an `OpenAIPlanGenerator` needs to create its own client. An LLM-backed `run()` call that cannot import its extra returns an `EXECUTION_FAILED` error in `ExecMeta`.
@@ -62,12 +66,12 @@ Read the distribution version separately from an operator-card version:
 ```python
 from importlib.metadata import version
 
-assert version("blue-data-ops") == "3.1.0"
+assert version("blue-data-ops") == "1.0.0"
 ```
 
 ## Usage
 
-The credential-free examples live in the repository's top-level `examples/` directory, one level above the directory containing this README. Run them from the repository root:
+The credential-free examples live in the repository's top-level `examples/` directory, one level above the directory containing this README. If you followed the install commands from the shared parent directory, run `cd blue-data-ops` first. Then run these from the repository root:
 
 ```bash
 python examples/quickstart/core_quickstart.py
@@ -76,7 +80,25 @@ PYTHONPATH=examples python examples/quickstart/sqlite_quickstart.py
 
 `sqlite_quickstart.py` creates a temporary SQLite database, registers it, performs an insert, and removes the database when it exits. It imports `_sqlite_demo.py` from the examples root, which is why its command sets `PYTHONPATH=examples`. See `examples/README.md` for the ML, vector, planner, and provider-backed examples.
 
-Examples are available only in the source checkout. The generated `OPERATORS.md` reference covers the 33 active exact IDs. In a source checkout it sits beside this README; in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. After a wheel install, download and extract the matching `blue-data-ops==3.1.0` source distribution from the same artifact index to read it.
+`core_quickstart.py` filters three orders and averages the two that remain. The same two calls can be made directly:
+
+```python
+from blue_data_ops.operators import active_registry
+
+registry = active_registry()
+orders = [[{"total": 42.0}, {"total": 125.0}, {"total": 215.0}]]
+selected, _, select_meta = registry.resolve("select@2.0.0").run(
+    orders, {"operand_key": "total", "operand": ">", "operand_val": 100}
+)
+average, _, avg_meta = registry.resolve("avg@3.0.0").run(
+    selected, {"avg_key": "total"}
+)
+assert not select_meta.errors and not avg_meta.errors
+assert average == [[{"avg": 170.0}]]
+print(average)
+```
+
+Examples are available only in the source checkout. The generated `OPERATORS.md` reference covers the 33 active exact IDs. In a source checkout it sits beside this README; in an extracted source distribution it sits at the extraction root. A wheel exposes this README through distribution metadata but does not install those top-level files. After a wheel install, download and extract the matching `blue-data-ops==1.0.0` source distribution from the same artifact index to read it.
 
 ### Registry roles
 
@@ -102,7 +124,7 @@ assert len(history.list_cards()) == 87
 
 `default_registry(**versions)` preserves the legacy per-name override for the 33 retained names. An override becomes that card's version after semver validation. For the 21 outcome-enabled names, only an exact `"3.0.0"` override selects the outcome implementation; other versions use the raw implementation. Unknown names are ignored. These cards are raw: their `tags` and `when_to_invoke` fields are empty.
 
-Registry construction does not grant planning authority. A raw override card is not automatically planning-authorized: core 3.0 rejects every card from `default_registry()` as planning authority, even when its ID text matches a supported v2/v3 ID. Use `active_registry()` for the ordinary reviewed selection, or use `versioned_registry()` with an exact allowlist when a rule-based plan deliberately needs a supported retained v2/v3 built-in. Caller-created v2 cards require a caller-owned registry and rule or generator. `OpenAIPlanGenerator` accepts only supported package built-ins from an enriched package registry.
+Registry construction does not grant planning authority. A raw override card is not automatically planning-authorized: the planner rejects every card from `default_registry()` as planning authority, even when its ID text matches a supported v2/v3 ID. Use `active_registry()` for the ordinary reviewed selection, or use `versioned_registry()` with an exact allowlist when a rule-based plan deliberately needs a supported retained v2/v3 built-in. Caller-created v2 cards require a caller-owned registry and rule or generator. `OpenAIPlanGenerator` accepts only supported package built-ins from an enriched package registry.
 
 The private in-memory tables that distinguish reviewed built-ins from raw cards are integrity controls for ordinary planner admission. They are not a tamper-proof isolation boundary against arbitrary same-process code that mutates private registry state.
 
@@ -187,7 +209,7 @@ You may inject a raw `DataRegistry`; `resolve_registry()` wraps it. Without an i
 
 `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators send requests through LiteLLM. Configure
 the model and, where supported, reasoning effort through call properties. The default model is
-`openai.model: gpt-4o`. `classify` and `sklearn_estimator` use NumPy and scikit-learn.
+`openai.model: gpt-6-luna`. `classify` and `sklearn_estimator` use NumPy and scikit-learn.
 Registry-backed operators use the `blue-data` seam.
 
 These `nl2llm` and `semantic_filter` calls use a live provider:
@@ -228,12 +250,12 @@ For the LLM aliases, an operator node overrides stored pipeline values, and stor
 override the LLM defaults passed for the current execution. Other execution properties keep the
 existing node, invocation, stored-pipeline order. Provider routing and the deployment model allowlist
 still apply after those layers are merged. LLM precedence also applies when one layer uses a neutral
-`llm.*` key and another uses the namespace selected by `service_prefix`.
+`llm.*` key and another uses the namespace selected by the host operator's `service_prefix`.
 
 For a credential-free precedence example and Python, CLI, and MCP settings, see
 [Choosing a model for an LLM operator](../docs/llm-settings.md).
 
-The source-checkout file `examples/feature-demos/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its case-insensitive prefix check is not a SQL parser or sandbox; callers remain responsible for permissions and query safety.
+The source-checkout file `examples/feature-demos/nl2sql_sqlite.py` builds a real SQLite schema and defaults to `execute_query=False`. Its `--execute` option binds a read-only executor to the temporary database. The SELECT check is not a parser or sandbox; use approved pre-existing targets and constrained principals.
 
 ### Discovery
 
@@ -250,7 +272,7 @@ Built-in active cards use five required axes and one optional axis. A tag states
 | `capability-*` | Operation family or specific action | one or more |
 | `requires-*` | Unconditional operator-specific runtime requirement | zero or more |
 
-Values are flat exact labels, not a hierarchy. A card may carry both a broad and a specific capability, such as `capability-reduction` and `capability-average`. `accepts-none` does not make the `input_data` argument optional; pass an empty bundle such as `[[]]`. The `requires-*` axis covers operator-specific requirements and does not replace the package installation requirements above. Source checkouts and source distributions include the generated `OPERATORS.md` tag taxonomy with every value found on the active cards and each card's tags. The active `domain-plan` value is a retained compatibility label on `data_discover@2.0.0`; use `capability-metadata-search` or `produces-metadata` when searching for its behavior. It returns metadata and does not produce a plan.
+Tags are flat, exact-match labels with no parent-child relationships. A card may carry both a broad and a specific capability, such as `capability-reduction` and `capability-average`. `accepts-none` does not make the `input_data` argument optional; pass an empty bundle such as `[[]]`. The `requires-*` axis covers operator-specific requirements and does not replace the package installation requirements above. Source checkouts and source distributions include the generated `OPERATORS.md` tag taxonomy with every value found on the active cards and each card's tags. The active `domain-plan` value is a retained compatibility label on `data_discover@2.0.0`; use `capability-metadata-search` or `produces-metadata` when searching for its behavior. Its discovery result contains registry identities and an optional search score.
 
 <!-- blue-data-ops-test: tag-discovery -->
 ```python
@@ -315,6 +337,7 @@ assert skill.io.attributes["question"].required
 History inspection is an intentional use of `versioned_registry()`:
 
 ```python
+from blue_data_ops.operator_skills import OperatorSkillLoader
 from blue_data_ops.operators import versioned_registry
 
 history = versioned_registry()
@@ -373,7 +396,8 @@ Path("llm-pipeline.json").write_text(
 )
 ```
 
-Import and run `llm-pipeline.json` with the commands in the CLI guide. LLM defaults passed to
+The checkout also includes `examples/cli/llm-pipeline.json` and `examples/cli/llm-input.json`.
+From the repository root, import and run those files with the commands in the CLI guide. LLM defaults passed to
 `PipelineExecutor.execute()` sit below the stored pipeline and node LLM values in the same order.
 
 <!-- blue-data-ops-test: pipeline-execution -->
@@ -471,7 +495,7 @@ from blue_data_ops.plan import OpenAIPlanGenerator, PipelinePlanner
 
 registry = active_registry()
 generator = OpenAIPlanGenerator(
-    "gpt-4o",
+    "gpt-6-luna",
     registry=registry,
     allowed_operator_ids=["select@2.0.0", "avg@3.0.0"],
 )
@@ -501,6 +525,7 @@ from blue_data_ops.utils import safe_substitute, validate_parameter_type
 
 assert validate_parameter_type("3", "int")
 assert safe_substitute("$greeting", greeting="hi") == "hi"
+assert safe_substitute("$a {{ literal }}", a="$b", b="done") == "$b {{ literal }}"
 ```
 
 ## Compatibility
@@ -509,7 +534,9 @@ This README summarizes the compatibility and migration contracts needed by wheel
 
 ## Running tests
 
-With the `dev` extra installed, run from `lib/`:
+The complete unit suite includes cross-adapter provider regressions. In addition to this package's `dev` extra, it requires the `llm` extra and the CLI and MCP packages with their `dev` extras, all in the same environment. The local package requirements from the repository root are `./lib[dev,llm]`, `./platform/ops-cli[dev]` and `./platform/ops-mcp[dev]`; see the installation guide for the Blue SDK and optional backend dependencies. A core-only `dev` installation does not supply that complete test environment.
+
+With those prerequisites installed, run from `lib/`:
 
 ```bash
 python -m pytest

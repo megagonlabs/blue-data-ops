@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from blue_data_ops.data import resolve_registry
+from blue_data_ops.data.errors import RegistryFailure, RegistryReason
+from blue_data_ops.data.local_names import sqlite_connect_missing
+from blue_data_ops.data.registry_seam import (
+    _diagnose_source,  # pyright: ignore[reportPrivateUsage]
+)
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -37,14 +42,18 @@ class InsertTableOutcomeOperator(_OutcomeOperator, InsertTableOperator):
                     return ValidationResult(False, "use the same columns in every record")
         return ValidationResult(True, None)
 
-    def _execute(
+    def _execute_insert(
         self,
         input_data: DataBundle,
         attributes: Attributes,
         properties: Properties | None = None,
+        *,
+        _diagnose_registry: bool = False,
     ) -> FunctionResult:
         registry = resolve_registry(properties)
         if registry is None:
+            if _diagnose_registry:
+                raise RegistryFailure(RegistryReason.NOT_CONFIGURED)
             raise RuntimeError("data registry is unavailable")
         count = 0
         count_known = True
@@ -58,10 +67,24 @@ class InsertTableOutcomeOperator(_OutcomeOperator, InsertTableOperator):
                 placeholders = ", ".join("?" for _ in columns)
                 query = f"INSERT INTO {table_sql} ({column_sql}) VALUES ({placeholders})"
                 rows = [tuple(record[column] for column in columns) for record in batch]
-                source = registry.connect_source(attributes["source"])
+                checked = (
+                    _diagnose_source(registry, attributes["source"]) if _diagnose_registry else None
+                )
+                source = (
+                    checked
+                    if checked is not None
+                    else registry.connect_source(attributes["source"])
+                )
                 if source is None:
+                    if _diagnose_registry:
+                        raise RegistryFailure(RegistryReason.SOURCE_UNAVAILABLE)
                     raise RuntimeError("data source is unavailable")
-                connection = source._db_connect(attributes["database"])
+                try:
+                    connection = source._db_connect(attributes["database"])
+                except FileNotFoundError as error:
+                    if _diagnose_registry and sqlite_connect_missing(error, attributes["database"]):
+                        raise RegistryFailure(RegistryReason.DATABASE_NOT_FOUND) from None
+                    raise
                 try:
                     cursor = connection.cursor()
                     cursor.executemany(query, rows)

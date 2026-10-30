@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from blue_data_ops.llm.client import (
     LLMClient,
+    _copy_operator_properties,  # pyright: ignore[reportPrivateUsage]
     _InvocationCostObservation,  # pyright: ignore[reportPrivateUsage]
+    validate_llm_caller_controls,
 )
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
@@ -29,7 +31,7 @@ class _ObservedLLMClient(LLMClient):
         properties: dict[str, Any] | None = None,
         additional_data: dict[str, Any] | None = None,
     ) -> Any:
-        call_properties = dict(properties or {})
+        call_properties = _copy_operator_properties(properties)
         if call_properties.get("llm_client") is self:
             del call_properties["llm_client"]
         delegate = LLMClient(name="llm_client", properties=call_properties)
@@ -44,6 +46,9 @@ class _ObservedLLMClient(LLMClient):
 class NL2LLMOutcomeOperator(_OutcomeOperator, NL2LLMOperator):
     """Reject blank structured queries before resolving a provider."""
 
+    def _invalid_output_shape_reason(self) -> Literal["generic", "model_records"]:
+        return "model_records"
+
     def run(
         self,
         input_data: DataBundle,
@@ -55,6 +60,10 @@ class NL2LLMOutcomeOperator(_OutcomeOperator, NL2LLMOperator):
                 return super().run(input_data, attributes, properties)
             if properties is not None and "llm_client" in properties:
                 return super().run(input_data, attributes, properties)
+            validate_llm_caller_controls(
+                properties,
+                service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai")),
+            )
             observed_properties = dict(properties or {})
             observation = _InvocationCostObservation()
             observed_properties["llm_client"] = _ObservedLLMClient(observation)

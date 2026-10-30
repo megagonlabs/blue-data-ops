@@ -1,12 +1,9 @@
-"""The `blue-data-ops` MCP server: one FastMCP server carrying the operator catalog.
+"""MCP tools over guarded HTTP, or the SDK's in-process and stdio transports.
 
-`create_server()` registers one tool per entry in `registration.ACTIVE_OPERATOR_IDS`, each
-named `ops_` plus the core operator's logical name, and each returning the one structured
-envelope in `schema.RunResult`. `serve()` and the `blue-data-ops-mcp` console command run
-that server over stateful streamable HTTP, bound by default to loopback at `127.0.0.1:8000`
-on path `/mcp`. Review network exposure before changing the host: a tool call carries
-provider settings in its `properties` argument, so loopback is what keeps that reachable
-only from the host the server runs on.
+HTTP defaults to 127.0.0.1:8010/mcp. The shared blue-data guards require an API
+key and reject browser-simple modifying requests on both HTTP transports.
+Provider configuration belongs to the deployment; authenticated tool callers
+can use it and may incur costs.
 """
 
 from __future__ import annotations
@@ -14,42 +11,53 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from blue_data.registry.data_registry import (  # pyright: ignore[reportMissingTypeStubs]
+    DataRegistry,
+)
+from blue_data_ops.data.registry_seam import RegistrySeam
 from blue_data_ops.operators import OperatorRegistry
 from mcp.server.fastmcp import FastMCP
 
 from blue_data_ops_mcp import __version__
+from blue_data_ops_mcp._http import GuardedFastMCP, resolve_http_bind
+from blue_data_ops_mcp.data_registry import DeploymentRegistry
 from blue_data_ops_mcp.registration import freeze_deployment, register_snapshot
 
 SERVER_NAME = "blue-data-ops"
 
-# What a client reads during the handshake. The three things a caller otherwise gets wrong:
-# that the arguments are two open objects rather than one argument per operator attribute,
-# that a failed operator run is still a successful call, and that the registry-backed and
-# provider-backed tools are configured through `properties` and not through `attributes`.
 SERVER_INSTRUCTIONS = (
-    "Blue Data Operators as MCP tools: record-level select, join, set, aggregate, text, "
-    "vector, machine-learning, and LLM operators over one shared result envelope. Every tool "
-    "name starts with ops_, takes input_data as a list of record groups plus an attributes "
-    "object of operator arguments, and returns output_data, output_attributes, and exec_meta. "
-    "An operator outcome that was rejected, failed, timed out, or came back empty is still a "
-    "successful call, with the detail in exec_meta.errors; only an unknown tool or a malformed "
-    "top-level argument is an MCP error. Backend configuration travels in the separate "
-    "properties argument: the registry-backed tools return nothing without a data registry "
-    "named there, and ops_classify, ops_cluster, and ops_sklearn_estimator take their "
-    "estimator from properties.algorithm."
+    "Blue Data Operators as MCP tools over one shared result envelope. Every tool name "
+    "starts with ops_, takes input_data as a list of record groups plus an attributes "
+    "object, and returns output_data, output_attributes and exec_meta. Operator errors "
+    "remain successful MCP calls; inspect exec_meta.errors. Registry tools use one "
+    "deployment-owned registry configured by the host or BLUE_DATA_REGISTRY_STORE / "
+    "BLUE_DATA_SOURCES_CONFIG. Caller registry objects and naming keys cannot select it. "
+    "Source loading may connect, enrich and sync metadata; create/insert tools can persist "
+    "writes even after failure or timeout. Registry calls are serialized per server. "
+    "Initial construction is unbounded and execution.timeout_seconds does not cover it; "
+    "a hung build or unbounded call stalls this server's registry lane. Configure backend "
+    "timeouts and a per-call execution.timeout_seconds for the later operator wait. "
+    "An operator timeout returns to the caller but holds this server's registry lane until "
+    "the worker finishes; later registry calls then run normally. Late non-daemon workers "
+    "may delay process exit. Cancellation does not stop running workers. "
+    "Other tools and servers continue; a registry shared across servers has no cross-server "
+    "serialization. Stock SQL tools generate only and have no SQL executor; execution needs "
+    "a host-configured read-only capability. Estimator tools use properties.algorithm."
 )
 
 
 def create_server(
     *,
     registry: OperatorRegistry | None = None,
+    data_registry: RegistrySeam | DataRegistry | None = None,
     operator_ids: Iterable[str] | None = None,
-    host: str = "127.0.0.1",
-    port: int = 8000,
+    host: str | None = None,
+    port: int | None = None,
     path: str = "/mcp",
 ) -> FastMCP[Any]:
+    host, port = resolve_http_bind(host, port)
     snapshot = freeze_deployment(registry=registry, operator_ids=operator_ids)
-    server: FastMCP[Any] = FastMCP(
+    server: FastMCP[Any] = GuardedFastMCP(
         SERVER_NAME,
         instructions=SERVER_INSTRUCTIONS,
         host=host,
@@ -62,20 +70,22 @@ def create_server(
     # version when it has none of its own. Every release of this package would then tell a
     # client its SDK version, while 1.0.0 and 0.12.0 serve different tool sets.
     server._mcp_server.version = __version__  # pyright: ignore[reportPrivateUsage]
-    register_snapshot(server, snapshot)
+    register_snapshot(server, snapshot, deployment=DeploymentRegistry(data_registry))
     return server
 
 
 def serve(
     *,
     registry: OperatorRegistry | None = None,
+    data_registry: RegistrySeam | DataRegistry | None = None,
     operator_ids: Iterable[str] | None = None,
-    host: str = "127.0.0.1",
-    port: int = 8000,
+    host: str | None = None,
+    port: int | None = None,
     path: str = "/mcp",
 ) -> None:
     server = create_server(
         registry=registry,
+        data_registry=data_registry,
         operator_ids=operator_ids,
         host=host,
         port=port,

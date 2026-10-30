@@ -239,4 +239,5 @@ def test_segment_text_unknown_placeholder_keeps_raw_error_and_run_contains_it() 
     assert error.stage is ErrorStage.EXECUTE
     assert error.operator_id == "segment_text@2.0.0"
     assert "unknown" not in error.message
-    assert error.suggestion is None
+    assert error.message == "operator execution failed"
+    assert error.suggestion == "Check the declared inputs and backend configuration."

@@ -908,8 +908,8 @@ def test_settings_mutations_turn_the_instrument_red(mutation: str) -> None:
         )
     elif mutation == "helper-presence-misclassified":
         guide = guide.replace(
-            "| output_strip | properties | no | true | helper:resolve_llm_client | presence |",
-            "| output_strip | properties | no | true | helper:resolve_llm_client | scalar |",
+            "| output_strip | properties | no | true | reserved | presence |",
+            "| output_strip | properties | no | true | reserved | scalar |",
         )
     elif mutation == "default-wrong":
         guide = guide.replace(

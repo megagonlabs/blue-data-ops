@@ -2,7 +2,7 @@
   "format": "blue-data-ops/operator-skill@1",
   "operator_id": "data_discover@2.0.0",
   "resources": {
-    "guide": {"path": "Operator.md", "sha256": "ea3b559a9cb9f88517b1900582faee258352acae15945af1eaca3b4c2801af2e"},
-    "examples": {"path": "examples.md", "sha256": "1bd0b329e14298c86717c69a0f22695b40528005380e7609707cb64737958104"}
+    "guide": {"path": "Operator.md", "sha256": "cedab6b22fb5a74dcffc3d13ddc695393d925acffaa2404d2fb20693236f0a41"},
+    "examples": {"path": "examples.md", "sha256": "63c90143a00e10b0bdf3314b3b8b00ba0b8c63fdd95e77e606ea6d343de60697"}
   }
 }

@@ -386,3 +386,27 @@ def test_every_refusal_names_the_command_or_the_parameter_that_corrects_it(
     ):
         result = runner.invoke(cli, command)
         assert expected in result.stderr, command
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("request failed", "request failed. Check the requested setting."),
+        ("request failed.", "request failed. Check the requested setting."),
+        ("request failed!", "request failed! Check the requested setting."),
+        ("request failed?", "request failed? Check the requested setting."),
+    ],
+)
+@pytest.mark.parametrize("surface", ["operator", "planner"])
+def test_suggestions_start_a_separate_sentence(message: str, expected: str, surface: str) -> None:
+    suggestion = "Check the requested setting."
+    if surface == "operator":
+        record = error_record()._replace(message=message, suggestion=suggestion)
+        failure = config.execution_failure([record])
+        assert failure is not None
+    else:
+        error = planning_error(PlanningErrorCode.PLAN_INVALID, message)
+        error = PlanningError(error.record._replace(suggestion=suggestion))
+        failure = config.failure_for(error)
+    assert failure.message.endswith(expected)
+    assert failure.detail is not None and failure.detail["suggestion"] == suggestion

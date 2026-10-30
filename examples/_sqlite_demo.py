@@ -27,7 +27,7 @@ ORDERS = (
 )
 
 
-def build_demo_registry(directory: str) -> RegistrySeam:
+def build_demo_data_registry(directory: str) -> DataRegistry:
     """Create and index the ten-row SQLite database used by the examples."""
 
     database_path = Path(directory) / "shop.db"
@@ -42,4 +42,8 @@ def build_demo_registry(directory: str) -> RegistrySeam:
     registry = DataRegistry(store=MemoryJSONSource(), rebuild=False)
     registry.register_source(source)
     registry.sync_source(source.name, recursive=True)
-    return RegistrySeam(registry)
+    return registry
+
+
+def build_demo_registry(directory: str) -> RegistrySeam:
+    return RegistrySeam(build_demo_data_registry(directory))

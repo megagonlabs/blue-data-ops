@@ -4,9 +4,11 @@ import argparse
 import os
 from tempfile import TemporaryDirectory
 
-from _sqlite_demo import build_demo_registry
+from _sqlite_demo import build_demo_data_registry
 
-from blue_data_ops.operators import active_registry
+from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor
+from blue_data_ops.operators import NL2SQLOperator as HostSQL
+from blue_data_ops.operators import OperatorRegistry
 
 
 def main() -> None:
@@ -20,20 +22,31 @@ def main() -> None:
     if "OPENAI_API_KEY" not in os.environ:
         raise SystemExit("Set OPENAI_API_KEY before running this live-provider example.")
 
-    operator = active_registry().resolve("nl2sql@3.0.0")
     with TemporaryDirectory(prefix="blue-data-ops-") as directory:
-        seam = build_demo_registry(directory)
+        data_registry = build_demo_data_registry(directory)
+        executor = (
+            ReadOnlySQLExecutor(data_registry, frozenset({("demo_sqlite", "shop", "public")}))
+            if args.execute
+            else None
+        )
+        operators = OperatorRegistry()
+        operators.register(HostSQL(read_only_executor=executor), version="3.0.0")
+        operator = operators.resolve("nl2sql@3.0.0")
         output, _, meta = operator.run(
             [[]],
             {
                 "question": "Which region has the highest total order value?",
+                "context": (
+                    "SQLite table orders(id INTEGER PRIMARY KEY, region TEXT, total REAL). "
+                    "The order value is in total; sum total by region."
+                ),
                 "source": "demo_sqlite",
                 "protocol": "sqlite",
                 "database": "shop",
                 "collection": "public",
             },
             {
-                "data_registry": seam,
+                **({} if args.execute else {"data_registry": data_registry}),
                 "execute_query": args.execute,
                 "validate_query_prefixes": ["SELECT"],
                 "openai.model": "gpt-4o-mini",

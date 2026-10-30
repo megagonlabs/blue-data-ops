@@ -42,7 +42,7 @@ from tests.unit.operators._registry_catalog_expectations import (
 )
 
 _LIB = Path(__file__).resolve().parents[3]
-_FIXTURE_PATH = _LIB / "tests/fixtures/v2_discovery_catalog.json"
+_FIXTURE_PATH = _LIB / "tests/fixtures/operator_discovery_current.json"
 
 _FIXTURE: dict[str, Any] = json.loads(_FIXTURE_PATH.read_text())
 _CARDS: dict[str, dict[str, Any]] = {card["operator_id"]: card for card in _FIXTURE["cards"]}

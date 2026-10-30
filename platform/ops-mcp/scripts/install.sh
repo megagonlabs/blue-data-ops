@@ -2,16 +2,16 @@
 set -euo pipefail
 MCP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIB_ROOT="$(cd "${MCP_ROOT}/../../lib" && pwd)"
+PYTHON="${PYTHON:-python}"
+BLUE_DATA_PATH="${BLUE_DATA_PATH:-${LIB_ROOT}/../../blue-data/lib}"
+export BLUE_DATA_PATH PYTHON
 
-# Through the library's own installer, which puts blue-data in place first. blue-data is a
-# core dependency of the library and is not on a public index, so installing this package
-# directly fails to resolve it and reads as a broken package rather than a missing sibling.
+"${PYTHON}" "${LIB_ROOT}/scripts/check_blue_data.py" "${BLUE_DATA_PATH}" --server
 "${LIB_ROOT}/scripts/install.sh"
-
-# Then the extras the served operators need. That installer takes dev, which leaves out
-# litellm and sentence-transformers deliberately, and eleven of the thirty-three tools this
-# server exposes -- the eight language-model ones and the three vector ones -- cannot run
-# without them. This package's core pin does not name the extras, so nothing else adds them.
-pip install -e "${LIB_ROOT}[ml,vector,llm]"
-pip install -e "${MCP_ROOT}[dev]"
+if ! "${PYTHON}" -m pip install -e "${BLUE_DATA_PATH}[server]" "blue-data[server]>=1.0.0"; then
+    echo 'MCP requires blue-data>=1.0.0 with [server]. Select a compatible BLUE_DATA_PATH.' >&2
+    exit 1
+fi
+"${PYTHON}" -m pip install -e "${LIB_ROOT}[ml,vector,llm]" "blue-data-ops==1.0.0"
+"${PYTHON}" -m pip install -e "${MCP_ROOT}[dev]" "blue-data-ops-mcp==1.0.0"
 echo "Done. Run: blue-data-ops-mcp"

@@ -9,6 +9,8 @@ from sentence_transformers import SentenceTransformer
 
 from blue_data_ops.llm import LLMClient, LLMError
 from blue_data_ops.operators import semantic_join_operator as join_module
+from blue_data_ops.operators._semantic_join_outcome import SemanticJoinOutcomeOperator
+from blue_data_ops.operators.registry import versioned_registry
 from blue_data_ops.operators.semantic_join_operator import SemanticJoinOperator
 from tests.unit.operators._semantic_test_helpers import (
     json_provider as _json_provider,
@@ -72,7 +74,9 @@ def test_input_arity_guards_return_empty_without_provider(
     assert litellm.calls == []
 
 
-def test_join_suffix_length_guard_runs_without_provider(op: SemanticJoinOperator) -> None:
+def test_join_suffix_length_guard_runs_without_provider(
+    op: SemanticJoinOperator,
+) -> None:
     assert op.apply([LEFT, RIGHT], {**ATTRS, "join_suffix": ["_only"]}) == []
     assert litellm.calls == []
 
@@ -82,8 +86,8 @@ def test_inner_join_batches_in_pair_order(
 ) -> None:
     _json_provider(
         [
-            '{"pair_1": "match", "pair_2": false, "pair_3": 1}',
-            '{"pair_1": 0}',
+            '{"pair_1": true, "pair_2": false, "pair_3": true}',
+            '{"pair_1": false}',
         ],
         monkeypatch,
     )
@@ -102,16 +106,144 @@ def test_inner_join_batches_in_pair_order(
     assert "Pair 3:" in prompt and "pair_1 through pair_3" in prompt
 
 
-def test_left_join_list_result_and_keep_left_keys(
+@pytest.mark.parametrize("operator_type", [SemanticJoinOperator, SemanticJoinOutcomeOperator])
+def test_reasoning_model_join_omits_inherited_temperature(
+    operator_type: type[SemanticJoinOperator], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _json_provider('{"pair_1": true}', monkeypatch)
+    output = operator_type().apply(
+        [[{"name": "Ada"}], [{"name": "ADA"}]],
+        ATTRS,
+        {"llm.model": "gpt-6-sol", "llm.reasoning_effort": "medium"},
+    )
+    assert output == [[{"name": "Ada"}]]
+    call = litellm.calls[-1]
+    assert call["model"] == "gpt-6-sol"
+    assert "temperature" not in call
+    assert call["max_completion_tokens"] == 1024
+
+
+def test_length_limited_batch_is_not_a_false_join(
     op: SemanticJoinOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _json_provider("[true, false, false, false]", monkeypatch)
-    assert op.apply([LEFT, RIGHT], {**ATTRS, "join_type": "left", "batch_size": 4}) == [
+    def truncated(**kwargs: Any) -> Any:
+        litellm.calls.append(kwargs)
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+    with pytest.raises(LLMError) as raised:
+        op.apply(
+            [[{"name": "Ada"}], [{"name": "ADA"}]],
+            ATTRS,
+            {"llm.model": "gpt-6-sol"},
+        )
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 1
+
+
+def test_length_limited_batch_has_a_useful_run_error(
+    op: SemanticJoinOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def truncated(**kwargs: Any) -> Any:
+        litellm.calls.append(kwargs)
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+    _, _, meta = op.run(
+        [[{"name": "Ada"}], [{"name": "ADA"}]],
+        ATTRS,
+        {"llm.model": "gpt-6-sol"},
+    )
+    [error] = meta.errors
+    assert error.message == "model output was cut off by the completion-token limit"
+    assert error.suggestion == "Increase llm.max_tokens; reasoning tokens use the same limit."
+    assert len(litellm.calls) == 1
+
+
+def test_active_v3_join_contains_length_limited_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def truncated(**kwargs: Any) -> Any:
+        litellm.calls.append(kwargs)
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+    op = versioned_registry().resolve("semantic_join@3.0.0")
+    _, _, meta = op.run(
+        [[{"name": "Ada"}], [{"name": "ADA"}]],
+        ATTRS,
+        {"llm.model": "gpt-6-sol"},
+    )
+    [error] = meta.errors
+    assert error.message == "model output was cut off by the completion-token limit"
+    assert error.suggestion == "Increase llm.max_tokens; reasoning tokens use the same limit."
+    assert len(litellm.calls) == 1
+
+
+def test_active_v3_optimization_does_not_fall_back_after_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Matrix:
+        shape = (1, 1)
+
+        def __getitem__(self, row: int) -> list[float]:
+            return [0.8]
+
+    def truncated(**kwargs: Any) -> Any:
+        litellm.calls.append(kwargs)
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+
+    def embedding_model(properties: dict[str, Any]) -> object:
+        return object()
+
+    def embeddings(data: Any, fields: Any, model: Any) -> object:
+        return object()
+
+    def similarity(left: Any, right: Any) -> Matrix:
+        return Matrix()
+
+    def sampling(scores: Any, percentage: Any) -> tuple[list[int], list[float]]:
+        return [0], [1.0]
+
+    monkeypatch.setattr(join_module, "_get_embedding_model", embedding_model)
+    monkeypatch.setattr(join_module, "_generate_embeddings", embeddings)
+    monkeypatch.setattr(join_module, "_compute_cosine_similarity_matrix", similarity)
+    monkeypatch.setattr(join_module, "_importance_sampling", sampling)
+    op = versioned_registry().resolve("semantic_join@3.0.0")
+    _, _, meta = op.run(
+        [[{"name": "Ada"}], [{"name": "ADA"}]],
+        {**ATTRS, "optimize_thresholds": True},
+        {"llm.model": "gpt-6-sol"},
+    )
+    [error] = meta.errors
+    assert error.message == "model output was cut off by the completion-token limit"
+    assert error.suggestion == "Increase llm.max_tokens; reasoning tokens use the same limit."
+    assert len(litellm.calls) == 1
+
+
+def test_left_join_boolean_object_and_keep_left_keys(
+    op: SemanticJoinOperator,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _json_provider(
+        '{"pair_1": true, "pair_2": false, "pair_3": false, "pair_4": false}', monkeypatch
+    )
+    caplog.set_level("INFO", logger=join_module.__name__)
+    assert op.apply(
+        [LEFT, RIGHT],
+        {**ATTRS, "join_type": "left", "batch_size": 4, "estimate_cost": True},
+    ) == [
         [
             {"id_left": 1, "name": "Ada", "id_right": "a"},
             {"id_left": 2, "name": "Bob"},
         ]
     ]
+    assert capsys.readouterr().out == ""
+    assert "Semantic join estimate: 4 pairs; LLM calls: up to 1" in caplog.text
 
 
 def test_right_join_parses_fenced_batch_object(
@@ -129,10 +261,12 @@ def test_right_join_parses_fenced_batch_object(
     ]
 
 
-def test_outer_join_missing_pair_keys_default_false(
+def test_outer_join_explicit_false_pair_keys(
     op: SemanticJoinOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _json_provider('{"pair_2": true}', monkeypatch)
+    _json_provider(
+        '{"pair_1": false, "pair_2": true, "pair_3": false, "pair_4": false}', monkeypatch
+    )
     assert op.apply([LEFT, RIGHT], {**ATTRS, "join_type": "outer", "keep_keys": "both"}) == [
         [
             {"id_left": 1, "name_left": "Ada", "id_right": "b", "name_right": "Cid"},
@@ -169,7 +303,6 @@ def test_batch_properties_copy_drops_cast_without_mutating_caller(
     client = RecordingClient([{"pair_1": True}])
     caller_properties: dict[str, Any] = {
         "llm_client": client,
-        "output_cast": "bool",
         "sentinel": "keep",
     }
     before = caller_properties.copy()
@@ -270,7 +403,13 @@ def test_numeric_helpers_are_blue_pinned() -> None:
     )
     assert indices == [2, 4, 3, 1, 0]
     assert corrections.tolist() == pytest.approx(
-        [0.9300310055612874, 0.7613233908623362, 0.830210614091401, 1.1028384337476413, 2.0]
+        [
+            0.9300310055612874,
+            0.7613233908623362,
+            0.830210614091401,
+            1.1028384337476413,
+            2.0,
+        ]
     )
 
 
@@ -311,7 +450,7 @@ def test_prompt_templates_and_defaults_are_pinned() -> None:
     )
     assert SemanticJoinOperator.DEFAULT_PROPERTIES == {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0,
@@ -323,8 +462,11 @@ def test_prompt_templates_and_defaults_are_pinned() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "bool",
@@ -337,8 +479,18 @@ def test_interface_exact(op: SemanticJoinOperator) -> None:
         "Joins two datasets based on natural language join predicate using LLM models"
     )
     expected: dict[str, tuple[str, str, bool, Any]] = {
-        "left_fields": ("list[str]", "Fields from left dataset to consider", True, None),
-        "right_fields": ("list[str]", "Fields from right dataset to consider", True, None),
+        "left_fields": (
+            "list[str]",
+            "Fields from left dataset to consider",
+            True,
+            None,
+        ),
+        "right_fields": (
+            "list[str]",
+            "Fields from right dataset to consider",
+            True,
+            None,
+        ),
         "join_predicate": (
             "str",
             "Natural language description of when records should be joined",
@@ -416,7 +568,7 @@ def test_interface_exact(op: SemanticJoinOperator) -> None:
         ),
         "estimate_cost": (
             "bool",
-            "Show cost estimate and warnings before execution",
+            "Log a cost estimate at INFO level before execution",
             False,
             True,
         ),

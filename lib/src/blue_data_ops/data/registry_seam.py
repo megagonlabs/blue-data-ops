@@ -9,6 +9,10 @@ from blue_data.source.source import (  # pyright: ignore[reportMissingTypeStubs]
     DataSource,  # blue-data ships no py.typed
 )
 
+from blue_data_ops.data.errors import RegistryFailure, RegistryReason
+from blue_data_ops.data.local_names import peer_names, sqlite_names
+from blue_data_ops.data.sql_errors import loaded_class
+
 
 class RegistrySeam:
     """Compatibility facade over a blue-data DataRegistry."""
@@ -203,8 +207,8 @@ class RegistrySeam:
             self._delegate.build_index()
 
 
-# The wrapped registry's keyword engine scores a name hit 10 and a description hit 5;
-# 15 is its maximum possible raw score.
+# The retained wrapped keyword result uses 15/10/5 scores. Blue-data 1.0
+# returns flat hybrid BM25 scores even without a vector source.
 _KEYWORD_MAX_SCORE = 15.0
 
 
@@ -238,3 +242,82 @@ def _normalize_search_result(raw: dict[str, Any]) -> dict[str, Any]:
     if "description" in record:
         normalized["description"] = record["description"]
     return normalized
+
+
+def _diagnose_source(  # pyright: ignore[reportUnusedFunction]
+    seam: RegistrySeam, source: str
+) -> Any:
+    if type(seam) is not RegistrySeam:
+        return
+    state = vars(seam)
+    if any(
+        name in state
+        for name in (
+            "connect_source",
+            "get_data_source_schema",
+            "execute_query",
+            "create_source_database",
+            "create_source_database_collection_entity",
+        )
+    ):
+        return None
+    delegate = state.get("_delegate")
+    if type(delegate) is not DataRegistry:
+        return
+    known: Any = delegate
+    live = known.get_source(source)
+    record = known.get_source_record(source)
+    properties: Any = known.get_source_properties(source)
+    configuration = cast(dict[str, Any], properties) if isinstance(properties, dict) else {}
+    if configuration.get("status") == "unavailable":
+        raise RegistryFailure(RegistryReason.SOURCE_UNAVAILABLE)
+    if live is not None:
+        return live
+    if record is None and not properties:
+        raise RegistryFailure(RegistryReason.SOURCE_NOT_REGISTERED)
+    if not isinstance(configuration.get("_class"), str) or not configuration["_class"]:
+        raise RegistryFailure(RegistryReason.SOURCE_UNAVAILABLE)
+    try:
+        restored = known.connect_source(source)
+    except Exception:
+        raise RegistryFailure(RegistryReason.SOURCE_UNAVAILABLE) from None
+    if restored is None:
+        raise RegistryFailure(RegistryReason.SOURCE_UNAVAILABLE)
+    return restored
+
+
+def diagnose_generation_target(
+    seam: RegistrySeam,
+    source: str,
+    database: str,
+    collection: str,
+) -> None:
+    if type(seam) is not RegistrySeam:
+        return
+    state: Any = object.__getattribute__(seam, "__dict__")
+    registry = cast(dict[str, Any], state).get("_registry")
+    if type(registry) is not DataRegistry:
+        return
+    storage: Any = object.__getattribute__(registry, "__dict__")
+    sources = cast(dict[str, Any], storage).get("sources") if type(storage) is dict else None
+    live = cast(dict[str, Any], sources).get(source) if type(sources) is dict else None
+    cls = loaded_class("blue_data.source.sql.sqlite.sqlite_sql_source", "SQLiteDBSource")
+    if cls is None or type(live) is not cls:
+        return
+    delegate: Any = registry
+    try:
+        databases = peer_names(delegate.list_source_databases(source))
+        collections = peer_names(delegate.list_database_collections(source, database))
+    except Exception:
+        return
+    database_eligible = databases is not None and database not in databases
+    collection_eligible = collections is not None and collection not in collections
+    if not database_eligible and not collection_eligible:
+        return
+    names = sqlite_names(live)
+    if names is None:
+        return
+    if database_eligible and database not in names:
+        raise RegistryFailure(RegistryReason.DATABASE_ABSENT)
+    if database in names and collection_eligible and collection != "public":
+        raise RegistryFailure(RegistryReason.COLLECTION_ABSENT)

@@ -14,7 +14,7 @@ assert len(registry.list_cards()) == 33
 
 This table is derived from the 33 active cards. Built-in tags use five required axes and
 one optional axis. A tag states something true in at least one productive public mode.
-Values are flat exact labels, not a hierarchy.
+Tags are flat, exact-match labels with no parent-child relationships.
 
 | Axis | Meaning | Built-in cardinality | Active values |
 |---|---|---|---|
@@ -30,7 +30,8 @@ such as an empty `[[]]` bundle. A card can carry broad and specific capabilities
 together. The `requires-*` axis covers operator-specific requirements, not
 package-wide install requirements. The active `domain-plan` value is a retained
 compatibility label on `data_discover@2.0.0`; use `capability-metadata-search` or
-`produces-metadata` to find its behavior. It returns metadata, not a plan.
+`produces-metadata` to find its behavior. Its result holds registry identities
+and an optional search score; stored metadata remains in the registry.
 
 `find()` strips surrounding whitespace and lowercases requested filters. A filter
 passes shape validation when the result is nonempty, contains no whitespace, and
@@ -302,7 +303,7 @@ Guide: [`data_discover@2.0.0`](src/blue_data_ops/operator_skills/data_discover/2
 | `limit` | `int` | no | `-1` | Max number of results to return (-1, unlimited) |
 | `page` | `int` | no | `0` | Page number for pagination |
 | `page_size` | `int` | no | `10` | Number of results per page (default: 10, max: 100) |
-| `include_metadata` | `bool` | no | `false` | Whether to include metadata in results (description and properties always included) |
+| `include_metadata` | `bool` | no | `false` | Must be false; discovery does not return stored metadata |
 | `threshold` | `float` | no | `0.5` | Similarity threshold for filtering results (0.0-1.0, lower = more similar, only applies to approximate/hybrid search) |
 | `progressive_pagination` | `bool` | no | `false` | Whether to use progressive pagination for approximate/hybrid search (searches all pages until threshold exceeded) |
 | `concept_type` | `str` | no | `"source"` | Record type to search for (e.g., 'source', 'database', 'collection', 'entity', 'attribute', 'relation') |
@@ -324,10 +325,10 @@ assert type(operator).__name__ == "DataDiscoverOperator"
 
 | Outcome | Behavior |
 |---|---|
-| Success | A registry search returns the matching database. |
-| Empty | A registry search with no matches returns successful-empty. |
-| Invalid | A blank query is INVALID_INPUT at VALIDATE. |
-| Failure | A registry failure returns EXECUTION_FAILED. |
+| Success | A registry search returns catalog identity fields, an allowlisted source kind, and a score. |
+| Empty | A no-match registry search returns successful-empty. |
+| Invalid | A blank query returns INVALID_INPUT at VALIDATE. |
+| Failure | A registry search failure returns EXECUTION_FAILED at EXECUTE. |
 
 ## `delete@2.0.0`
 
@@ -838,7 +839,7 @@ Guide: [`semantic_join@3.0.0`](src/blue_data_ops/operator_skills/semantic_join/3
 | `use_embedding_filter` | `bool` | no | `false` | Use embedding pre-filtering to reduce candidate pairs (requires sentence-transformers package) |
 | `embedding_threshold` | `float` | no | `0.7` | Similarity threshold for embedding pre-filtering (0.0-1.0, maps to cosine similarity [-1,1]) |
 | `max_llm_calls` | `int` | no | `1000` | Maximum allowed LLM calls (None = no limit). Prevents accidental expensive operations. |
-| `estimate_cost` | `bool` | no | `true` | Show cost estimate and warnings before execution |
+| `estimate_cost` | `bool` | no | `true` | Log a cost estimate at INFO level before execution |
 | `optimize_thresholds` | `bool` | no | `false` | Enable dynamic threshold learning (Cascade Optimization) |
 | `recall_target` | `float` | no | `0.8` | Target recall for optimization (0.0-1.0) |
 | `precision_target` | `float` | no | `0.8` | Target precision for auto-acceptance (0.0-1.0) |

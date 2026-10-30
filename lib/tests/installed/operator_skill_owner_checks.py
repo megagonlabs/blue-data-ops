@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import itertools
 import json
 import re
 import site
@@ -31,6 +32,15 @@ PINNED_ID = re.compile(
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ENVIRONMENTS = frozenset({"base", "ml", "vector", "llm"})
 ENVIRONMENT_LINE = re.compile(r"^Environment: (?P<value>\S+)$", re.MULTILINE)
+LIVE_NETWORK_NOTICE = "running this example may send requests over the network."
+LIVE_CREDENTIAL_NOTICE = "a remote service may require credentials."
+LIVE_NON_EXECUTION_NOTICE = "the test suite does not run this example."
+LIVE_NOTICE_PARAGRAPHS = frozenset(
+    " ".join(order)
+    for order in itertools.permutations(
+        (LIVE_NETWORK_NOTICE, LIVE_CREDENTIAL_NOTICE, LIVE_NON_EXECUTION_NOTICE)
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -201,10 +211,25 @@ def validate_pages(pages: dict[str, str]) -> dict[str, tuple[Fence, ...]]:
         for fence in fences:
             compile(fence.source, f"{operator_id}:examples.md:{fence.line}", "exec")
             if fence.language == "python live":
-                lowered = text.lower()
-                assert "leaves the process" in lowered
-                assert "credential" in lowered
-                assert "not release evidence" in lowered
+                preceding = text.splitlines()[: fence.line - 1]
+                while preceding and not preceding[-1].strip():
+                    preceding.pop()
+                paragraph: list[str] = []
+                while preceding and preceding[-1].strip() and not preceding[-1].startswith("```"):
+                    paragraph.append(preceding.pop())
+                notice = " ".join(reversed(paragraph)).lower()
+                assert LIVE_NETWORK_NOTICE in notice, (
+                    f"{operator_id} live fence lacks an outbound network notice"
+                )
+                assert LIVE_CREDENTIAL_NOTICE in notice, (
+                    f"{operator_id} live fence lacks a credential notice"
+                )
+                assert LIVE_NON_EXECUTION_NOTICE in notice, (
+                    f"{operator_id} live fence lacks a non-execution notice"
+                )
+                assert notice in LIVE_NOTICE_PARAGRAPHS, (
+                    f"{operator_id} live fence has additional or altered warning text"
+                )
         extracted[operator_id] = fences
     assert set(extracted) == set(pages)
     return extracted

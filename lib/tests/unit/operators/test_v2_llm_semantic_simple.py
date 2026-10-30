@@ -119,7 +119,7 @@ def test_native_validation_keeps_exact_boolean_adapter(
             SemanticFilterOperator(),
             FILTER_INPUT,
             FILTER_ATTRIBUTES,
-            "yes",
+            "true",
             FILTER_INPUT,
         ),
         (
@@ -273,13 +273,17 @@ def test_tolerated_provider_results_remain_successful(
     client = ScriptedClient([response, response])
     properties: Properties = {"llm_client": client}
 
-    assert operator.apply(input_data, attributes, properties) == expected
-    output_data, output_attributes, meta = operator.run(input_data, attributes, properties)
-
-    assert output_data == expected
-    assert output_attributes == {}
-    assert meta.is_empty is is_empty
-    assert meta.errors == []
+    if isinstance(response, list):
+        with pytest.raises(ValueError, match="model reply"):
+            operator.apply(input_data, attributes, properties)
+        output_data, output_attributes, meta = operator.run(input_data, attributes, properties)
+        assert output_data == [[]] and output_attributes == {}
+        assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
+    else:
+        assert operator.apply(input_data, attributes, properties) == expected
+        output_data, output_attributes, meta = operator.run(input_data, attributes, properties)
+        assert output_data == expected and output_attributes == {}
+        assert meta.is_empty is is_empty and meta.errors == []
     assert len(client.calls) == 2
 
 
@@ -511,7 +515,7 @@ def test_selected_registry_version_owns_error_identity(
 
 def test_extract_individual_mode_skips_empty_fields_without_extra_calls() -> None:
     operator = SemanticExtractOperator()
-    client = ScriptedClient([["Python"], "Ada"])
+    client = ScriptedClient([["Python"], ["Ada"]])
     input_data: DataBundle = [[{"name": "Ada", "bio": "Uses Python"}]]
     attributes: Attributes = {
         "entities": [

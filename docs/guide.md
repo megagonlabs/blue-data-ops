@@ -104,6 +104,8 @@ if meta.errors:
 Categories are `RECOVERABLE`, `FAILED`, and `TIMEOUT`.
 `retryable` is the operator's own judgement about whether the same call could succeed again; a validation failure never is.
 
+LLM connection, timeout, rate-limit and server-error retry hints require matching transport or HTTP-response evidence through the supported OpenAI/LiteLLM path. A local parsing failure or an unclassified wrapper reports a non-retryable request failure. Other providers can therefore lose retry hints when their wrappers do not retain supported evidence. With the tested LiteLLM 1.106.5/OpenAI 2.54.0 stack, a plain connection failure is wrapped as a server error and receives generic advice; read timeouts and HTTP 429/503 responses retain matching hints. This public advice describes the final error record; the LLM client's configured internal retry attempts are separate. A retry hint does not guarantee that an earlier attempt had no effects.
+
 ## Know which boundary raises
 
 Operator execution returns its failures.
@@ -183,8 +185,11 @@ output_data, _, meta = operator.run(
 print(output_data, meta.errors)   # [[{'score': 9}]] []
 ```
 
-A breach is reported as a `TIMEOUT` record in `errors`.
-The older `properties["timeout"]` key stays readable for compatibility but sets no deadline.
+A breach returns `OPERATOR_TIMEOUT` with category `TIMEOUT` in `errors`. The deadline bounds waiting; it does not stop the worker, roll back writes or prevent later side effects. Without `execution.timeout_seconds`, `run()` has no deadline. Raw `apply()` and `invoke()` gain no deadline. The legacy bare `timeout` property is inert for operator execution and is no longer seeded in instance metadata. Provider-level LLM `timeout` forwarding is a separate setting. On MCP, a registry tool's timeout returns to the caller while the worker keeps that server's registry lane until the worker finishes; see [deployment setup](mcp.md#deployment-data-registry).
+
+Retained v1/v2 semantic versions validate model replies and report malformed replies through `exec_meta.errors`. Their `semantic_filter` accepts booleans and trimmed, case-insensitive string pairs `true`/`false`, `yes`/`no`, `1`/`0` and `include`/`exclude`. Legacy join accepts complete pair objects with booleans or the strings `true`, `yes`, `1`, `match` and `join` for a match and `false`, `no`, `0` and `exclude` for no match; `include` is rejected. Active v3 join still requires native booleans. Active v3 `semantic_filter` accepts only booleans and `true`/`false` strings. Valid negative and empty replies remain successful. See [legacy semantic response handling](../lib/COMPATIBILITY.md#legacy-semantic-response-handling) before selecting an exact v1/v2 semantic operator.
+
+For retained semantic joins, an embedding preparation failure falls back to all Cartesian pairs, requiring ceil(N*M/batch) model calls, where N and M are the two group sizes and batch is `batch_size`. A failure after optimization sampling can add the sample call to that fallback. The `estimate_cost`/`max_llm_calls` check uses the up-front estimate; a fallback can make more calls than the limit.
 
 ## Find an operator by tag
 
@@ -364,16 +369,19 @@ with TemporaryDirectory() as directory:
     print([record["name"] for record in discovered[0]])   # ['orders']
 ```
 
-`data_discover` returns a source's registered connection settings with its name and scope, but masks credentials in both settings and descriptions.
+`data_discover` returns `type`, `name`, `id`, and `scope` for each match, plus a search
+`score` when available. A source may also include `properties.kind` when it names a
+supported source family. Discovery does not return stored descriptions, connection
+settings, or metadata for any record type. `include_metadata=True` is rejected with an
+input error.
 
-- Credential keys are normalized before comparison. For example, `password`, `api-key`, `clientSecret`, `api%5Fkey`, `api+key`, `PASS PHRASE`, and `api key` are treated consistently. Account keys such as `user` and `username` are also treated as part of a stored credential pair.
-- String values are inspected as well as mapping keys. URI userinfo becomes `***:***`. Credential assignments are masked in query strings, ODBC and JDBC connection strings, and connection-like free text.
-- In descriptions, a lone assignment such as `token=required` remains unchanged unless it is part of a connection parameter run. A run starts with a delimiter, joins two parameters with a bare delimiter, or joins at least two parameters where one names connection structure such as `driver`, `server`, or `initial catalog`. In settings values, credential assignments are masked even when they appear alone.
-- Bare `key`, `keys`, and `foreignKeys` entries are not masked. Protocol, host, port, database, and column metadata are also preserved.
-- Descriptions without a URI or connection parameter run are returned byte for byte. `OAuth schema: token=required; authorization=optional` is unchanged; `connect with Driver=X; Password=secret; Server=db` is redacted because it contains connection keywords.
-- After the first redaction pass, any remaining credential assignment in a settings value loses the rest of its segment. In descriptions, this fallback applies only inside a connection parameter run. An unclosed quoted or braced credential value follows the same rule: it is masked through its segment in settings and only within a connection run in descriptions. These fallback rules cover credential syntax the first pass does not recognize.
-
-Read credentials directly from the registry when needed. Discovery is a search surface and does not return their values.
+Blue Platform 1.0 and 1.1 returned descriptions and raw properties from the registry.
+This package uses a narrower discovery result because registered records can contain
+connection details or arbitrary text. Use the returned name and scope to select a source
+or schema record; the operator that uses the source resolves its connection through the
+registry.
+Pass `scope` to narrow a search. The `source`, `database`, and `collection` fields
+refine an explicit scope.
 
 `columns` is a list of `{"name": ..., "type": ...}` mappings; a bare type mapping fails validation.
 SQLite sources always resolve to the `public` collection, whatever you pass.
@@ -421,6 +429,9 @@ print([node.operator_id for node in run.node_runs])   # ['select@2.0.0', 'avg@3.
 
 `PipelineRun.output_data` is the final output.
 `node_runs` holds one `NodeRun` per completed operator node in execution order, each exposing `node_id`, `operator_id`, `status`, `output_data`, `output_attributes`, and that node's `exec_meta`.
+Pipeline edges carry `output_data`. Each `NodeRun.output_attributes` records that
+operator's additional results. The next operator receives its planned input
+attributes, independent of the preceding node's output attributes.
 
 A structured operator failure stops execution without raising.
 Read the failed node's metadata to find out why.
@@ -596,7 +607,7 @@ from blue_data_ops.plan import OpenAIPlanGenerator, PipelinePlanner
 
 registry = active_registry()
 generator = OpenAIPlanGenerator(
-    "gpt-4o",
+    "gpt-6-luna",
     registry=registry,
     allowed_operator_ids=["select@2.0.0", "avg@3.0.0"],
 )
@@ -627,7 +638,7 @@ They need the `llm` extra and a provider credential in the environment.
 export OPENAI_API_KEY=<your-key>
 ```
 
-Select the model with the `openai.model` call property; the default is `gpt-4o`.
+Select the model with the `openai.model` call property; the default is `gpt-6-luna`.
 
 ```python
 from blue_data_ops.operators import active_registry
@@ -648,8 +659,7 @@ Without the extra or without the credential, that prints `EXECUTION_FAILED` and 
 Nothing raises, so the same branch handles both.
 
 `nl2sql` can run the SQL it writes.
-Set `execute_query` in the properties, and give it the `source`, `protocol`, `database`, and `collection` to address.
-Its `validate_query_prefixes` check is a guard against the obvious mistake, not a SQL parser and not a sandbox — permissions and query safety stay with you.
+Generation is the default and returns `[[{"sql": "..."}]]`. Supply `source`, `protocol`, `database`, and `collection` for schema lookup. Execution requires a host-configured `ReadOnlySQLExecutor` and a boolean `execute_query=True`; see [LLM settings](llm-settings.md#sql-execution). Caller registry selectors are denied during execution. The fixed SELECT check measures query shape; the bound database connection enforces read-only access.
 
 `nl2llm@3.0.0` may report an estimated USD `cost` in `ExecMeta.traces` after exactly one priced attempt.
 A proven local cache hit reports `0.0`.

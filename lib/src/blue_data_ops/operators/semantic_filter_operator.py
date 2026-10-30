@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -49,7 +51,14 @@ ${demonstrations}
 
 
 class SemanticFilterOperator(Operator):
-    """Filter records by natural-language conditions through an LLM."""
+    """Filter records by natural-language conditions through an LLM.
+
+    Retained ``@1.0.0`` and ``@2.0.0`` validate replies strictly: booleans and trimmed,
+    case-insensitive string pairs ``true``/``false``, ``yes``/``no``,
+    ``1``/``0`` and ``include``/``exclude``.
+    Malformed replies raise through ``apply()`` and ``invoke()``; ``run()``
+    contains failures in ``exec_meta.errors``. A false decision is a successful exclusion.
+    """
 
     name: ClassVar[str] = "semantic_filter"
     description: ClassVar[str] = (
@@ -85,7 +94,7 @@ class SemanticFilterOperator(Operator):
     FILTER_PROMPT: ClassVar[str] = _FILTER_PROMPT
     DEFAULT_PROPERTIES: ClassVar[dict[str, Any]] = {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0,
@@ -97,8 +106,11 @@ class SemanticFilterOperator(Operator):
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "bool",
@@ -118,6 +130,9 @@ class SemanticFilterOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         filter_conditions = cast(dict[str, str], attributes.get("filter_conditions", {}))
         context = cast(str, attributes.get("context", ""))
         demonstrations = cast(str, attributes.get("demonstrations", ""))
@@ -126,6 +141,7 @@ class SemanticFilterOperator(Operator):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = resolve_llm_client(merged)
         results: DataBundle = []
         for data_group in input_data:
@@ -156,10 +172,19 @@ class SemanticFilterOperator(Operator):
                 result = client.execute_api_call(
                     {}, properties=merged, additional_data=additional_data
                 )
-                if isinstance(result, str):
-                    result = result.lower().strip() in ["true", "yes", "1", "include"]
+                if isinstance(result, str) and result.strip().lower() in {
+                    "true",
+                    "yes",
+                    "1",
+                    "include",
+                    "false",
+                    "no",
+                    "0",
+                    "exclude",
+                }:
+                    result = result.strip().lower() in {"true", "yes", "1", "include"}
                 elif not isinstance(result, bool):
-                    result = bool(result)
+                    raise_reply_failure()
                 if result:
                     filtered_records.append(record)
                     filtered_indices.append(idx)

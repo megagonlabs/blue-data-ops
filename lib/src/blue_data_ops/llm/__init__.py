@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from blue_data_ops.llm.client import LLMClient, UsageLedger, UsageRecord
+from blue_data_ops.llm.client import (
+    LLMClient,
+    UsageLedger,
+    UsageRecord,
+    prepare_llm_operator_properties,
+    validate_llm_caller_controls,
+)
 from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.llm.provider import (
     CachingLLMClientProvider,
@@ -15,5 +21,7 @@ __all__ = [
     "LLMError",
     "UsageLedger",
     "UsageRecord",
+    "prepare_llm_operator_properties",
     "resolve_llm_client",
+    "validate_llm_caller_controls",
 ]

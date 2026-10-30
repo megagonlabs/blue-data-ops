@@ -286,35 +286,24 @@ def test_nl2sql_validates_routing_and_distinguishes_backend_result_shapes() -> N
     assert invalid_client.calls == []
     assert invalid_registry.calls == []
 
-    empty_client = ScriptedClient([{"query": "SELECT role FROM jobs WHERE 1 = 0"}])
-    empty_registry = ScriptedRegistry(schema={"jobs": {"role": "text"}}, execute_result=[])
-    _assert_successful_empty(
-        operator.run(
-            [],
-            SQL_ATTRIBUTES,
-            {
-                **_properties(empty_client, empty_registry),
-                "execute_query": True,
-            },
+    for result in ([], [["not-a-record"]]):
+        client = ScriptedClient([{"query": "SELECT role FROM jobs"}])
+        registry = ScriptedRegistry(schema={"jobs": {"role": "text"}}, execute_result=result)
+        _assert_error(
+            operator.run(
+                [], SQL_ATTRIBUTES, {**_properties(client, registry), "execute_query": True}
+            ),
+            ErrorCode.EXECUTION_FAILED,
+            ErrorStage.EXECUTE,
         )
-    )
-
-    malformed_client = ScriptedClient([{"query": "SELECT role FROM jobs"}])
-    malformed_registry = ScriptedRegistry(
-        schema={"jobs": {"role": "text"}}, execute_result=[["not-a-record"]]
-    )
-    _assert_error(
-        operator.run(
-            [],
-            SQL_ATTRIBUTES,
-            {
-                **_properties(malformed_client, malformed_registry),
-                "execute_query": True,
-            },
-        ),
-        ErrorCode.EXECUTION_RESULT_INVALID,
-        ErrorStage.NORMALIZE,
-    )
+        assert client.calls == []
+        assert registry.calls == []
+    client = ScriptedClient([{"query": "SELECT role FROM jobs"}])
+    registry = ScriptedRegistry(schema={"jobs": {"role": "text"}})
+    output, _, meta = operator.run([], SQL_ATTRIBUTES, _properties(client, registry))
+    assert output == [[{"sql": "SELECT role FROM jobs"}]]
+    assert meta.errors == []
+    assert [call[0] for call in registry.calls] == ["schema"]
 
 
 BN_ATTRIBUTES = {

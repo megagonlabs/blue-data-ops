@@ -4,18 +4,16 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-# LiteLLM 1.98.0's own provider names, copied rather than invented: the client asks LiteLLM
-# which first path segments are routes, and under this stub that question has to have the
-# real answer or the dispatch gate would be measured against a fiction. Reconciled against
-# the installed release by test_the_stubs_provider_names_are_litellms_own. Regenerate with:
+# Reviewed provider names from LiteLLM 1.98.0. The client checks model prefixes and the
+# deployment provider against this list. Tests allow installed names covered by this list
+# or the separate 1.102.0 and 1.106.5 additions, then select exactly the installed names.
+# Regenerate with:
 #
 #     python -c "import litellm
 #     print(sorted({str(getattr(p, 'value', p)) for p in litellm.provider_list}))"
 #
-# `get_llm_provider` is deliberately absent. Resolution is behaviour rather than data, and a
-# stand-in for it would be a stand-in for the thing under test; the client falls back to the
-# provider names above when LiteLLM will not resolve, and that fallback is what this stub
-# exercises.
+# `get_llm_provider` is deliberately absent. Resolution is behavior rather than data. The
+# client still checks model prefixes against the provider names below when the resolver is absent.
 provider_list: list[str] = [
     "a2a",
     "a2a_agent",
@@ -167,6 +165,30 @@ provider_list: list[str] = [
     "xinference",
     "zai",
 ]
+
+provider_additions_1102: tuple[str, ...] = (
+    "cognition",
+    "mongodb",
+    "qwen_ai_platform",
+    "qwencloud",
+    "scx-ai",
+    "valkey",
+)
+
+# Reviewed additions derived independently from both installed 1.106.5 provider lists.
+provider_additions_11065: tuple[str, ...] = (
+    "aws_textract",
+    "azure_speech",
+    "cortecs",
+    "edenai",
+    "nadir",
+    "prism",
+    "reka",
+    "sail",
+    "strands_decider",
+    "transcribe",
+    "typesafe",
+)
 
 
 calls: list[dict[str, Any]] = []

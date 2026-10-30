@@ -15,23 +15,35 @@ from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.registry import OperatorCard, OperatorRegistry
 
 LIB_ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE_PATH = LIB_ROOT / "tests" / "fixtures" / "v3_active_operator_reference.json"
+EVIDENCE_PATH = LIB_ROOT / "tests" / "fixtures" / "active_operator_reference.json"
 SUPPLEMENTAL_EVIDENCE_PATH = (
     LIB_ROOT / "tests" / "fixtures" / "sklearn_estimator_active_reference.json"
 )
-ACCEPTED_PROJECTION_SHA256 = "f4fdbee820c8b3573b18ceaac00ec181ef1084d2aa8f091e705a86c583e8e885"
+SUPPLEMENTAL_SOURCE_LOCATOR = "lib/tests/unit/operators/test_sklearn.py"
+ACCEPTED_PROJECTION_SHA256 = "5c38499246bc80a503c17545fd37e2203384086b409573fdb3c453cedbffac3c"
+# Keep archived evidence intact while binding maintenance changes to exact source.
+_CURRENT_IMPLEMENTATION_BINDINGS: dict[str, tuple[str, str]] = {
+    "nl2llm@3.0.0": (
+        "706001762f6726246ce4e5becb0c2d15b66ced0ab1b1618d72e36de0fd054834",
+        "90b1e4b8909537ec253b69851f5e44ed65690d6a55c1dd1ef45a3e249fbd48ee",
+    ),
+    "nl2bn@3.0.0": (
+        "24a13f64ad56a20244426361c7eca61197cfcd009952f58a4eb09e0bb593a19c",
+        "bffdf429bd7413b4ebc30b5e77c755f83767daca0e92266ca7c8a76a8a84b0b7",
+    ),
+}
 SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256 = (
-    "1e1d54841c50d78aa0e6bb4570565ed9a1f38e185abb3b7aa8abff63150453c0"
+    "09420f91763092548d10b5918b39661ae724189728c8da537ef36810807802c8"
 )
 SOURCE_INSTRUMENT = {
-    "instrument_id": "blue-data-ops-core-3.9-active-reference",
-    "document_sha256": "6e3948b973daaaec2c075c47de14cdf37e30bfd810d2e550ab2eab1109f34217",
-    "seal_sha256": "7cc8eeeca1e3c5e80acb3464194371ad4071e88369c462d85f7e2b9ce6ffd2c6",
+    "instrument_id": "blue-data-ops-core-3.10-active-reference",
+    "document_sha256": "dd8d4a6f0a251597e61bb3fbda867c995a03abf625f670b2ffda2423c83e2f1e",
+    "seal_sha256": "63a789e59716b22426db62ed1ee6afb7d060e56cd589a84fe0a24f40216c8e24",
 }
 SUPPLEMENTAL_SOURCE_INSTRUMENT = {
-    "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence",
-    "document_sha256": "c1c639262820f36985e3105e4faf40ddec7ba5f2ed0b12b6d75944c089f7048d",
-    "seal_sha256": "b893865636337e678e3c30e39aae6337dfff97cf28378e2965985d3d94e1b883",
+    "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence-r2",
+    "evidence_sha256": "855dd26d04cf42daa1c656444618baa35b468fcc1e0d724585177f2a97a988b6",
+    "seal_sha256": "55f5e36b126e352c0476c19b23b09be1945eb30da4ca3ffa4aa8aa70c800caa8",
 }
 CORE_ACTIVE_IDS = (
     "argmax@2.0.0",
@@ -113,11 +125,6 @@ CLAIM_TEXT_OVERRIDES = {
     ("create_table@2.0.0", "failure"): (
         "A RegistrySeam failure returns EXECUTION_FAILED rather than a successful result."
     ),
-    ("data_discover@2.0.0", "success"): ("A registry search returns the matching database."),
-    ("data_discover@2.0.0", "empty"): (
-        "A registry search with no matches returns successful-empty."
-    ),
-    ("data_discover@2.0.0", "failure"): ("A registry failure returns EXECUTION_FAILED."),
     ("insert_table@3.0.0", "success"): (
         "Successful SQLite writes preserve all records and set num_rows_insert to the total "
         "inserted by the call."
@@ -171,6 +178,39 @@ def _document_seal(document: dict[str, Any]) -> str:
     projection = copy.deepcopy(document)
     projection.pop("projection_seal_sha256", None)
     return _sha256(_canonical_bytes(projection))
+
+
+def _supplemental_source_seal(
+    source_instrument: dict[str, str],
+    rows: tuple[dict[str, Any], ...],
+) -> str:
+    lines = [
+        source_instrument["instrument_id"],
+        f"{source_instrument['evidence_sha256']}  {SUPPLEMENTAL_SOURCE_LOCATOR}",
+        *(
+            f"{_sha256(_canonical_bytes(row))}  {row['operator_id']}"
+            for row in sorted(rows, key=lambda row: row["operator_id"])
+        ),
+    ]
+    return _sha256(("\n".join(lines) + "\n").encode())
+
+
+def _validate_supplemental_source_instrument(
+    rows: tuple[dict[str, Any], ...],
+    *,
+    source_instrument: dict[str, str] = SUPPLEMENTAL_SOURCE_INSTRUMENT,
+) -> None:
+    if set(source_instrument) != {
+        "instrument_id",
+        "evidence_sha256",
+        "seal_sha256",
+    }:
+        raise ValueError("supplemental source instrument fields differ")
+    locators = tuple(row["evidence"]["test_locator"]["node"] for row in rows)
+    if locators != (SUPPLEMENTAL_SOURCE_LOCATOR,):
+        raise ValueError("supplemental source evidence locator mismatch")
+    if _supplemental_source_seal(source_instrument, rows) != source_instrument["seal_sha256"]:
+        raise ValueError("supplemental source instrument seal mismatch")
 
 
 def _validate_evidence(
@@ -326,11 +366,22 @@ def _load_combined_rows(
         expected_active_ids=SUPPLEMENTAL_ACTIVE_IDS,
         source_instrument=SUPPLEMENTAL_SOURCE_INSTRUMENT,
     )
+    _validate_supplemental_source_instrument(supplemental_rows)
     rows_by_id = {row["operator_id"]: row for row in (*core_rows, *supplemental_rows)}
     if len(rows_by_id) != len(core_rows) + len(supplemental_rows):
         raise ValueError("active-reference evidence sets overlap")
     if tuple(sorted(rows_by_id)) != EXPECTED_ACTIVE_IDS:
         raise ValueError("combined active-reference exact ID set or order mismatch")
+    for operator_id, (
+        archived_sha256,
+        current_sha256,
+    ) in _CURRENT_IMPLEMENTATION_BINDINGS.items():
+        row = rows_by_id[operator_id]
+        if row["implementation"]["sha256"] != archived_sha256:
+            raise ValueError(f"{operator_id}: archived implementation identity mismatch")
+        current_row = copy.deepcopy(row)
+        current_row["implementation"]["sha256"] = current_sha256
+        rows_by_id[operator_id] = current_row
     return tuple(rows_by_id[operator_id] for operator_id in EXPECTED_ACTIVE_IDS)
 
 
@@ -372,7 +423,8 @@ def _validate_registry(
             ) from error
         if relative_source != implementation["path"]:
             raise ValueError(f"{card.operator_id}: live implementation path mismatch")
-        if _sha256(source_path.read_bytes()) != implementation["sha256"]:
+        expected_source_sha256 = implementation["sha256"]
+        if _sha256(source_path.read_bytes()) != expected_source_sha256:
             raise ValueError(f"{card.operator_id}: live implementation digest mismatch")
         bound.append((card, operator, row))
     return tuple(bound)
@@ -452,7 +504,7 @@ def _render_unformatted_reference(
         "",
         "This table is derived from the 33 active cards. Built-in tags use five required axes and",
         "one optional axis. A tag states something true in at least one productive public mode.",
-        "Values are flat exact labels, not a hierarchy.",
+        "Tags are flat, exact-match labels with no parent-child relationships.",
         "",
         "| Axis | Meaning | Built-in cardinality | Active values |",
         "|---|---|---|---|",
@@ -482,7 +534,8 @@ def _render_unformatted_reference(
             "together. The `requires-*` axis covers operator-specific requirements, not",
             "package-wide install requirements. The active `domain-plan` value is a retained",
             "compatibility label on `data_discover@2.0.0`; use `capability-metadata-search` or",
-            "`produces-metadata` to find its behavior. It returns metadata, not a plan.",
+            "`produces-metadata` to find its behavior. Its result holds registry identities",
+            "and an optional search score; stored metadata remains in the registry.",
             "",
             "`find()` strips surrounding whitespace and lowercases requested filters. A filter",
             "passes shape validation when the result is nonempty, contains no whitespace, and",
@@ -529,8 +582,10 @@ def _render_unformatted_reference(
                 "",
                 "Tags: " + ", ".join(f"`{tag}`" for tag in card.tags),
                 "",
-                f"Guide: [`{card.operator_id}`](src/blue_data_ops/operator_skills/"
-                f"{name}/{version}/Operator.md)",
+                (
+                    f"Guide: [`{card.operator_id}`](src/blue_data_ops/operator_skills/"
+                    f"{name}/{version}/Operator.md)"
+                ),
                 "",
                 "| Attribute | Type | Required | Default | Description |",
                 "|---|---|---:|---|---|",

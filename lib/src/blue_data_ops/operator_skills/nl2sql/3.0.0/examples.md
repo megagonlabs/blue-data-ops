@@ -1,4 +1,4 @@
-# SQL-result boundary example
+# SQL generation and execution admission
 
 Environment: llm
 
@@ -43,17 +43,21 @@ attributes = {
     "protocol": "sqlite",
 }
 sql = {"query": "SELECT service FROM incidents WHERE open = 1"}
-empty_output, output_attributes, empty_meta = operator.run(
+output, output_attributes, meta = operator.run(
     [], attributes, {"llm_client": LocalClient(sql), "data_registry": LocalRegistry([])}
 )
-bad_output, _, bad_meta = operator.run(
-    [], attributes, {"llm_client": LocalClient(sql), "data_registry": LocalRegistry([["bad-row"]])}
+denied_output, _, denied_meta = operator.run(
+    [], attributes, {"llm_client": LocalClient(sql), "data_registry": LocalRegistry([["bad-row"]]), "execute_query": True}
 )
 
-assert empty_output == [[]]
+assert output == [[{"sql": sql["query"]}]]
 assert output_attributes == {}
-assert empty_meta.is_empty and not empty_meta.errors
-assert bad_output == [[]]
-assert bad_meta.errors[0].code.value == "EXECUTION_RESULT_INVALID"
-assert bad_meta.errors[0].stage.value == "NORMALIZE"
+assert not meta.errors
+assert denied_output == [[]]
+assert denied_meta.errors[0].code.value == "EXECUTION_FAILED"
+assert denied_meta.errors[0].stage.value == "EXECUTE"
 ```
+
+For execution, construct a `ReadOnlySQLExecutor` in trusted host code and register
+that NL2SQL instance in the same custom operator registry used by the planner and
+executor. Request properties cannot grant execution authority.

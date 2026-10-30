@@ -7,8 +7,8 @@ examples build on each other — a profile is added before it is removed, a pipe
 planned before it is run.
 
 Nothing reaches a provider or a network. Every command here reads the local operator
-library, and the two files the examples name are written from the README's own JSON blocks
-rather than from a copy kept in this test.
+library, and the printed JSON paths are read from the checkout.
+Inline examples must match those files.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from blue_data_ops_cli.commands import cli
 README = Path(__file__).resolve().parents[2] / "README.md"
 
 _FENCE = re.compile(r"^```(\w*)\s*$")
-_NAMED_FILE = re.compile(r"^`([\w./-]+\.json)`:\s*$")
+_NAMED_FILE = re.compile(r"^\[?`([\w./-]+\.json)`(?:\]\([^)]*\))?:\s*$")
 
 ANSWERS = "\n" * 40
 """Blank answers for every prompt an example reaches.
@@ -65,11 +65,20 @@ def blocks() -> list[tuple[str, str, str]]:
 
 def documented_files() -> dict[str, str]:
     """The files the examples name, taken from the README's own JSON blocks."""
-    return {
-        _NAMED_FILE.match(previous).group(1): body  # pyright: ignore[reportOptionalMemberAccess]
-        for language, previous, body in blocks()
-        if language == "json" and _NAMED_FILE.match(previous)
+    files: dict[str, str] = {}
+    for language, previous, body in blocks():
+        match = _NAMED_FILE.match(previous)
+        if language == "json" and match:
+            name = match.group(1)
+            content = (README.parents[2] / name).read_text(encoding="utf-8")
+            assert json.loads(content) == json.loads(body), name
+            files[name] = content
+    assert set(files) >= {
+        "examples/cli/workspaces.json",
+        "examples/cli/llm-pipeline.json",
+        "examples/cli/llm-input.json",
     }
+    return files
 
 
 def documented_commands() -> list[list[str]]:
@@ -154,7 +163,9 @@ def test_every_command_in_the_readme_runs(
     assert len(commands) > 30, "the README lost its examples"
     monkeypatch.chdir(tmp_path)
     for name, body in documented_files().items():
-        (tmp_path / name).write_text(body, encoding="utf-8")
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
     for command in commands:
         result = runner.invoke(cli, command, input=ANSWERS)
         assert result.exit_code == config.EXIT_OK, (
@@ -188,9 +199,11 @@ def test_documented_llm_pipeline_preserves_layers_and_clears_effort(
     monkeypatch.chdir(tmp_path)
     files = documented_files()
     for name in ("llm-pipeline.json", "llm-input.json"):
-        (tmp_path / name).write_text(files[name], encoding="utf-8")
+        path = tmp_path / "examples/cli" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(files[f"examples/cli/{name}"], encoding="utf-8")
 
-    record = cast("dict[str, Any]", json.loads(files["llm-pipeline.json"]))
+    record = cast("dict[str, Any]", json.loads(files["examples/cli/llm-pipeline.json"]))
     assert record["properties"] == {
         "llm.model": "gpt-5-mini",
         "llm.reasoning_effort": "medium",
@@ -203,9 +216,12 @@ def test_documented_llm_pipeline_preserves_layers_and_clears_effort(
 
     imported = runner.invoke(
         cli,
-        ["pipeline", "import", "llm-example", "--pipeline-file", "llm-pipeline.json"],
+        ["pipeline", "import", "llm-example", "--pipeline-file", "examples/cli/llm-pipeline.json"],
     )
     assert imported.exit_code == config.EXIT_OK, imported.output
+    exported = runner.invoke(cli, ["pipeline", "export", "llm-example"])
+    assert exported.exit_code == config.EXIT_OK, exported.output
+    assert json.loads(exported.stdout) == record
     result = runner.invoke(
         cli,
         [
@@ -213,7 +229,7 @@ def test_documented_llm_pipeline_preserves_layers_and_clears_effort(
             "run",
             "llm-example",
             "--input-file",
-            "llm-input.json",
+            "examples/cli/llm-input.json",
             "--model",
             "gpt-4o",
             "--reasoning-effort",
@@ -228,3 +244,49 @@ def test_documented_llm_pipeline_preserves_layers_and_clears_effort(
     assert "reasoning_effort" not in calls[0]
     payload = json.loads(result.stdout)
     assert payload["settings"]["scope"] == "invocation_defaults"
+
+
+def test_shipped_workspaces_semantic_filter_returns_selected_record(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class OfflineResponse:
+        def model_dump(self) -> dict[str, Any]:
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "true"}}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+
+    def complete(**kwargs: Any) -> OfflineResponse:
+        calls.append(kwargs)
+        return OfflineResponse()
+
+    def cost(**kwargs: Any) -> float:
+        return 0.0
+
+    monkeypatch.setattr(litellm, "completion", complete)
+    monkeypatch.setattr(litellm, "completion_cost", cost)
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "examples/cli/workspaces.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(documented_files()["examples/cli/workspaces.json"])
+    result = runner.invoke(
+        cli,
+        [
+            "operator",
+            "run",
+            "semantic_filter@3.0.0",
+            "--input-file",
+            str(path),
+            "--attribute",
+            'filter_conditions={"summary":"suited to focused work"}',
+            "--model",
+            "gpt-4o-mini",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == config.EXIT_OK, result.output
+    assert json.loads(result.stdout)["result"]["output_data"] == json.loads(path.read_text())
+    assert calls and all(call["model"] == "gpt-4o-mini" for call in calls)

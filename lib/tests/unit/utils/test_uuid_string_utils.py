@@ -39,16 +39,16 @@ def test_canonical_id_helpers_use_colon_separator() -> None:
 # --- string_utils.safe_substitute --------------------------------------------------
 SUBST_CASES: list[tuple[str, dict[str, str], str]] = [
     ("$a", {"a": "x"}, "x"),
-    ("$a", {"a": "$b", "b": "done"}, "done"),  # recursive fixpoint
-    ("{{ a }}", {"a": "jx"}, "jx"),
+    ("$a", {"a": "$b", "b": "done"}, "$b"),  # inserted data is literal
+    ("{{ a }}", {"a": "jx"}, "{{ a }}"),
     ("$missing stays", {}, "$missing stays"),
-    ("{{ missing }} empties", {}, " empties"),
-    ("$a and {{ b }}", {"a": "1", "b": "2"}, "1 and 2"),
+    ("{{ missing }} stays", {}, "{{ missing }} stays"),
+    ("$a and {{ b }}", {"a": "1", "b": "2"}, "1 and {{ b }}"),
     ("plain", {}, "plain"),
 ]
 
 
-def test_safe_substitute_matches_blue() -> None:
+def test_safe_substitute_is_one_pass() -> None:
     for template, mappings, expected in SUBST_CASES:
         assert safe_substitute(template, **mappings) == expected
 

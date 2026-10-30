@@ -5,7 +5,13 @@ Each script is a whole program that runs to completion and prints its result.
 Offline examples include captured output files. Provider-backed examples require `OPENAI_API_KEY`
 and have no captured output.
 
-Run every command from the directory containing the main README, after the installation steps in the [library README](../lib/README.md).
+Run every command from the directory containing the main README (the `blue-data-ops` repository root), after the installation steps in the [library README](../lib/README.md). If you installed from the shared parent directory, run `cd blue-data-ops` first.
+
+The [CLI sample inputs](cli/) contain the order records and planning request used in the [`blue-ops` guide](../docs/cli.md).
+The CLI commands read these JSON files as input.
+The LLM examples also use [workspaces.json](cli/workspaces.json),
+[llm-pipeline.json](cli/llm-pipeline.json), and [llm-input.json](cli/llm-input.json).
+They require the LLM extra and deployment provider credentials when run against a provider.
 
 Three of these scripts import the shared SQLite helper [`_sqlite_demo.py`](_sqlite_demo.py), which sits at the root of this directory rather than inside a category.
 Python puts only a script's own directory on the import path, so those three commands add the examples root with `PYTHONPATH`.
@@ -141,6 +147,7 @@ python examples/feature-demos/nl2llm.py
 
 Builds the same ten-row `orders` database as the SQLite quickstart, then asks for the region with the highest total order value and prints the generated SQL.
 Generation and execution are separate: the query is returned but not run unless you pass `--execute`.
+The registry schema projection gives the model the `orders` table name but not its columns. This example supplies the known SQLite column names through the operator's `context` attribute so the model can use `region` and `total`.
 The `SELECT` prefix check is a guard against obvious misuse, not a SQL parser, so database permissions remain your responsibility.
 
 ```bash
@@ -182,10 +189,10 @@ Tag discovery first finds the three query-head operators: `nl2bn`, `nl2llm`, and
 Embedding discovery then ranks the full active catalog against the question.
 `OpenAIPlanGenerator`, not a rule or fixed template, receives the combined discovered catalog and chooses the plan.
 The NL2SQL attributes in the request constrain its database address if the model selects it; they do not force that selection.
-For the default question, the expected selection is `nl2sql@3.0.0`, which generates a `SELECT` and executes it against the temporary database.
+For the default question, the expected selection is `nl2sql@3.0.0`, which returns a generated `SELECT` without executing it.
 This is an NL2SQL demonstration, so the command exits nonzero if the planner selects another operator.
 
-The script prints the active allowlist, tag matches, embedding ranking, combined discovery snapshot, model-visible read-only candidates, selected steps, preflight result, and query result.
+The script prints the active allowlist, tag matches, embedding ranking, combined discovery snapshot, model-visible read-only candidates, selected steps, preflight result, and generated SQL.
 It makes four outbound calls: one batch for the operator documents, one for the question embedding, one for the plan, and one inside NL2SQL for SQL generation.
 The embedding cache prevents the planner from sending the same question embedding twice.
 The planner provider receives the question, operator metadata, caller-constrained NL2SQL address, and a registry-derived schema snapshot, but no database rows.
@@ -197,9 +204,9 @@ A shared column-aware projection is required before this example can claim broad
 export OPENAI_API_KEY=<your-key>
 PYTHONPATH=examples python examples/integration-demos/openai_planner_sqlite.py \
   --question "How many orders are there?" \
-  --planner-model gpt-4o \
+  --planner-model gpt-6-luna \
   --embedding-model text-embedding-3-small \
-  --nl2sql-model gpt-4o-mini
+  --nl2sql-model gpt-6-luna
 ```
 
 **Requires:** the `openai` and `llm` extras and `OPENAI_API_KEY`
@@ -239,3 +246,10 @@ Standard error is not part of the captured result. For `operator_outcomes.py`, r
 | [`integration-demos/embedding_planner.py`](integration-demos/embedding_planner.py) | base install | [yes](integration-demos/embedding_planner.output.txt) |
 | [`integration-demos/openai_planner_sqlite.py`](integration-demos/openai_planner_sqlite.py) | `openai` and `llm` extras, `OPENAI_API_KEY` | no — providers answer |
 | [`_sqlite_demo.py`](_sqlite_demo.py) | base install | not a script of its own |
+
+The NL2SQL demos generate SQL by default. The feature demo's `--execute` path binds
+`ReadOnlySQLExecutor` to its pre-existing temporary SQLite database. The OpenAI planner
+SQLite demo uses stock operators and generates SQL only. The built-in-only OpenAI
+generator currently refuses custom registry cards. Python rule planning and
+`PipelineExecutor` can share a custom registry containing the host-configured instance. Request properties cannot install an executor or select
+a registry for execution. See [SQL execution](../docs/llm-settings.md#sql-execution).

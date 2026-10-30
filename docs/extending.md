@@ -20,6 +20,8 @@ See [architecture.md](architecture.md) for where these sit, and [api-reference.m
 Subclass `Operator`, declare `name`, `description`, and `attributes`, and implement `apply`.
 Override `_execute` when your operator produces output attributes alongside its data, and `_validate_input` when declared-type checking is not enough.
 
+`AttributeSpec.type` uses Blue type strings: `str`, `int`, `float`, `bool`, `dict`, `list`, `tuple`, `set`, `none`, and `any`, plus forms such as `list[int]`, `dict[str, int]`, `optional[int]`, and `union[int, str]` (or `int | str`). Unknown names fall back to `Any`. Declared-type validation accepts values Pydantic can coerce, so `"1"` passes `int`, `float`, and `bool` checks. The check leaves attributes unchanged; convert values in your operator or add explicit checks in `_validate_input` when exact runtime types matter.
+
 ```python
 from typing import ClassVar
 
@@ -120,10 +122,33 @@ The closed six-namespace vocabulary and the ordering rule in `DiscoverySpec` are
 Reusing the built-in namespaces makes a custom operator discoverable through the same tag queries.
 Custom namespaces require callers to know and use the exact tag.
 
-An operator resolved from your own registry runs through `PipelineExecutor` and `PipelinePlanner` normally.
-It will not be accepted by `OpenAIPlanGenerator`, which admits only supported package built-ins from an enriched package registry.
+An operator resolved from your own registry runs through `PipelineExecutor`.
+For `PipelinePlanner`, register a custom operator at `@2.0.0`; the `scale@1.0.0` example above is not eligible for planning.
+`OpenAIPlanGenerator` admits only supported package built-ins from an enriched package registry.
 
 ---
+
+### Intentional public execution diagnostics
+
+Raise `OperatorExecutionError` from a canonical operator body when its author has selected a fixed public message:
+
+```python
+from blue_data_ops import OperatorExecutionError
+
+raise OperatorExecutionError(
+    "required model is unavailable",
+    suggestion="Ask the deployment owner to enable the required model.",
+    retryable=False,
+)
+```
+
+`message` and a present `suggestion` must be exact, nonblank, printable single-line strings of at most 512 characters; `retryable` must be an exact boolean.
+The runtime keeps `FAILED / EXECUTION_FAILED / EXECUTE` and the selected operator identity.
+The constructor is a trusted-author opt-in, not automatic sanitization: never pass `str(error)`, SQL, rows, replies, caller targets, paths or configuration values as public text.
+Subclasses may inherit the validated carrier; missing or malformed base initialization gets the generic diagnostic.
+An exception escaping an overridden `run()` receives the generic PipelineExecutor/MCP fallback, including this type.
+Retryability is advice to the caller; it adds no retry and does not establish that replaying a write is safe.
+
 
 ## Supplying an embedder for discovery
 
@@ -257,15 +282,38 @@ There are three depths to choose from.
 | Depth | What you supply | Reaches a built-in operator | Use it when |
 |---|---|---|---|
 | Configuration | `properties` such as `{"llm.model": "gpt-4o-mini"}` on the call | yes | A different model or different limits, same transport |
-| A client | Your own object at `properties["llm_client"]` | yes | Replacing the transport, recording every call, or serving canned responses in a test |
+| A client | An `LLMClient` instance at `properties["llm_client"]` | yes | Replacing the transport, recording every call, or serving canned responses in a test |
 | A provider | An `LLMClientProvider`, or the shipped `CachingLLMClientProvider` | only through your own `resolve_llm_client` call | Controlling client lifetime, sharing one client and its usage ledger, or picking a client per config |
 
-An injected client is used exactly as given, which makes it the seam a test uses: nothing reaches a provider and nothing needs a credential.
+`resolve_llm_client` accepts an injected client only when it is an `LLMClient` instance. A duck-typed object is ignored and resolution continues to the provider or a new client. For an offline test, subclass `LLMClient`, override `execute_api_call`, and return the parsed value expected by the operator. For `nl2sql`, that is a mapping with a `query` key:
+
+```python
+from typing import Any
+
+from blue_data_ops.llm import LLMClient, resolve_llm_client
+
+
+class SQLStub(LLMClient):
+    def execute_api_call(
+        self,
+        input: Any,
+        properties: dict[str, Any] | None = None,
+        additional_data: dict[str, Any] | None = None,
+    ) -> Any:
+        return {"query": "SELECT COUNT(*) AS order_count FROM orders"}
+
+stub = SQLStub("sql-stub", {})
+assert resolve_llm_client({"llm_client": stub}) is stub
+```
+
+With this injected client, an operator call does not reach a provider or need a credential.
 A real client reports `cost` only for exactly one priced attempt, so an injected client omits the cost fields rather than guessing at them.
 
 The default client is LiteLLM-backed and accepts a closed set of `llm.*` overrides: `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel`, and `rate_limit`.
 An unrecognized `llm.*` key raises `LLMError` with code `bad_override` rather than being forwarded to the provider.
-A key outside the generation set — one that would choose the provider, the endpoint, the project, tenant or region, or supply a credential — raises `LLMError` with code `reserved_field`, and so does `mock_response` or `mock_timeout`, which would replace the provider's answer with the caller's own text.
+This includes forbidden settings under that namespace, such as `llm.api_key` and `llm.mock_response`.
+A key outside the generation set in the service namespace, such as `openai.api_key`, raises `LLMError` with code `reserved_field`. This rejects properties that choose the provider, endpoint, project, tenant, or region, or supply a credential. The same code rejects `openai.mock_response` and `openai.mock_timeout`, which would replace the provider's answer.
+These `bad_override` and `reserved_field` refusals have `retryable=False` and happen before any provider request or cache write.
 `model` is additionally held to the deployment's provider, and one that resolves elsewhere is refused with `model_not_allowed`.
 A bare model name selects a provider too, so the check is on the outcome — what the provider library would actually dispatch to — as well as on the spelling.
 A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.

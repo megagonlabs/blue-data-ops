@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import cast
 
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -26,7 +28,7 @@ def _strict_boolean(value: object) -> bool:
             return True
         if normalized == "false":
             return False
-    raise ValueError("semantic filter response must be true or false")
+    raise_reply_failure()
 
 
 class SemanticFilterOutcomeOperator(_OutcomeOperator, SemanticFilterOperator):
@@ -38,6 +40,9 @@ class SemanticFilterOutcomeOperator(_OutcomeOperator, SemanticFilterOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         filter_conditions = cast(dict[str, str], attributes.get("filter_conditions", {}))
         context = cast(str, attributes.get("context", ""))
         demonstrations = cast(str, attributes.get("demonstrations", ""))
@@ -50,6 +55,7 @@ class SemanticFilterOutcomeOperator(_OutcomeOperator, SemanticFilterOperator):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         client = resolve_llm_client(merged)
         results: DataBundle = []
         for data_group in input_data:

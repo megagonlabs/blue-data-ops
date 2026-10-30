@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-import traceback
+import logging
 import warnings
 from collections.abc import Callable
 from importlib import import_module
 from typing import Any, ClassVar, cast
 
-from blue_data_ops.llm import LLMClient, resolve_llm_client
+from blue_data_ops.llm import LLMClient, prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -20,6 +22,8 @@ from blue_data_ops.operators.types import (
     Record,
     ValidationResult,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 COST_PER_1K_TOKENS_USD = 0.04
 CHARS_PER_TOKEN = 4
@@ -233,14 +237,6 @@ def _get_cache_key(
     return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
 
-def _as_match(value: Any) -> bool:
-    if isinstance(value, str):
-        return value.lower().strip() in ["true", "yes", "1", "match", "join"]
-    if not isinstance(value, bool):
-        return bool(value)
-    return value
-
-
 class _JoinResponseFormatError(ValueError):
     pass
 
@@ -308,49 +304,21 @@ def _evaluate_join_predicate_batch(
     client: LLMClient,
     properties: dict[str, Any],
 ) -> dict[tuple[int, int], bool]:
-    if not pairs:
-        return {}
-    result = _request_join_predicate_batch(
-        pairs,
-        join_predicate,
-        left_fields,
-        right_fields,
-        context,
-        demonstrations,
-        client,
-        properties,
-    )
-    if isinstance(result, str):
-        try:
-            clean_result = result.strip()
-            if clean_result.startswith("```json"):
-                clean_result = clean_result[7:]
-            if clean_result.startswith("```"):
-                clean_result = clean_result[3:]
-            if clean_result.endswith("```"):
-                clean_result = clean_result[:-3]
-            result = json.loads(clean_result.strip())
-        except Exception:
-            pass
-
-    results: dict[tuple[int, int], bool] = {}
-    if isinstance(result, dict):
-        result_dict = cast(dict[Any, Any], result)
-        for index, (_, _, left_index, right_index) in enumerate(pairs, 1):
-            pair_key = f"pair_{index}"
-            results[(left_index, right_index)] = (
-                _as_match(result_dict[pair_key]) if pair_key in result_dict else False
-            )
-    elif isinstance(result, list):
-        result_list = cast(list[Any], result)
-        for index, (_, _, left_index, right_index) in enumerate(pairs):
-            results[(left_index, right_index)] = (
-                _as_match(result_list[index]) if index < len(result_list) else False
-            )
-    else:
-        for _, _, left_index, right_index in pairs:
-            results[(left_index, right_index)] = False
-    return results
+    try:
+        return _evaluate_join_predicate_batch_strict(
+            pairs,
+            join_predicate,
+            left_fields,
+            right_fields,
+            context,
+            demonstrations,
+            client,
+            properties,
+            legacy_aliases=True,
+        )
+    except _JoinResponseFormatError:
+        pass
+    raise_reply_failure()
 
 
 def _evaluate_join_predicate_batch_strict(  # pyright: ignore[reportUnusedFunction]
@@ -362,6 +330,8 @@ def _evaluate_join_predicate_batch_strict(  # pyright: ignore[reportUnusedFuncti
     demonstrations: str,
     client: LLMClient,
     properties: dict[str, Any],
+    *,
+    legacy_aliases: bool = False,
 ) -> dict[tuple[int, int], bool]:
     if not pairs:
         return {}
@@ -391,12 +361,24 @@ def _evaluate_join_predicate_batch_strict(  # pyright: ignore[reportUnusedFuncti
         raise _JoinResponseFormatError("join response must be an object")
     response = cast(dict[Any, Any], result)
     expected_keys = {f"pair_{index}" for index in range(1, len(pairs) + 1)}
-    if set(response) != expected_keys or any(
-        type(value) is not bool for value in response.values()
-    ):
+    if set(response) != expected_keys:
         raise _JoinResponseFormatError("join response has invalid pair results")
+    decisions: dict[str, bool] = {}
+    for key, value in response.items():
+        if type(value) is bool:
+            decisions[key] = value
+        elif legacy_aliases and isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "yes", "1", "match", "join"}:
+                decisions[key] = True
+            elif normalized in {"false", "no", "0", "exclude"}:
+                decisions[key] = False
+            else:
+                raise _JoinResponseFormatError("join response has invalid pair results")
+        else:
+            raise _JoinResponseFormatError("join response has invalid pair results")
     return {
-        (left_index, right_index): cast(bool, response[f"pair_{index}"])
+        (left_index, right_index): decisions[f"pair_{index}"]
         for index, (_, _, left_index, right_index) in enumerate(pairs, 1)
     }
 
@@ -780,6 +762,7 @@ def _perform_semantic_join_optimized(
     optimize = properties.get("optimize_thresholds", False)
     if optimize:
         use_embedding = True
+    evaluating_sample = False
     if use_embedding:
         try:
             embedding_model = _get_embedding_model(properties)
@@ -809,6 +792,7 @@ def _perform_semantic_join_optimized(
                         )
                         for index in sample_indices
                     ]
+                    evaluating_sample = True
                     sample_results = response_evaluator(
                         sample_pairs,
                         join_predicate,
@@ -819,6 +803,7 @@ def _perform_semantic_join_optimized(
                         client,
                         properties,
                     )
+                    evaluating_sample = False
                     labels: list[bool] = []
                     sample_scores: list[float] = []
                     for index in sample_indices:
@@ -833,13 +818,12 @@ def _perform_semantic_join_optimized(
                         properties.get("precision_target", 0.99),
                         properties.get("failure_probability", 0.05),
                     )
-                    print(f"Cascade Optimization Learned: t_neg={t_neg:.4f}, t_pos={t_pos:.4f}")
-                except Exception as error:
-                    if propagate_optimization_errors:
+                except Exception:
+                    if propagate_optimization_errors or evaluating_sample:
                         raise
-                    traceback.print_exc()
-                    print(
-                        f"Error in Cascade Optimization: {error}. Falling back to static threshold."
+                    warnings.warn(
+                        "Cascade optimization failed; using the static threshold.",
+                        UserWarning,
                     )
                     t_neg = embedding_threshold
                     t_pos = 1.0
@@ -851,14 +835,19 @@ def _perform_semantic_join_optimized(
                         auto_matches.append((row, column))
                     elif score > t_neg:
                         candidate_pairs.append((row, column))
-        except Exception as error:
-            if propagate_optimization_errors:
+        except Exception:
+            if propagate_optimization_errors or evaluating_sample:
                 raise
             warnings.warn(
-                f"Embedding/Optimization failed: {error}. Fallback to all pairs.",
+                "Embedding optimization failed; falling back to all pairs.",
                 UserWarning,
             )
-            candidate_pairs = []
+            auto_matches.clear()
+            candidate_pairs = [
+                (left_index, right_index)
+                for left_index in range(len(left_data))
+                for right_index in range(len(right_data))
+            ]
 
     if not candidate_pairs and not (optimize and auto_matches):
         if not use_embedding:
@@ -955,7 +944,16 @@ def _perform_semantic_join_optimized(
 
 
 class SemanticJoinOperator(Operator):
-    """Join two datasets under a natural-language predicate."""
+    """Join two datasets under a natural-language predicate.
+
+    Retained ``@1.0.0`` and ``@2.0.0`` require complete pair objects with booleans
+    or trimmed, case-insensitive strings: true/yes/1/match/join and false/no/0/exclude.
+    Malformed replies raise through ``apply()`` and ``invoke()``; ``run()``
+    contains failures in ``exec_meta.errors``. Valid negative and empty replies remain valid.
+    Embedding failures evaluate all Cartesian pairs: ceil(N*M/batch) calls.
+    A failure after optimization sampling can add the sample call to that fallback.
+    The estimate_cost/max_llm_calls check guards an estimate, not runtime call counts.
+    """
 
     name: ClassVar[str] = "semantic_join"
     description: ClassVar[str] = (
@@ -1043,7 +1041,7 @@ class SemanticJoinOperator(Operator):
         ),
         "estimate_cost": AttributeSpec(
             type="bool",
-            description="Show cost estimate and warnings before execution",
+            description="Log a cost estimate at INFO level before execution",
             default=True,
         ),
         "optimize_thresholds": AttributeSpec(
@@ -1076,7 +1074,7 @@ class SemanticJoinOperator(Operator):
     BATCH_JOIN_PROMPT: ClassVar[str] = _BATCH_JOIN_PROMPT
     DEFAULT_PROPERTIES: ClassVar[dict[str, Any]] = {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0,
@@ -1088,8 +1086,11 @@ class SemanticJoinOperator(Operator):
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "bool",
@@ -1109,6 +1110,9 @@ class SemanticJoinOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         join_predicate = cast(str, attributes.get("join_predicate", ""))
         join_type = cast(str, attributes.get("join_type", "inner"))
         left_fields = cast(list[str], attributes.get("left_fields", []))
@@ -1147,12 +1151,12 @@ class SemanticJoinOperator(Operator):
                     f"{cost_estimate['total_pairs']:,} pairs. Estimated cost: "
                     f"~${cost_estimate['max_cost_usd']:.2f}"
                 )
-            print(
-                f"Semantic join: {cost_estimate['total_pairs']:,} pairs → "
-                f"{cost_estimate['max_llm_calls']:,} LLM calls "
-                f"(~${cost_estimate['max_cost_usd']:.2f})"
+            _LOGGER.info(
+                "Semantic join estimate: %s pairs; LLM calls: up to %s; cost: ~$%.2f",
+                f"{cost_estimate['total_pairs']:,}",
+                f"{cost_estimate['max_llm_calls']:,}",
+                cost_estimate["max_cost_usd"],
             )
-
         if not join_suffix:
             join_suffix = (
                 ["_left", "_right"]
@@ -1163,6 +1167,7 @@ class SemanticJoinOperator(Operator):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         merged.update(
             {
                 "use_embedding_filter": use_embedding_filter,

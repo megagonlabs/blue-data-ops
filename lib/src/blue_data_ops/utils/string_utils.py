@@ -1,7 +1,7 @@
-"""Blue-compatible string substitution.
+"""Dollar-placeholder substitution.
 
-``safe_substitute`` is the recursive ``string.Template`` + Jinja substitution that
-is re-exported from ``blue_data_ops.llm.templating``.
+``safe_substitute`` applies one dollar-placeholder pass and preserves inserted
+data and line endings. Unknown names and Jinja syntax remain literal.
 
 The remaining ``blue.utils.string_utils`` helpers (``camel_case``,
 ``remove_non_alphanumeric``, the web-safe base64 pair) are intentionally omitted:

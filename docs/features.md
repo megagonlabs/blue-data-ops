@@ -338,7 +338,7 @@ from blue_data_ops.plan import OpenAIPlanGenerator, PipelinePlanner
 
 registry = active_registry()
 generator = OpenAIPlanGenerator(
-    "gpt-4o",
+    "gpt-6-luna",
     registry=registry,
     allowed_operator_ids=["select@2.0.0", "avg@3.0.0"],
 )
@@ -368,7 +368,7 @@ Disclosure to a provider is opt-in: without `send_data_context=True`, a snapshot
 ## LLM-backed operators
 
 Eight operators send requests through LiteLLM: `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators.
-Configure the model through call properties; the default is `openai.model: gpt-4o`.
+Configure the model through call properties; the default is `openai.model: gpt-6-luna`.
 A missing credential or a missing extra is contained, not raised.
 
 ```python
@@ -385,7 +385,7 @@ print(output_data if not meta.errors else meta.errors[0].code.value)
 
 With `OPENAI_API_KEY` set and the `llm` extra installed, that prints the generated records.
 Without either, it prints `EXECUTION_FAILED` and `output_data` is `[[]]`.
-`nl2sql` can execute the SQL it generates when `execute_query` is set, and its prefix check is a guard rather than a parser or a sandbox: permissions and query safety stay with the caller.
+`nl2sql` generates SQL by default. Execution requires an explicitly host-bound read-only executor and `execute_query=True`; stock CLI/MCP operators cannot acquire one from request properties. See [SQL execution](llm-settings.md#sql-execution) for configuration and limits.
 
 ## ML operators
 
@@ -469,7 +469,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`create_server()` returns a configured server you can embed; the installed `blue-data-ops-mcp` command starts streamable HTTP on `127.0.0.1:8000/mcp`.
+`create_server()` returns a configured server you can embed; the installed `blue-data-ops-mcp` command starts streamable HTTP on `127.0.0.1:8010/mcp`.
 See [mcp.md](mcp.md) for the full tool shape and the client configuration.
 
 ## Command line
@@ -477,7 +477,7 @@ See [mcp.md](mcp.md) for the full tool shape and the client configuration.
 `blue-data-ops-cli` installs `blue-ops`, which reaches the same operators from a shell: 24 commands over `profile`, `catalog`, `operator`, `pipeline` and `metadata`, with `operator resource` under `operator`.
 
 ```bash
-blue-ops operator run select@2.0.0 --input-file orders.json \
+blue-ops operator run select@2.0.0 --input-file examples/cli/orders.json \
   --attribute operand_key=total --attribute 'operand=>' --attribute operand_val=100
 ```
 
@@ -488,4 +488,7 @@ See [cli.md](cli.md) for the command tree, the configuration parameters, and the
 ## Interfaces
 
 The repository provides the Python library, MCP adapter, and `blue-ops` command.
-It provides no REST API; [api.md](api.md) describes that boundary.
+
+HTTP requires the shared API key by default on both streamable HTTP and SSE.
+See the [HTTP bind, authentication and mounted lifespan contract](mcp.md#http-authentication-and-bind-settings)
+for environment overrides, the explicit no-key opt-out and the SDK Host/Origin limits.

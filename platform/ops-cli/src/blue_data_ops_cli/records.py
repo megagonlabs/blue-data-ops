@@ -204,7 +204,7 @@ def confirm(question: str, skip: bool, remedy: str) -> bool:
     if skip:
         return True
     try:
-        return click.confirm(question)
+        return click.confirm(question, err=True)
     except click.Abort:
         raise config.CliError(
             config.USAGE, f"there is nothing to read an answer from. {remedy}"

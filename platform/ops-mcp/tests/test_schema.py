@@ -228,6 +228,75 @@ async def test_published_enums_are_the_sets_core_validation_closes() -> None:
     assert len({operator for operator, _ in published_enums}) == 10
 
 
+async def test_vector_tools_explain_missing_embedding_defaults_and_order_shared_fields() -> None:
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    shared = ("on_missing_embedding", "on_missing_fields", "add_meta_data")
+    for tool_name_value, default in (
+        ("ops_vector_search", "embed_missing"),
+        ("ops_vector_similarity", "raise"),
+    ):
+        attributes = tools[tool_name_value].inputSchema["properties"]["attributes"]["properties"]
+        assert tuple(name for name in attributes if name in shared) == shared
+        missing = attributes["on_missing_embedding"]
+        assert missing["default"] == default
+        assert f"{default} (default" in missing["description"]
+    search = tools["ops_vector_search"].inputSchema["properties"]["attributes"]["properties"]
+    similarity = tools["ops_vector_similarity"].inputSchema["properties"]["attributes"][
+        "properties"
+    ]
+    assert "search_fields" in search["on_missing_embedding"]["description"]
+    assert "fields" in similarity["on_missing_embedding"]["description"]
+
+
+async def test_compatibility_values_remain_open_in_the_published_schema() -> None:
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    for tool_name_value, attribute_name in (
+        ("ops_select", "operand"),
+        ("ops_semantic_transform", "strategy"),
+    ):
+        attribute = tools[tool_name_value].inputSchema["properties"]["attributes"]["properties"][
+            attribute_name
+        ]
+        assert "enum" not in attribute
+
+
+async def test_v2_vector_search_applies_advertised_attribute_controls() -> None:
+    server = create_server(operator_ids=("vector_search@2.0.0",))
+    tools = await server.list_tools()
+    attributes_schema = tools[0].inputSchema["properties"]["attributes"]["properties"]
+    assert {"top_k", "min_score", "normalize"} <= set(attributes_schema)
+    records = [
+        [
+            {"id": "a", "embedding": [1.0, 0.0], "embed.model": "model-2d"},
+            {"id": "b", "embedding": [0.0, 1.0], "embed.model": "model-2d"},
+        ]
+    ]
+    attributes = {
+        "query": {"embedding": [1.0, 0.0], "model": "model-2d"},
+        "top_k": 1,
+        "min_score": 0.5,
+        "normalize": True,
+    }
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "ops_vector_search", {"input_data": records, "attributes": attributes}
+        )
+        override = await client.call_tool(
+            "ops_vector_search",
+            {
+                "input_data": records,
+                "attributes": attributes,
+                "properties": {"top_k": 2, "min_score": -1.0},
+            },
+        )
+    assert result.isError is False
+    assert result.structuredContent is not None
+    assert [item["id"] for item in result.structuredContent["output_data"][0]] == ["a"]
+    assert override.isError is False
+    assert override.structuredContent is not None
+    assert [item["id"] for item in override.structuredContent["output_data"][0]] == ["a", "b"]
+
+
 def test_every_published_enum_is_rejected_outside_and_accepted_inside() -> None:
     operators = {binding.card.name: binding.operator for binding in freeze_deployment()}
     embeddings = [{"embedding": [0.1, 0.2]}]

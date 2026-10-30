@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import warnings
 from typing import Any, ClassVar, cast
 
-from blue_data_ops.llm import LLMClient, resolve_llm_client
+from blue_data_ops.llm import LLMClient, prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -75,7 +78,7 @@ ${input_data}
    - If a field is marked as "required: True", it MUST be present in the output with an appropriate value
    - If a field is marked as "required: False", it can be omitted if you cannot reasonably infer its value from the input data
    - If no "required" information is provided, only include fields that you confidently infer or derive from the available input data
-5. **Required Field Generation**: If a required field cannot be created from available data, use a null value (None) that satisfies the field type.ck
+5. **Required Field Generation**: If a required field cannot be created from available data, use a null value (None).
 
 6. **Conservative Approach**: When in doubt about whether to include a field, err on the side of omitting it rather than generating speculative values
 7. **Do NOT generate fake or speculative values** for fields that cannot be reasonably inferred from the input data
@@ -324,7 +327,7 @@ def _force_strategy(
         "distinct_required_values_with_merged_fields",
     ]
     if specified_strategy not in valid_strategies:
-        print(f"Warning: Invalid strategy '{specified_strategy}', falling back to 'per_record'")
+        warnings.warn("Unknown strategy; using per_record.", UserWarning)
         specified_strategy = "per_record"
     if not complex_fields:
         return {
@@ -409,7 +412,6 @@ def _execute_per_record(
     properties: dict[str, Any],
 ) -> list[Record]:
     results: list[Record] = []
-    print(f"Executing per_record strategy with {len(data_group)} records")
     for record in data_group:
         transformed_record = _execute_simple_rename([record], enhanced_output_desc, simple_fields)[
             0
@@ -434,7 +436,6 @@ def _execute_per_record(
             if field_name not in simple_fields and field_name not in complex_fields:
                 transformed_record[field_name] = None
         results.append(transformed_record)
-    print(f"Per_record strategy completed: {len(data_group)} LLM calls")
     return results
 
 
@@ -446,7 +447,6 @@ def _execute_distinct_required_values(
     client: LLMClient,
     properties: dict[str, Any],
 ) -> list[Record]:
-    print(f"Executing distinct_required_values strategy with {len(complex_fields)} complex fields")
     simple_results = _execute_simple_rename(data_group, enhanced_output_desc, simple_fields)
     if not complex_fields:
         return simple_results
@@ -498,17 +498,6 @@ def _execute_distinct_required_values(
                 transformed_record[field_name] = None
         results.append(transformed_record)
 
-    total_calls = sum(
-        len(
-            {
-                tuple(record.get(field, "") for field in field_dependencies[field_name])
-                for record in data_group
-            }
-        )
-        for field_name in complex_fields
-        if field_dependencies[field_name]
-    )
-    print(f"Distinct_required_values strategy completed: {total_calls} LLM calls")
     return results
 
 
@@ -521,14 +510,9 @@ def _execute_distinct_required_values_with_merged_fields(
     client: LLMClient,
     properties: dict[str, Any],
 ) -> list[Record]:
-    print(
-        f"Executing merged distinct optimization strategy with {len(complex_fields)} complex fields"
-    )
     simple_results = _execute_simple_rename(data_group, enhanced_output_desc, simple_fields)
     field_dependencies = cast(dict[str, set[str]], strategy_info.get("field_dependencies", {}))
     field_groups = _get_merged_field_groups(field_dependencies)
-    print(f"Field dependencies: {field_dependencies}")
-    print(f"Merged field groups: {field_groups}")
 
     complex_results: list[Record] = []
     for group in field_groups:
@@ -605,21 +589,86 @@ def _execute_distinct_required_values_with_merged_fields(
                 result[field_name] = None
         results.append(result)
 
-    total_calls = sum(
-        len(
-            {
-                tuple(record.get(field, "") for field in cast(list[str], group["source_fields"]))
-                for record in data_group
-            }
-        )
-        for group in field_groups
-    )
-    print(f"Merged distinct optimization strategy completed: {total_calls} LLM calls")
     return results
 
 
+_TRANSFORMATION_TYPES = {
+    "field_mapping_without_value_change",
+    "field_mapping_with_value_change",
+}
+
+
+def _response_object(value: object) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            value = None
+        if value is None:
+            raise_reply_failure()
+    if not isinstance(value, dict):
+        raise_reply_failure()
+    return cast(dict[str, Any], value)
+
+
+class _StrictTransformClient(LLMClient):
+    def __init__(
+        self,
+        delegate: LLMClient,
+        output_desc: dict[str, dict[str, Any]],
+    ) -> None:
+        self._delegate = delegate
+        self._output_desc = output_desc
+
+    def execute_api_call(
+        self,
+        input: Any,
+        properties: dict[str, Any] | None = None,
+        additional_data: dict[str, Any] | None = None,
+    ) -> Any:
+        result = self._delegate.execute_api_call(
+            input,
+            properties=properties,
+            additional_data=additional_data,
+        )
+        response = _response_object(result)
+        if properties and properties.get("input_template") == _PLAN_RESOLUTION_PROMPT:
+            missing = set(self._output_desc).difference(response)
+            if missing:
+                raise_reply_failure()
+            for plan_value in response.values():
+                if not isinstance(plan_value, dict):
+                    raise_reply_failure()
+                plan = cast(dict[str, Any], plan_value)
+                source_fields = plan.get("source_fields")
+                if not isinstance(source_fields, list) or any(
+                    not isinstance(field, str) for field in cast(list[Any], source_fields)
+                ):
+                    raise_reply_failure()
+                if plan.get("transformation_type") not in _TRANSFORMATION_TYPES:
+                    raise_reply_failure()
+            return response
+
+        requirements = (
+            "" if additional_data is None else str(additional_data.get("output_requirements", ""))
+        )
+        required_here = {
+            name
+            for name, field in self._output_desc.items()
+            if field.get("required") is True and f"- {name}:" in requirements
+        }
+        if not required_here.issubset(response):
+            raise_reply_failure()
+        return response
+
+
 class SemanticTransformOperator(Operator):
-    """Transform records into described output fields through an LLM plan."""
+    """Transform records into described output fields through an LLM plan.
+
+    Retained ``@1.0.0`` and ``@2.0.0`` use strict response validation.
+    Malformed replies raise through ``apply()`` and ``invoke()``; ``run()``
+    contains failures in ``exec_meta.errors``. Valid negative and empty replies remain valid.
+    """
 
     name: ClassVar[str] = "semantic_transform"
     description: ClassVar[str] = (
@@ -652,7 +701,7 @@ class SemanticTransformOperator(Operator):
     TRANSFORM_PROMPT: ClassVar[str] = _TRANSFORM_PROMPT
     DEFAULT_PROPERTIES: ClassVar[dict[str, Any]] = {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0.0,
@@ -664,8 +713,11 @@ class SemanticTransformOperator(Operator):
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",
@@ -685,13 +737,17 @@ class SemanticTransformOperator(Operator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         input_meta = cast(dict[str, dict[str, Any]], attributes.get("input_meta", {}))
         output_desc = cast(dict[str, dict[str, Any]], attributes.get("output_desc", {}))
         if not input_data or not input_data[0] or not output_desc:
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
-        client = resolve_llm_client(merged)
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
+        client = _StrictTransformClient(resolve_llm_client(merged), output_desc)
         results: DataBundle = []
         for data_group in input_data:
             if not data_group:
@@ -700,20 +756,15 @@ class SemanticTransformOperator(Operator):
             enhanced_output_desc = _generate_transformation_plan(
                 data_group, input_meta, output_desc, client, merged
             )
-            print(f"Enhanced output desc: {enhanced_output_desc}")
             specified_strategy = cast(str, attributes.get("strategy", "auto"))
             strategy_info = (
                 _select_execution_strategy(enhanced_output_desc, data_group)
                 if specified_strategy == "auto"
                 else _force_strategy(enhanced_output_desc, specified_strategy)
             )
-            print(f"Strategy info: {strategy_info}")
             strategy = cast(str, strategy_info["strategy"])
             simple_fields = cast(list[str], strategy_info["simple_fields"])
             complex_fields = cast(list[str], strategy_info["complex_fields"])
-            print(f"Selected strategy: {strategy}")
-            print(f"Simple fields: {simple_fields}")
-            print(f"Complex fields: {complex_fields}")
             if strategy == "simple_rename":
                 result = _execute_simple_rename(data_group, enhanced_output_desc, simple_fields)
             elif strategy == "per_record":

@@ -452,7 +452,8 @@ def test_invalid_injected_value_keeps_its_template_namespace(
     _, _, meta = operator.run(INPUT, {"query": "list records"}, properties)
 
     assert properties == before
-    assert litellm.calls[0]["messages"][0]["content"] == "caller marker"
+    assert litellm.calls == []
+    assert meta.errors[0].code.value == "EXECUTION_FAILED"
     _assert_no_cost(meta)
 
 
@@ -461,10 +462,14 @@ def test_instrumentation_preserves_rendered_provider_message(
     operator: Any, monkeypatch: pytest.MonkeyPatch, template: str | None
 ) -> None:
     _install_provider(monkeypatch, "[]")
-    properties = {} if template is None else {"input_template": template}
+    properties: dict[str, Any] = {}
     before = deepcopy(properties)
 
     raw = NL2LLMOperator()
+    if template is not None:
+        defaults = {**raw.DEFAULT_PROPERTIES, "input_template": template}
+        monkeypatch.setattr(raw, "DEFAULT_PROPERTIES", defaults)
+        monkeypatch.setattr(operator, "DEFAULT_PROPERTIES", defaults)
     raw.apply(INPUT, {"query": "same prompt"}, properties)
     operator.run(INPUT, {"query": "same prompt"}, properties)
 

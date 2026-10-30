@@ -4,7 +4,7 @@ import json
 import time
 from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +19,7 @@ from blue_data_ops import (
 )
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.llm import LLMClient
+from blue_data_ops.llm.errors import is_reply_failure
 from blue_data_ops.operators import (
     Attributes,
     DataBundle,
@@ -387,8 +388,11 @@ def test_nl2llm_cleanup_contract_remains_in_provider_properties() -> None:
     assert result[0] == [[{"ish": 1}]]
     assert client.calls[0][1] is not None
     assert client.calls[0][1]["output_transformations"] == [
-        {"transformation": "replace", "from": "```", "to": ""},
-        {"transformation": "replace", "from": "json", "to": ""},
+        {
+            "transformation": "sub",
+            "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+            "to": r"\1",
+        },
     ]
     assert client.calls[0][1]["output_cast"] == "json"
 
@@ -565,7 +569,10 @@ def test_nl2bn_invalid_initial_response_recovers_on_correction() -> None:
 
 
 def test_nl2bn_local_non_json_decode_error_propagates_raw_and_is_contained() -> None:
-    operator = NL2BNOperator()
+    class TextBN(NL2BNOperator):
+        DEFAULT_PROPERTIES = {**NL2BNOperator.DEFAULT_PROPERTIES, "output_cast": "str"}
+
+    operator = TextBN()
     seam = _seam()
     client = ScriptedClient(["deep", "deep"])
     original_loads = json.loads
@@ -583,12 +590,12 @@ def test_nl2bn_local_non_json_decode_error_propagates_raw_and_is_contained() -> 
             operator.apply(
                 INPUT,
                 BN_ATTRIBUTES,
-                _properties(client, seam, output_cast="str"),
+                _properties(client, seam),
             )
         _, _, meta = operator.run(
             INPUT,
             BN_ATTRIBUTES,
-            _properties(client, seam, output_cast="str"),
+            _properties(client, seam),
         )
     assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
     assert "parser-payload" not in str(meta.errors[0])
@@ -603,12 +610,15 @@ def test_nl2bn_correction_failure_and_exhaustion_keep_exact_calls() -> None:
     assert len(failing.calls) == 2
 
     exhausted = ScriptedClient([{"target_state": "yes"}, {"target_state": "yes"}])
-    with pytest.raises(ValueError, match="failed after 1 correction attempts"):
+    with pytest.raises(
+        ValueError, match="model reply did not match the operator's output format"
+    ) as failure:
         operator.apply(
             INPUT,
             {**BN_ATTRIBUTES, "max_corrections": 1},
             _properties(exhausted, seam),
         )
+    assert is_reply_failure(failure.value)
     assert len(exhausted.calls) == 2
 
 
@@ -687,7 +697,7 @@ def test_nl2sql_absent_source_is_invalid_but_explicit_empty_reaches_body() -> No
         {**SQL_ATTRIBUTES, "source": ""},
         _properties(client, seam),
     )
-    assert output == [[{"probability": 0.75, "role": "manager"}]]
+    assert output == [[{"sql": SQL_RESPONSE["query"]}]]
     assert explicit_meta.errors == []
     assert seam.calls_to("get_data_source_schema")[0]["source"] == ""
 
@@ -710,11 +720,11 @@ def test_nl2sql_execute_path_matches_raw_with_exact_calls() -> None:
         INPUT, SQL_ATTRIBUTES, properties
     )
     raw = operator.apply(INPUT, SQL_ATTRIBUTES, properties)
-    expected: DataBundle = [[{"probability": 0.75, "role": "manager"}]]
+    expected: DataBundle = [[{"sql": SQL_RESPONSE["query"]}]]
     assert native == FunctionResult(expected, {})
     assert raw == expected
     assert len(seam.calls_to("get_data_source_schema")) == 2
-    assert len(seam.calls_to("execute_query")) == 2
+    assert seam.calls_to("execute_query") == []
     assert len(client.calls) == 2
     assert client.calls[0][2] is not None
     assert client.calls[0][2]["question"] == SQL_ATTRIBUTES["question"]
@@ -770,6 +780,19 @@ def test_nl2sql_provider_and_parser_failures_are_contained(response: Any) -> Non
     assert seam.calls_to("execute_query") == []
 
 
+class FormatterSQL(NL2SQLOperator):
+    """Exercise normalization with synthetic adapter results."""
+
+    result: Any = None
+
+    def _execute(
+        self, input_data: DataBundle, attributes: Attributes, properties: Properties | None = None
+    ) -> FunctionResult:
+        from blue_data_ops.operators._query_results import format_execution_result
+
+        return FunctionResult(cast(DataBundle, format_execution_result(self.result)), {})
+
+
 @pytest.mark.parametrize(  # pyright: ignore[reportUnknownArgumentType]
     ("query_result", "expected", "is_empty"),
     [  # pyright: ignore[reportUnknownArgumentType]
@@ -788,7 +811,8 @@ def test_nl2sql_formatter_success_shapes(
 ) -> None:
     seam = _seam()
     seam.query_result = query_result
-    output, _, meta = NL2SQLOperator().run(
+    FormatterSQL.result = query_result
+    output, _, meta = FormatterSQL().run(
         INPUT,
         SQL_ATTRIBUTES,
         _properties(ScriptedClient([SQL_RESPONSE]), seam),
@@ -799,9 +823,10 @@ def test_nl2sql_formatter_success_shapes(
 
 
 def test_nl2sql_formatter_none_is_raw_none_but_canonical_invalid_result() -> None:
-    operator = NL2SQLOperator()
+    operator = FormatterSQL()
     seam = _seam()
     seam.query_result = [["not-a-record"]]
+    FormatterSQL.result = seam.query_result
     assert (
         operator.apply(
             INPUT,
@@ -842,13 +867,13 @@ def test_nl2sql_protocol_check_occurs_after_schema_lookup() -> None:
 
 def test_nl2sql_registry_exception_propagates_raw_and_is_contained() -> None:
     class FailingSeam(RecordingSeam):
-        def execute_query(self, *args: Any, **kwargs: Any) -> Any:
+        def get_data_source_schema(self, *args: Any, **kwargs: Any) -> Any:
             del args, kwargs
-            raise RuntimeError("opaque-query-detail")
+            raise RuntimeError("opaque-schema-detail")
 
     operator = NL2SQLOperator()
     seam = FailingSeam()
-    with pytest.raises(RuntimeError, match="opaque-query-detail"):
+    with pytest.raises(RuntimeError, match="opaque-schema-detail"):
         operator.apply(
             INPUT,
             SQL_ATTRIBUTES,
@@ -860,7 +885,7 @@ def test_nl2sql_registry_exception_propagates_raw_and_is_contained() -> None:
         _properties(ScriptedClient([SQL_RESPONSE]), seam),
     )
     assert meta.errors[0].code is ErrorCode.EXECUTION_FAILED
-    assert "opaque-query-detail" not in str(meta.errors[0])
+    assert "opaque-schema-detail" not in str(meta.errors[0])
 
 
 def test_registry_default_contains_exactly_33_v1_cards() -> None:
@@ -871,3 +896,59 @@ def test_registry_default_contains_exactly_33_v1_cards() -> None:
     assert {card.operator_id for card in cards}.issuperset(
         {"nl2llm@1.0.0", "nl2bn@1.0.0", "nl2sql@1.0.0"}
     )
+
+
+@pytest.mark.parametrize("operator_kind", ["base", "outcome"])
+@pytest.mark.parametrize("scenario", ["success", "correction", "failure"])
+@pytest.mark.parametrize("log_level", ["INFO", "DEBUG"])
+def test_bn_logs_keep_caller_values_private(
+    operator_kind: str,
+    scenario: str,
+    log_level: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from blue_data_ops.operators import versioned_registry
+
+    canary = "synthetic-observation-canary-90317"
+    query = {**BN_RESPONSE, "context": {"rain": canary}}
+    invalid = {**query, "target_node": canary}
+    seam = _seam()
+    seam.schema_result = {
+        "graph_structure": {
+            **GRAPH,
+            "nodes": {**GRAPH["nodes"], "rain": {"states": [canary, "no"]}},
+        }
+    }
+    seam.query_result = [{"probability": 0.75, "explanation": canary}]
+    responses = [query] if scenario == "success" else [invalid, query]
+    if scenario == "failure":
+        responses = [invalid]
+    client = ScriptedClient(responses)
+    operator = (
+        NL2BNOperator() if operator_kind == "base" else versioned_registry().resolve("nl2bn@3.0.0")
+    )
+    with caplog.at_level(log_level):
+        output, _, meta = operator.run(
+            INPUT,
+            {
+                **BN_ATTRIBUTES,
+                "question": f"Probability given {canary}?",
+                "max_corrections": 0 if scenario == "failure" else 1,
+            },
+            _properties(client, seam),
+        )
+    assert canary in str(client.calls)
+    assert canary not in caplog.text
+    if scenario == "failure":
+        assert meta.errors
+        assert seam.calls_to("execute_query") == []
+        assert "BN query validation failed" in caplog.text
+    else:
+        assert meta.errors == []
+        assert output[0][0]["query"] == query
+        [executed] = seam.calls_to("execute_query")
+        assert json.loads(executed["query"]) == query
+        assert "Generated BN query" in caplog.text
+        assert len(client.calls) == (2 if scenario == "correction" else 1)
+        if scenario == "correction":
+            assert "Query validation found errors (attempt 1)" in caplog.text

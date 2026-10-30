@@ -143,9 +143,9 @@ def test_llm_settings_example_shows_each_precedence_layer() -> None:
     name = "feature-demos/llm_settings.py"
     result = _run_example(name)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == (
-        EXAMPLES / "feature-demos/llm_settings.output.txt"
-    ).read_text(encoding="utf-8")
+    assert result.stdout == (EXAMPLES / "feature-demos/llm_settings.output.txt").read_text(
+        encoding="utf-8"
+    )
 
 
 @pytest.mark.parametrize("name", OPTIONAL_EXAMPLES)
@@ -245,7 +245,7 @@ def test_openai_planner_example_discovers_plans_and_executes(
     assert result.tag_operator_ids == ("nl2bn@3.0.0", "nl2llm@3.0.0", "nl2sql@3.0.0")
     assert set(result.embedding_operator_ids) == set(active_ids)
     assert [step.operator_id for step in run.planning.selected.steps] == ["nl2sql@3.0.0"]
-    assert run.execution.output_data == [[{"order_count": 10}]]
+    assert run.execution.output_data == [[{"sql": "SELECT COUNT(*) AS order_count FROM orders"}]]
     assert run.execution.succeeded
     assert result.embedding_provider_calls == 2
     assert [len(request["input"]) for request in client.embeddings.requests] == [33, 1]
@@ -297,8 +297,13 @@ def test_ordinary_examples_use_the_active_registry_and_exact_active_ids() -> Non
             continue
         source = (EXAMPLES / name).read_text(encoding="utf-8")
         named = _source_operator_ids(EXAMPLES / name, cards, class_ids)
-        assert "active_registry" in source, name
-        assert named <= active_ids, name
+        if name == "feature-demos/nl2sql_sqlite.py":
+            assert "ReadOnlySQLExecutor" in source and "OperatorRegistry" in source, name
+            expected = {"nl2sql@3.0.0"}
+            assert named == expected, name
+        else:
+            assert "active_registry" in source, name
+            assert named <= active_ids, name
 
 
 def test_the_skill_ineligibility_sentinel_is_a_used_source_constant() -> None:

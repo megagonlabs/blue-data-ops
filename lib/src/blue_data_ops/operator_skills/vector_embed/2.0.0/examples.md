@@ -23,7 +23,10 @@ assert output_attributes == {}
 assert meta.errors == []
 ```
 
-The nonempty path needs `blue-data-ops[vector]`. It downloads the named model over the network, and a restricted model host may require credentials.
+To embed nonempty input, install `blue-data-ops[vector]`. The default
+`all-MiniLM-L6-v2` model may need to download files from its model host.
+
+Running this example may send requests over the network. A remote service may require credentials. The test suite does not run this example.
 
 ```python live
 from blue_data_ops.operators import versioned_registry

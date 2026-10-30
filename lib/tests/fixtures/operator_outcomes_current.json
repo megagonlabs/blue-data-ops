@@ -1,0 +1,3911 @@
+{
+  "operator_count": 36,
+  "registry": "versioned_registry",
+  "registry_names_sha256": "916c01674613533fe3dac09fb0e4fa924b1f09ce2ff99634a0285acb976c5b9e",
+  "rows": [
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "argmax_key": "value"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "argmax_key": "value"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "suggestion_substr": "argmax_key"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply on empty is [[]], identical to run"
+        },
+        "success": {
+          "attributes": {
+            "argmax_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-aggregate",
+      "is_refinable": false,
+      "name": "argmax",
+      "operator_id": "argmax@2.0.0",
+      "source_file": "src/blue_data_ops/operators/argmax_operator.py",
+      "source_sha256": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "argmin_key": "value"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "argmin_key": "value"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "suggestion_substr": "argmin_key"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply on empty is [[]], identical to run"
+        },
+        "success": {
+          "attributes": {
+            "argmin_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "value": 3
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-aggregate",
+      "is_refinable": false,
+      "name": "argmin",
+      "operator_id": "argmin@2.0.0",
+      "source_file": "src/blue_data_ops/operators/argmin_operator.py",
+      "source_sha256": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "avg_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "avg": 0
+              }
+            ]
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": false,
+          "semantic_note": "empty input yields a neutral zero row, not empty"
+        },
+        "failure": {
+          "attributes": {
+            "avg_key": "value"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "suggestion_substr": "avg_key"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "avg": 0
+              }
+            ]
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply on empty is the neutral zero row, identical to run"
+        },
+        "success": {
+          "attributes": {
+            "avg_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "avg": 4.333333333333333
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-aggregate",
+      "is_refinable": false,
+      "name": "avg",
+      "operator_id": "avg@2.0.0",
+      "source_file": "src/blue_data_ops/operators/avg_operator.py",
+      "source_sha256": "2ffc1e520e7ce1d65c9c030bdfbf6921f37bfcd97f3d8a66689437b66477c82d"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "label_key": "label",
+            "random_state": 42,
+            "vector_key": "vector"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "empty first group leaves no training data; output normalizes empty"
+        },
+        "failure": {
+          "attributes": {
+            "label_key": "label",
+            "random_state": 42,
+            "vector_key": "vector"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "label": "a",
+                "vector": [
+                  0.0
+                ]
+              },
+              {
+                "label": "b",
+                "vector": [
+                  1.0,
+                  2.0
+                ]
+              }
+            ]
+          ],
+          "note": "ragged training vectors make the real sklearn body raise; run contains",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "vector_key": "vector"
+          },
+          "input": [
+            [
+              {
+                "label": "a",
+                "vector": [
+                  0.0
+                ]
+              }
+            ]
+          ],
+          "suggestion_substr": "label_key"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "label": "a",
+                "vector": [
+                  0.0
+                ]
+              },
+              {
+                "label": "b",
+                "vector": [
+                  1.0,
+                  2.0
+                ]
+              }
+            ]
+          ],
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply returns a v1 fallback bundle where run reports EXECUTION_FAILED"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "label_key": "label",
+            "random_state": 42,
+            "vector_key": "vector"
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "label": "a",
+                "vector": [
+                  0.0,
+                  0.0
+                ]
+              },
+              {
+                "label": "a",
+                "vector": [
+                  0.0,
+                  1.0
+                ]
+              },
+              {
+                "label": "b",
+                "vector": [
+                  10.0,
+                  10.0
+                ]
+              },
+              {
+                "label": "b",
+                "vector": [
+                  10.0,
+                  11.0
+                ]
+              }
+            ],
+            [
+              {
+                "vector": [
+                  0.0,
+                  0.0
+                ]
+              },
+              {
+                "vector": [
+                  10.0,
+                  10.0
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "family": "heavy-ml",
+      "is_refinable": false,
+      "name": "classify",
+      "operator_id": "classify@2.0.0",
+      "source_file": "src/blue_data_ops/operators/classify_operator.py",
+      "source_sha256": "f4550001f0cef86bb5a7b27dc2dd30c73830b458d6a4ce6bb30649314b6d0b49"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "n_cluster": 2,
+            "vector_key": "vector"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "no vectors to cluster; output normalizes empty"
+        },
+        "failure": {
+          "attributes": {
+            "n_cluster": 2,
+            "vector_key": "vector"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "vector": [
+                  0.0
+                ]
+              },
+              {
+                "vector": [
+                  1.0,
+                  2.0
+                ]
+              }
+            ]
+          ],
+          "note": "ragged vectors make the real sklearn body raise; run contains",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "vector_key": "vector"
+          },
+          "input": [
+            [
+              {
+                "vector": [
+                  0.0,
+                  0.0
+                ]
+              }
+            ]
+          ],
+          "suggestion_substr": "clustering"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply raises on ragged vectors where run contains the failure"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "n_cluster": 2,
+            "vector_key": "vector"
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "vector": [
+                  0.0,
+                  0.0
+                ]
+              },
+              {
+                "vector": [
+                  0.0,
+                  1.0
+                ]
+              },
+              {
+                "vector": [
+                  10.0,
+                  10.0
+                ]
+              },
+              {
+                "vector": [
+                  10.0,
+                  11.0
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "family": "heavy-ml",
+      "is_refinable": false,
+      "name": "cluster",
+      "operator_id": "cluster@2.0.0",
+      "source_file": "src/blue_data_ops/operators/cluster_operator.py",
+      "source_sha256": "2ac4fdbbf672da3cdc0b50bce4f3ad712a877609dd5f493ba2a02d43a650babf"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "database": "db",
+            "source": "src"
+          },
+          "config": {},
+          "expected_output": [
+            []
+          ],
+          "expected_seam_calls": {
+            "create_source_database": 1
+          },
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "seam",
+          "semantic_note": "empty output does not mean the durable side effect was skipped"
+        },
+        "failure": {
+          "attributes": {
+            "database": "db",
+            "source": "src"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {},
+          "input": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "note": "no data_registry seam makes the real body fail",
+          "profile": "seam_missing",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "database": "db"
+          },
+          "config": {},
+          "input": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "profile": "seam",
+          "suggestion_substr": "source"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply passes input through without a seam where run reports EXECUTION_FAILED"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "database": "db",
+            "source": "src"
+          },
+          "config": {},
+          "expected_output": null,
+          "expected_seam_calls": {
+            "create_source_database": 1
+          },
+          "input": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "note": "data groups pass through after the durable registry side effect",
+          "profile": "seam"
+        }
+      },
+      "family": "blue-data",
+      "is_refinable": false,
+      "name": "create_database",
+      "operator_id": "create_database@2.0.0",
+      "source_file": "src/blue_data_ops/operators/create_database_operator.py",
+      "source_sha256": "5ceaf84cff3d46f1f41d2642e110a0533484f32fa2501912d3db78a431ef8c90"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "a",
+                "type": "INTEGER"
+              }
+            ],
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "config": {},
+          "expected_output": [
+            []
+          ],
+          "expected_seam_calls": {
+            "create_source_database_collection_entity": 1
+          },
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "seam"
+        },
+        "failure": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "a",
+                "type": "INTEGER"
+              }
+            ],
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {},
+          "input": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "profile": "seam_missing",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "columns": [],
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "config": {},
+          "input": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "profile": "seam",
+          "suggestion_substr": "columns"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply passes input through without a seam where run reports EXECUTION_FAILED"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "columns": [
+              {
+                "name": "a",
+                "type": "INTEGER"
+              }
+            ],
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "config": {},
+          "expected_output": null,
+          "expected_seam_calls": {
+            "create_source_database_collection_entity": 1
+          },
+          "input": [
+            [
+              {
+                "name": "row",
+                "value": 1
+              }
+            ]
+          ],
+          "profile": "seam"
+        }
+      },
+      "family": "blue-data",
+      "is_refinable": false,
+      "name": "create_table",
+      "operator_id": "create_table@2.0.0",
+      "source_file": "src/blue_data_ops/operators/create_table_operator.py",
+      "source_sha256": "4df34a0a7d6415b0cced1187c69c11714dffa556aa34188e2153b4973701d298"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "approximate": false,
+            "search_query": "orders"
+          },
+          "config": {},
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "a genuine no-result search, distinct from a failure",
+          "profile": "seam"
+        },
+        "failure": {
+          "attributes": {
+            "approximate": false,
+            "search_query": "orders"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {},
+          "input": [
+            []
+          ],
+          "note": "the registry search raising is distinct from a genuine no-result",
+          "profile": "seam_raises",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "approximate": false,
+            "search_query": " "
+          },
+          "config": {},
+          "input": [
+            []
+          ],
+          "profile": "seam",
+          "suggestion_substr": "search query"
+        },
+        "raw_v1": {
+          "attributes": {
+            "approximate": false,
+            "search_query": "orders"
+          },
+          "expected": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "method": "apply",
+          "note": "raw apply returns [[]] without a seam where run reports EXECUTION_FAILED",
+          "profile": "seam_missing"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "approximate": false,
+            "search_query": "orders"
+          },
+          "config": {
+            "search_pages": {
+              "0": [
+                {
+                  "id": "orders-id",
+                  "name": "orders",
+                  "scope": "/source/src",
+                  "score": 0.1
+                }
+              ]
+            }
+          },
+          "expected_output": null,
+          "expected_seam_calls": {
+            "search_records_hierarchical": 1
+          },
+          "input": [
+            []
+          ],
+          "profile": "seam"
+        }
+      },
+      "family": "blue-data",
+      "is_refinable": false,
+      "name": "data_discover",
+      "operator_id": "data_discover@2.0.0",
+      "source_file": "src/blue_data_ops/operators/data_discover_operator.py",
+      "source_sha256": "dc667fa5cbe2dfb9914e80c893d66b8d8ba25e89459e154988baf5f30b772acb"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "delete_idx": 0
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": null,
+        "invalid": {
+          "attributes": {
+            "delete_idx": [
+              0.0
+            ]
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "suggestion_substr": "integer"
+        },
+        "raw_v1": {
+          "expected": [],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits bare [] on empty; run normalizes to [[]]"
+        },
+        "success": {
+          "attributes": {
+            "delete_idx": 0
+          },
+          "expected_output": [
+            [
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ]
+        },
+        "total_note": "delete removes records by index and never inspects a field value; it has no execution-failure path (a total operator). Its contained-error edges are the recoverable-invalid case and the shared normalizer, not a body failure."
+      },
+      "family": "pure-record",
+      "is_refinable": false,
+      "name": "delete",
+      "operator_id": "delete@2.0.0",
+      "source_file": "src/blue_data_ops/operators/delete_operator.py",
+      "source_sha256": "ab33f67a6e072192556a493d6e8570735c28417e74b3590b666621c0bc64cd02"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "insert_idx": 0,
+            "insert_records": [
+              {
+                "id": 3,
+                "name": "C",
+                "score": 3
+              }
+            ]
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "semantic_note": "an empty base group yields empty output after normalization"
+        },
+        "failure": {
+          "attributes": {
+            "insert_idx": {
+              "__tuple__": [
+                0
+              ]
+            },
+            "insert_records": [
+              {
+                "id": 3,
+                "name": "C",
+                "score": 3
+              }
+            ]
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "note": "lax validate True, real body raises AttributeError on a tuple index",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "insert_idx": -2
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "suggestion_substr": "insert_records"
+        },
+        "raw_v1": {
+          "expected": [],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits bare [] on an empty base group; run normalizes to [[]]"
+        },
+        "success": {
+          "attributes": {
+            "insert_idx": 1,
+            "insert_records": [
+              {
+                "id": 3,
+                "name": "C",
+                "score": 3
+              }
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 3,
+                "name": "C",
+                "score": 3
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-record",
+      "is_refinable": false,
+      "name": "insert",
+      "operator_id": "insert@2.0.0",
+      "source_file": "src/blue_data_ops/operators/insert_operator.py",
+      "source_sha256": "5b77700cb7a1d56b7e57fd38e73f833da89ab382e17753a6f2e2383b001e7e32"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "config": {},
+          "expected_output": [
+            []
+          ],
+          "expected_sql_commits": 0,
+          "input": [
+            [],
+            [
+              {
+                "a": 1
+              }
+            ]
+          ],
+          "is_empty": true,
+          "profile": "seam_sql",
+          "semantic_note": "an empty first group guards later groups from persisting"
+        },
+        "failure": {
+          "attributes": {
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {},
+          "input": [
+            [
+              {
+                "a": 1
+              },
+              {
+                "a": 2
+              }
+            ]
+          ],
+          "profile": "seam_missing",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "batch_size": 0,
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "config": {},
+          "input": [
+            [
+              {
+                "a": 1
+              }
+            ]
+          ],
+          "profile": "seam_sql",
+          "suggestion_substr": "batch size"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "a": 1
+              },
+              {
+                "a": 2
+              }
+            ]
+          ],
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply passes the input bundle through without a seam; run reports EXECUTION_FAILED"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "database": "db",
+            "source": "src",
+            "table": "t"
+          },
+          "config": {},
+          "expected_output": null,
+          "expected_sql_commits": 1,
+          "input": [
+            [
+              {
+                "a": 1
+              },
+              {
+                "a": 2
+              }
+            ]
+          ],
+          "note": "returns the input bundle after the durable insert",
+          "profile": "seam_sql"
+        }
+      },
+      "family": "blue-data",
+      "is_refinable": false,
+      "name": "insert_table",
+      "operator_id": "insert_table@2.0.0",
+      "source_file": "src/blue_data_ops/operators/insert_table_operator.py",
+      "source_sha256": "19173b11837f13ec36465dcd5566db0c4e92f456e9f94577e7bd4025a372ae78"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {},
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {},
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ],
+            [
+              "not-a-record"
+            ]
+          ],
+          "note": "non-mapping records make the real match body raise",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "match_option": "unknown"
+          },
+          "input": [
+            [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ],
+            [
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ]
+          ],
+          "suggestion_substr": "match_option"
+        },
+        "raw_v1": {
+          "expected": [],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits bare [] on empty; run normalizes to [[]]"
+        },
+        "success": {
+          "attributes": {},
+          "expected_output": [
+            [
+              {
+                "id": 2
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ],
+            [
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-relational-text",
+      "is_refinable": false,
+      "name": "intersect",
+      "operator_id": "intersect@2.0.0",
+      "source_file": "src/blue_data_ops/operators/intersect_operator.py",
+      "source_sha256": "08b04aac356d9935778653b98b22acbdd5d48a7dfd6a6dfa7fa085a9a16241a9"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "join_on": [
+              [
+                "id"
+              ],
+              [
+                "id"
+              ]
+            ]
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "join_on": [
+              [
+                "id"
+              ],
+              [
+                "id"
+              ]
+            ]
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ],
+            [
+              "not-a-record"
+            ]
+          ],
+          "note": "non-mapping records make the real join body raise on key access",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "id": 1,
+                "left": "L1"
+              },
+              {
+                "id": 2,
+                "left": "L2"
+              }
+            ],
+            [
+              {
+                "id": 2,
+                "right": "R2"
+              },
+              {
+                "id": 3,
+                "right": "R3"
+              }
+            ]
+          ],
+          "suggestion_substr": "join_on"
+        },
+        "raw_v1": {
+          "expected": [],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits bare [] on empty; run normalizes to [[]]"
+        },
+        "success": {
+          "attributes": {
+            "join_on": [
+              [
+                "id"
+              ],
+              [
+                "id"
+              ]
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "id": 2,
+                "left": "L2",
+                "right": "R2"
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "left": "L1"
+              },
+              {
+                "id": 2,
+                "left": "L2"
+              }
+            ],
+            [
+              {
+                "id": 2,
+                "right": "R2"
+              },
+              {
+                "id": 3,
+                "right": "R3"
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-relational-text",
+      "is_refinable": false,
+      "name": "join",
+      "operator_id": "join@2.0.0",
+      "source_file": "src/blue_data_ops/operators/join_operator.py",
+      "source_sha256": "c28ff17ee207b271a671a054f5585c7606d5b8773d4b0b892a5965bd8d272401"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "max_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "max": null
+              }
+            ]
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": false,
+          "semantic_note": "empty input yields a null row, not empty"
+        },
+        "failure": {
+          "attributes": {
+            "max_key": "value"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "suggestion_substr": "max_key"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "max": null
+              }
+            ]
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply on empty is the null row, identical to run"
+        },
+        "success": {
+          "attributes": {
+            "max_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "max": 5
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-aggregate",
+      "is_refinable": false,
+      "name": "max",
+      "operator_id": "max@2.0.0",
+      "source_file": "src/blue_data_ops/operators/max_operator.py",
+      "source_sha256": "5d9a4d2de8b402ca848e5553a726deeff18c18d28a54d4cb96b4ac2c61c6e4e2"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "min_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "min": null
+              }
+            ]
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": false,
+          "semantic_note": "empty input yields a null row, not empty"
+        },
+        "failure": {
+          "attributes": {
+            "min_key": "value"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "suggestion_substr": "min_key"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "min": null
+              }
+            ]
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply on empty is the null row, identical to run"
+        },
+        "success": {
+          "attributes": {
+            "min_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "min": 3
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-aggregate",
+      "is_refinable": false,
+      "name": "min",
+      "operator_id": "min@2.0.0",
+      "source_file": "src/blue_data_ops/operators/min_operator.py",
+      "source_sha256": "5ad7edbfc06b5d61af50c29c9255b48825679f94ca856bf9a4e0b631aa7a9c5c"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {},
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "none"
+        },
+        "failure": {
+          "attributes": {
+            "plans": [
+              [
+                {
+                  "columns": [],
+                  "dependency": [
+                    "missing"
+                  ],
+                  "description": "d",
+                  "generality": 0,
+                  "sql": "s",
+                  "table": "child"
+                }
+              ]
+            ]
+          },
+          "code": "REFINEMENT_FAILED",
+          "input": [
+            []
+          ],
+          "kind": "refine",
+          "note": "an unresolvable dependency makes the refiner fail",
+          "profile": "none",
+          "stage": "REFINE"
+        },
+        "invalid": {
+          "attributes": {
+            "plans": "bad"
+          },
+          "input": [
+            []
+          ],
+          "kind": "refine",
+          "profile": "none",
+          "suggestion_substr": "multipart-query"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "refine_success",
+          "method": "validate",
+          "note": "raw validate raises on the 3-argument call where canonical refine validates copied inputs",
+          "with_properties": true
+        },
+        "refine_empty": {
+          "attributes": {},
+          "config": {},
+          "input": [],
+          "is_empty": true,
+          "profile": "plan"
+        },
+        "refine_success": {
+          "attributes": {
+            "plans": [
+              [
+                {
+                  "columns": [
+                    {
+                      "name": "value",
+                      "type": "str"
+                    }
+                  ],
+                  "dependency": [],
+                  "description": "find base",
+                  "generality": 0,
+                  "sql": "select * from base",
+                  "table": "base"
+                }
+              ]
+            ]
+          },
+          "config": {},
+          "input": [
+            []
+          ],
+          "min_plans": 1,
+          "profile": "plan"
+        },
+        "success": {
+          "attributes": {},
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "raw run() compute is a successful-empty placeholder; refine() makes the plan",
+          "profile": "none"
+        }
+      },
+      "family": "plan",
+      "is_refinable": true,
+      "name": "multipart_query",
+      "operator_id": "multipart_query@2.0.0",
+      "source_file": "src/blue_data_ops/operators/multipart_query_operator.py",
+      "source_sha256": "a9a134cea558c5e0f2b4f1d9dcc57fae3355269bf6c50fe816e1837c5ad375eb"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "collection": "weather",
+            "database": "default",
+            "protocol_variant": "pgmpy",
+            "question": "",
+            "source": "bn"
+          },
+          "config": {
+            "responses": [],
+            "seam": {}
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm_seam"
+        },
+        "failure": {
+          "attributes": {
+            "collection": "weather",
+            "database": "default",
+            "protocol_variant": "pgmpy",
+            "question": "What is the probability of wet given rain?",
+            "source": "bn"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              {
+                "context": {
+                  "rain": "yes"
+                },
+                "target_node": "wet",
+                "target_state": "yes"
+              }
+            ]
+          },
+          "input": [
+            []
+          ],
+          "note": "missing data_registry seam is contained",
+          "profile": "seam_missing_llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "collection": "weather",
+            "database": "default",
+            "protocol_variant": "pgmpy",
+            "question": 7,
+            "source": "bn"
+          },
+          "config": {
+            "responses": [],
+            "seam": {}
+          },
+          "input": [
+            []
+          ],
+          "profile": "llm_seam",
+          "suggestion_substr": "Bayesian-network"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply swallows the missing-registry error to [[]] where run reports EXECUTION_FAILED"
+        },
+        "success": {
+          "assert_fidelity": false,
+          "assert_nonempty": true,
+          "attributes": {
+            "collection": "weather",
+            "database": "default",
+            "protocol_variant": "pgmpy",
+            "question": "What is the probability of wet given rain?",
+            "source": "bn"
+          },
+          "config": {
+            "responses": [
+              {
+                "context": {
+                  "rain": "yes"
+                },
+                "target_node": "wet",
+                "target_state": "yes"
+              }
+            ],
+            "seam": {
+              "query_result": [
+                {
+                  "probability": 0.75,
+                  "role": "manager"
+                }
+              ],
+              "schema_result": {
+                "graph_structure": {
+                  "edges": {
+                    "rain": [
+                      "wet"
+                    ]
+                  },
+                  "nodes": {
+                    "rain": {
+                      "states": [
+                        "yes",
+                        "no"
+                      ]
+                    },
+                    "wet": {
+                      "states": [
+                        "yes",
+                        "no"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "expected_output": null,
+          "input": [
+            []
+          ],
+          "profile": "llm_seam"
+        }
+      },
+      "family": "llm-nl2",
+      "is_refinable": false,
+      "name": "nl2bn",
+      "operator_id": "nl2bn@2.0.0",
+      "source_file": "src/blue_data_ops/operators/nl2bn_operator.py",
+      "source_sha256": "d0661f6bdae6d2b60d4336eeb70ff257ec67d2b461645d56488563c797d16b95"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "query": "   "
+          },
+          "config": {
+            "responses": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "a blank query short-circuits before the provider is called",
+          "profile": "llm"
+        },
+        "failure": {
+          "attributes": {
+            "query": "list roles"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            []
+          ],
+          "note": "the provider raising is contained and scrubbed",
+          "profile": "llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "config": {
+            "responses": []
+          },
+          "input": [
+            []
+          ],
+          "profile": "llm",
+          "suggestion_substr": "natural-language query"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply calls the provider and propagates its exception where run contains it"
+        },
+        "success": {
+          "attributes": {
+            "query": "list roles"
+          },
+          "config": {
+            "responses": [
+              [
+                {
+                  "x": 1
+                }
+              ],
+              [
+                {
+                  "x": 1
+                }
+              ]
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "x": 1
+              }
+            ]
+          ],
+          "input": [
+            []
+          ],
+          "profile": "llm"
+        }
+      },
+      "family": "llm-nl2",
+      "is_refinable": false,
+      "name": "nl2llm",
+      "operator_id": "nl2llm@2.0.0",
+      "source_file": "src/blue_data_ops/operators/nl2llm_operator.py",
+      "source_sha256": "6590239e76bdc07b1451ebc5f458aef12158bf217989c3aefd76fb9cd0721836"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "value"
+              }
+            ],
+            "execute_query": false,
+            "protocol": "sqlite",
+            "search_query": "find rows"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "none"
+        },
+        "failure": null,
+        "invalid": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "value"
+              }
+            ],
+            "execute_query": false,
+            "protocol": "sqlite",
+            "search_query": "find rows",
+            "sources": "bad"
+          },
+          "input": [
+            []
+          ],
+          "kind": "refine",
+          "profile": "none",
+          "suggestion_substr": "query-routing"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "refine_success",
+          "method": "validate",
+          "note": "raw validate raises on the 3-argument call where canonical refine validates copied inputs",
+          "with_properties": true
+        },
+        "refine_empty": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "value"
+              }
+            ],
+            "execute_query": false,
+            "protocol": "sqlite",
+            "search_query": "find rows"
+          },
+          "config": {},
+          "input": [],
+          "is_empty": true,
+          "profile": "plan"
+        },
+        "refine_success": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "value"
+              }
+            ],
+            "execute_query": false,
+            "protocol": "sqlite",
+            "search_query": "find rows"
+          },
+          "config": {},
+          "input": [
+            [
+              {
+                "name": "s",
+                "properties": {
+                  "connection": {
+                    "protocol": "sqlite"
+                  },
+                  "owner": "s"
+                },
+                "scope": "/source/s",
+                "type": "source"
+              }
+            ]
+          ],
+          "min_plans": 1,
+          "profile": "plan"
+        },
+        "success": {
+          "attributes": {
+            "columns": [
+              {
+                "name": "value"
+              }
+            ],
+            "execute_query": false,
+            "protocol": "sqlite",
+            "search_query": "find rows"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "raw compute run() is a successful-empty placeholder; refine() routes",
+          "profile": "none"
+        }
+      },
+      "family": "plan",
+      "is_refinable": true,
+      "name": "nl2query_router",
+      "operator_id": "nl2query_router@2.0.0",
+      "source_file": "src/blue_data_ops/operators/nl2query_router_operator.py",
+      "source_sha256": "e3c4c25b46e2f0e1950c84fbcb3f43998dc6136070574686dc305dbffe8934d0"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "collection": "public",
+            "database": "analytics",
+            "protocol": "postgres",
+            "question": "",
+            "source": "pg"
+          },
+          "config": {
+            "responses": [],
+            "seam": {}
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm_seam"
+        },
+        "failure": {
+          "attributes": {
+            "collection": "public",
+            "database": "analytics",
+            "protocol": "postgres",
+            "question": "Which role is most common?",
+            "source": "pg"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              {
+                "query": "SELECT role FROM jobs",
+                "question": "q"
+              }
+            ]
+          },
+          "input": [
+            []
+          ],
+          "profile": "seam_missing_llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "collection": "public",
+            "database": "analytics",
+            "protocol": "postgres",
+            "question": 7,
+            "source": "pg"
+          },
+          "config": {
+            "responses": [],
+            "seam": {}
+          },
+          "input": [
+            []
+          ],
+          "profile": "llm_seam",
+          "suggestion_substr": "SQL"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply swallows the missing-registry error to [[]] where run reports EXECUTION_FAILED"
+        },
+        "success": {
+          "assert_fidelity": false,
+          "assert_nonempty": true,
+          "attributes": {
+            "collection": "public",
+            "database": "analytics",
+            "protocol": "postgres",
+            "question": "Which role is most common?",
+            "source": "pg"
+          },
+          "config": {
+            "responses": [
+              {
+                "query": "SELECT role FROM jobs",
+                "question": "Which role is most common?"
+              }
+            ],
+            "seam": {
+              "query_result": [
+                {
+                  "probability": 0.75,
+                  "role": "manager"
+                }
+              ]
+            }
+          },
+          "expected_output": null,
+          "input": [
+            []
+          ],
+          "profile": "llm_seam"
+        }
+      },
+      "family": "llm-nl2",
+      "is_refinable": false,
+      "name": "nl2sql",
+      "operator_id": "nl2sql@2.0.0",
+      "source_file": "src/blue_data_ops/operators/nl2sql_operator.py",
+      "source_sha256": "5ce4a8cfdd1269c2a578b54fe11d2c8a0d8e5011195e8709e047444fba683da0"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "text_field": [
+              "text"
+            ]
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "text_field": [
+              "text"
+            ]
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "text": "x"
+              }
+            ]
+          ],
+          "suggestion_substr": "valid input attributes"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits [[]] on empty (no bare-[] divergence)"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "text_field": [
+              "text"
+            ]
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "text": "  Hello world  "
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-relational-text",
+      "is_refinable": false,
+      "name": "normalize_text",
+      "operator_id": "normalize_text@2.0.0",
+      "source_file": "src/blue_data_ops/operators/normalize_text_operator.py",
+      "source_sha256": "3ba875420c503489f90865e655ea5494161be9cec59eff6702d259470db43014"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "approximate": true,
+            "data": "rows",
+            "task": "starter"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "none"
+        },
+        "failure": null,
+        "invalid": {
+          "attributes": {},
+          "input": [
+            []
+          ],
+          "kind": "refine",
+          "profile": "none",
+          "suggestion_substr": "supply valid input attributes"
+        },
+        "raw_v1": {
+          "expected_bool": false,
+          "from_case": "refine_success",
+          "method": "validate",
+          "note": "raw validate is False without search_query; canonical refine copies task->search_query",
+          "with_properties": false
+        },
+        "refine_empty": {
+          "attributes": {
+            "approximate": true,
+            "data": "rows",
+            "task": "no-such-operator-tag"
+          },
+          "config": {},
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "plan_discover"
+        },
+        "refine_success": {
+          "attributes": {
+            "approximate": true,
+            "data": "rows",
+            "task": "starter"
+          },
+          "config": {},
+          "input": [
+            []
+          ],
+          "min_plans": 1,
+          "profile": "plan_discover"
+        },
+        "success": {
+          "attributes": {
+            "approximate": true,
+            "data": "rows",
+            "task": "starter"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "raw compute run() is a successful-empty placeholder; refine() discovers",
+          "profile": "none"
+        }
+      },
+      "family": "plan",
+      "is_refinable": true,
+      "name": "plan_discover",
+      "operator_id": "plan_discover@2.0.0",
+      "source_file": "src/blue_data_ops/operators/plan_discover_operator.py",
+      "source_sha256": "3b1414db7579ab85a17a7bd3a24c58c883d61506f70f0cb87d76d475de7af68d"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "kept_keys": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "is_empty": true
+        },
+        "failure": null,
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "suggestion_substr": "kept_keys"
+        },
+        "raw_v1": {
+          "expected": [],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits bare [] on an empty projection; run normalizes to [[]]"
+        },
+        "success": {
+          "attributes": {
+            "kept_keys": [
+              "id"
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ]
+        },
+        "total_note": "project copies selected keys and never inspects a field value in a way that can raise; it has no execution-failure path (a total operator)."
+      },
+      "family": "pure-record",
+      "is_refinable": false,
+      "name": "project",
+      "operator_id": "project@2.0.0",
+      "source_file": "src/blue_data_ops/operators/project_operator.py",
+      "source_sha256": "ededc1a16f129310f44047b1fa013624ebc4d466c619d4712d1cb1583c239000"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "query": "   "
+          },
+          "config": {
+            "responses": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "note": "a blank query short-circuits before the provider is called",
+          "profile": "llm_refine"
+        },
+        "failure": {
+          "attributes": {
+            "query": "count roles"
+          },
+          "code": "REFINEMENT_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            []
+          ],
+          "kind": "refine",
+          "note": "the provider raising inside the refiner is contained",
+          "profile": "llm_refine",
+          "stage": "REFINE"
+        },
+        "invalid": {
+          "attributes": {
+            "query": "count roles",
+            "schema": []
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            []
+          ],
+          "kind": "refine",
+          "profile": "llm_refine",
+          "suggestion_substr": "query-breakdown"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "columns": [
+                  {
+                    "name": "value",
+                    "type": "str"
+                  }
+                ],
+                "dependency": [],
+                "description": "answer",
+                "generality": 0,
+                "sql": "select * from answer",
+                "table": "answer"
+              }
+            ]
+          ],
+          "from_case": "success",
+          "method": "apply",
+          "note": "raw apply is a real body returning the provider CTE alternatives (not a placeholder)"
+        },
+        "refine_empty": {
+          "attributes": {
+            "query": "   "
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm_refine"
+        },
+        "refine_success": {
+          "attributes": {
+            "query": "count roles"
+          },
+          "config": {
+            "responses": [
+              [
+                [
+                  {
+                    "columns": [
+                      {
+                        "name": "value",
+                        "type": "str"
+                      }
+                    ],
+                    "dependency": [],
+                    "description": "find base",
+                    "generality": 0,
+                    "sql": "select * from base",
+                    "table": "base"
+                  },
+                  {
+                    "columns": [
+                      {
+                        "name": "value",
+                        "type": "str"
+                      }
+                    ],
+                    "dependency": [
+                      "base"
+                    ],
+                    "description": "find child",
+                    "generality": 0,
+                    "sql": "select * from child",
+                    "table": "child"
+                  }
+                ]
+              ]
+            ]
+          },
+          "input": [
+            []
+          ],
+          "min_plans": 1,
+          "profile": "llm_refine"
+        },
+        "success": {
+          "assert_nonempty": true,
+          "attributes": {
+            "query": "count roles"
+          },
+          "config": {
+            "responses": [
+              [
+                [
+                  {
+                    "columns": [
+                      {
+                        "name": "value",
+                        "type": "str"
+                      }
+                    ],
+                    "dependency": [],
+                    "description": "answer",
+                    "generality": 0,
+                    "sql": "select * from answer",
+                    "table": "answer"
+                  }
+                ]
+              ]
+            ]
+          },
+          "expected_output": null,
+          "input": [
+            []
+          ],
+          "kind": "run",
+          "note": "run() compute returns the CTE alternatives for the provider answer",
+          "profile": "llm_refine"
+        }
+      },
+      "family": "plan",
+      "is_refinable": true,
+      "name": "query_breakdown",
+      "operator_id": "query_breakdown@2.0.0",
+      "source_file": "src/blue_data_ops/operators/query_breakdown_operator.py",
+      "source_sha256": "2ca98aabeb34a874fc7a7db57f0c58f6994afef4126298fd4528f4bf5d120356"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "text_field": "text"
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "segment_id_format": "{unknown}",
+            "text_field": "text"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "doc_id": "doc",
+                "text": "Hello world."
+              }
+            ]
+          ],
+          "note": "real body raises KeyError on an unknown format key; message scrubbed",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "doc_id": "doc",
+                "text": "Hello."
+              }
+            ]
+          ],
+          "suggestion_substr": "segment"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits [[]] on empty (no bare-[] divergence)"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "text_field": "text"
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "doc_id": "doc",
+                "text": "Hello world."
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-relational-text",
+      "is_refinable": false,
+      "name": "segment_text",
+      "operator_id": "segment_text@2.0.0",
+      "source_file": "src/blue_data_ops/operators/segment_text_operator.py",
+      "source_sha256": "8565aa50bed2e1124ee0d29b041453debbb05a89aac9fdc0323482eb64297153"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "operand": ">",
+            "operand_key": "score",
+            "operand_val": 99
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "eps": "0.5",
+            "operand": ">",
+            "operand_key": "score",
+            "operand_val": 1
+          },
+          "code": "VALIDATION_FAILED",
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "note": "real validator raises comparing a str eps; run contains as VALIDATION_FAILED",
+          "stage": "VALIDATE"
+        },
+        "invalid": {
+          "attributes": {
+            "operand": "~=",
+            "operand_key": "score",
+            "operand_val": 1
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "suggestion_substr": "operand"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits [[]] on no-match (no bare-[] divergence)"
+        },
+        "success": {
+          "attributes": {
+            "operand": ">",
+            "operand_key": "score",
+            "operand_val": 1
+          },
+          "expected_output": [
+            [
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "A",
+                "score": 1
+              },
+              {
+                "id": 2,
+                "name": "B",
+                "score": 2
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-record",
+      "is_refinable": false,
+      "name": "select",
+      "operator_id": "select@2.0.0",
+      "source_file": "src/blue_data_ops/operators/select_operator.py",
+      "source_sha256": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "entities": [
+              {
+                "name": "skill"
+              }
+            ]
+          },
+          "config": {
+            "responses": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm"
+        },
+        "failure": {
+          "attributes": {
+            "entities": [
+              {
+                "name": "skill"
+              }
+            ]
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            [
+              {
+                "bio": "Ada uses Python",
+                "id": 1,
+                "name": "Ada"
+              }
+            ]
+          ],
+          "profile": "llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "entities": []
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ]
+          ],
+          "profile": "llm",
+          "suggestion_substr": "extraction"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply calls the provider and propagates its exception where run contains it"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "entities": [
+              {
+                "name": "skill"
+              }
+            ]
+          },
+          "config": {
+            "responses": [
+              {
+                "skill": [
+                  "Python"
+                ]
+              },
+              {
+                "skill": [
+                  "Python"
+                ]
+              }
+            ]
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "bio": "Ada uses Python",
+                "id": 1,
+                "name": "Ada"
+              }
+            ]
+          ],
+          "profile": "llm"
+        }
+      },
+      "family": "llm-semantic-simple",
+      "is_refinable": false,
+      "name": "semantic_extract",
+      "operator_id": "semantic_extract@2.0.0",
+      "source_file": "src/blue_data_ops/operators/semantic_extract_operator.py",
+      "source_sha256": "a18dded536916266bccb226db40223e7cffd37a0f70beee393773b56ee5b9dd0"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "filter_conditions": {
+              "score": "is high"
+            }
+          },
+          "config": {
+            "responses": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm"
+        },
+        "failure": {
+          "attributes": {
+            "filter_conditions": {
+              "score": "is high"
+            }
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "score": 8
+              }
+            ]
+          ],
+          "profile": "llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "filter_conditions": {}
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "score": 8
+              }
+            ]
+          ],
+          "profile": "llm",
+          "suggestion_substr": "filter"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply calls the provider and propagates its exception where run contains it"
+        },
+        "success": {
+          "attributes": {
+            "filter_conditions": {
+              "score": "is high"
+            }
+          },
+          "config": {
+            "responses": [
+              "yes",
+              "yes"
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "id": 1,
+                "score": 8
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "score": 8
+              }
+            ]
+          ],
+          "profile": "llm"
+        }
+      },
+      "family": "llm-semantic-simple",
+      "is_refinable": false,
+      "name": "semantic_filter",
+      "operator_id": "semantic_filter@2.0.0",
+      "source_file": "src/blue_data_ops/operators/semantic_filter_operator.py",
+      "source_sha256": "21ffb959c16f1e5a22ed9ecc82c4fe48b278453de62f321d62d96abea8fa0d84"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "estimate_cost": false,
+            "join_predicate": "names refer to the same person",
+            "left_fields": [
+              "name"
+            ],
+            "right_fields": [
+              "name"
+            ]
+          },
+          "config": {
+            "responses": [
+              {
+                "pair_1": false
+              },
+              {
+                "pair_1": false
+              }
+            ]
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ],
+            [
+              {
+                "id": "a",
+                "name": "ADA"
+              }
+            ]
+          ],
+          "is_empty": true,
+          "note": "no pair matched; a genuine no-result join",
+          "profile": "llm"
+        },
+        "failure": {
+          "attributes": {
+            "estimate_cost": false,
+            "join_predicate": "names refer to the same person",
+            "left_fields": [
+              "name"
+            ],
+            "right_fields": [
+              "name"
+            ]
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ],
+            [
+              {
+                "id": "a",
+                "name": "ADA"
+              }
+            ]
+          ],
+          "profile": "llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "left_fields": [
+              "name"
+            ]
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ],
+            [
+              {
+                "id": "a",
+                "name": "ADA"
+              }
+            ]
+          ],
+          "profile": "llm",
+          "suggestion_substr": "join"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply calls the provider and propagates its exception where run contains it"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "estimate_cost": false,
+            "join_predicate": "names refer to the same person",
+            "left_fields": [
+              "name"
+            ],
+            "right_fields": [
+              "name"
+            ]
+          },
+          "config": {
+            "responses": [
+              {
+                "pair_1": true
+              },
+              {
+                "pair_1": true
+              }
+            ]
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ],
+            [
+              {
+                "id": "a",
+                "name": "ADA"
+              }
+            ]
+          ],
+          "profile": "llm"
+        }
+      },
+      "family": "llm-semantic-complex",
+      "is_refinable": false,
+      "name": "semantic_join",
+      "operator_id": "semantic_join@2.0.0",
+      "source_file": "src/blue_data_ops/operators/semantic_join_operator.py",
+      "source_sha256": "37c14697fc79d1b7aab34665b42f1963c0f0037ef95d4885cbd690ce67cc9538"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "projection_instructions": "keep and rename name"
+          },
+          "config": {
+            "responses": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm"
+        },
+        "failure": {
+          "attributes": {
+            "projection_instructions": "keep and rename name"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ]
+          ],
+          "profile": "llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "projection_instructions": " "
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ]
+          ],
+          "profile": "llm",
+          "suggestion_substr": "projection"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply calls the provider and propagates its exception where run contains it"
+        },
+        "success": {
+          "attributes": {
+            "projection_instructions": "keep and rename name"
+          },
+          "config": {
+            "responses": [
+              {
+                "name": "person"
+              },
+              {
+                "name": "person"
+              }
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "person": "Ada"
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1,
+                "name": "Ada"
+              }
+            ]
+          ],
+          "profile": "llm"
+        }
+      },
+      "family": "llm-semantic-simple",
+      "is_refinable": false,
+      "name": "semantic_project",
+      "operator_id": "semantic_project@2.0.0",
+      "source_file": "src/blue_data_ops/operators/semantic_project_operator.py",
+      "source_sha256": "d7b4d288930670b7a3b3e7bbd647007f4a48757ca0bbc181f50cf6780cfffd6c"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "output_desc": {
+              "label": {
+                "description": "Score label"
+              }
+            },
+            "strategy": "per_record"
+          },
+          "config": {
+            "responses": []
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true,
+          "profile": "llm"
+        },
+        "failure": {
+          "attributes": {
+            "output_desc": {
+              "label": {
+                "description": "Score label"
+              }
+            },
+            "strategy": "per_record"
+          },
+          "code": "EXECUTION_FAILED",
+          "config": {
+            "responses": [
+              "__RAISE__:provider"
+            ]
+          },
+          "input": [
+            [
+              {
+                "city": "NY",
+                "score": 1
+              }
+            ]
+          ],
+          "profile": "llm",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "output_desc": {}
+          },
+          "config": {
+            "responses": []
+          },
+          "input": [
+            [
+              {
+                "city": "NY",
+                "score": 1
+              }
+            ]
+          ],
+          "profile": "llm",
+          "suggestion_substr": "transform"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply calls the provider and propagates its exception where run contains it"
+        },
+        "success": {
+          "attributes": {
+            "output_desc": {
+              "label": {
+                "description": "Score label"
+              }
+            },
+            "strategy": "per_record"
+          },
+          "config": {
+            "responses": [
+              {
+                "label": {
+                  "source_fields": [
+                    "score"
+                  ],
+                  "transformation_type": "field_mapping_with_value_change"
+                }
+              },
+              {
+                "label": "low"
+              },
+              {
+                "label": {
+                  "source_fields": [
+                    "score"
+                  ],
+                  "transformation_type": "field_mapping_with_value_change"
+                }
+              },
+              {
+                "label": "low"
+              }
+            ]
+          },
+          "expected_output": [
+            [
+              {
+                "label": "low"
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "city": "NY",
+                "score": 1
+              }
+            ]
+          ],
+          "profile": "llm"
+        }
+      },
+      "family": "llm-semantic-complex",
+      "is_refinable": false,
+      "name": "semantic_transform",
+      "operator_id": "semantic_transform@2.0.0",
+      "source_file": "src/blue_data_ops/operators/semantic_transform_operator.py",
+      "source_sha256": "82487a3dabb55cea91254925da34aedbfb4e4acea5614347e494631c58a39975"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "sum_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "sum": 0
+              }
+            ]
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": false,
+          "semantic_note": "empty input yields a neutral zero row, not empty"
+        },
+        "failure": {
+          "attributes": {
+            "sum_key": "value"
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ]
+          ],
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ],
+          "suggestion_substr": "sum_key"
+        },
+        "raw_v1": {
+          "expected": [
+            [
+              {
+                "sum": 0
+              }
+            ]
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply on empty is the neutral zero row, identical to run"
+        },
+        "success": {
+          "attributes": {
+            "sum_key": "value"
+          },
+          "expected_output": [
+            [
+              {
+                "sum": 13
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "value": 3
+              },
+              {
+                "value": "5"
+              },
+              {
+                "value": 5
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-aggregate",
+      "is_refinable": false,
+      "name": "sum",
+      "operator_id": "sum@2.0.0",
+      "source_file": "src/blue_data_ops/operators/sum_operator.py",
+      "source_sha256": "57de9ac53c365356fa76ed8eb4e1968a9342daabb172eaeadcb934dafabbfeac"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {},
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {},
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              "not-a-record"
+            ],
+            [
+              "not-a-record"
+            ]
+          ],
+          "note": "non-mapping records make the real match body raise",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "match_option": "unknown"
+          },
+          "input": [
+            [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ],
+            [
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ]
+          ],
+          "suggestion_substr": "match_option"
+        },
+        "raw_v1": {
+          "expected": [
+            []
+          ],
+          "from_case": "empty",
+          "method": "apply",
+          "note": "raw apply emits [[]] on empty (already normalized; no bare-[] divergence)"
+        },
+        "success": {
+          "attributes": {},
+          "expected_output": [
+            [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ]
+          ],
+          "input": [
+            [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ],
+            [
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ]
+          ]
+        }
+      },
+      "family": "pure-relational-text",
+      "is_refinable": false,
+      "name": "union",
+      "operator_id": "union@2.0.0",
+      "source_file": "src/blue_data_ops/operators/union_operator.py",
+      "source_sha256": "b08bffdd9a6bb397c7764e68fec8e41f103b4404338ce2b2c7a71baccd2fe95b"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "text_field": [
+              "title"
+            ]
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "text_field": [
+              "title"
+            ]
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "id": "missing"
+              }
+            ]
+          ],
+          "note": "real body raises on a missing text field; message scrubbed",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {
+            "text_field": {
+              "__tuple__": [
+                "title"
+              ]
+            }
+          },
+          "input": [
+            [
+              {
+                "id": "a",
+                "title": "alpha"
+              }
+            ]
+          ],
+          "suggestion_substr": "embedding"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply raises on a missing text field where run contains the failure"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "text_field": [
+              "title"
+            ]
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "id": "a",
+                "title": "alpha"
+              }
+            ]
+          ]
+        }
+      },
+      "family": "heavy-vector",
+      "is_refinable": false,
+      "name": "vector_embed",
+      "operator_id": "vector_embed@2.0.0",
+      "source_file": "src/blue_data_ops/operators/vector_embed_operator.py",
+      "source_sha256": "6a15fe204e50c63b343f9f991c844077fc8a6a86b7550268a4805ea9820288af"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "query": {
+              "embedding": [
+                1.0,
+                0.0
+              ],
+              "model": "model-2d"
+            }
+          },
+          "expected_output": [
+            []
+          ],
+          "input": [
+            []
+          ],
+          "is_empty": true
+        },
+        "failure": {
+          "attributes": {
+            "query": {
+              "model": "model-2d"
+            }
+          },
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "embed.model": "model-2d",
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "a"
+              }
+            ]
+          ],
+          "note": "malformed dict query without an embedding makes the real body raise",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "a"
+              }
+            ]
+          ],
+          "suggestion_substr": "vector search"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply raises on a malformed dict query where run contains the failure"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {
+            "query": {
+              "embedding": [
+                1.0,
+                0.0
+              ],
+              "model": "model-2d"
+            }
+          },
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "embed.model": "model-2d",
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "a"
+              }
+            ]
+          ]
+        }
+      },
+      "family": "heavy-vector",
+      "is_refinable": false,
+      "name": "vector_search",
+      "operator_id": "vector_search@2.0.0",
+      "source_file": "src/blue_data_ops/operators/vector_search_operator.py",
+      "source_sha256": "aa5b5888540919f12408e7cdf48af2cdb663139023818cee845021616a2dea60"
+    },
+    {
+      "cases": {
+        "empty": {
+          "attributes": {
+            "threshold": 2.0
+          },
+          "input": [
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "left"
+              }
+            ],
+            [
+              {
+                "embedding": [
+                  0.0,
+                  1.0
+                ],
+                "id": "right"
+              }
+            ]
+          ],
+          "is_empty": false,
+          "no_empty_path": true,
+          "semantic_note": "vector_similarity is a total pairwise operator: it always emits one comparison record per pair (an unreachable threshold still yields a record with similarity.passed=False). It has no successful-empty path; the no-result assertion checks a non-empty, error-free pairwise result."
+        },
+        "failure": {
+          "attributes": {},
+          "code": "EXECUTION_FAILED",
+          "input": [
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "left"
+              }
+            ],
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                "id": "right"
+              }
+            ]
+          ],
+          "note": "mismatched embedding dims make the real numpy body raise",
+          "stage": "EXECUTE"
+        },
+        "invalid": {
+          "attributes": {},
+          "input": [
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "left"
+              }
+            ]
+          ],
+          "suggestion_substr": "two"
+        },
+        "raw_v1": {
+          "expected_raises": true,
+          "from_case": "failure",
+          "method": "apply",
+          "note": "raw apply raises on mismatched embedding dims where run contains the failure"
+        },
+        "success": {
+          "assert_fidelity": true,
+          "attributes": {},
+          "expected_output": null,
+          "input": [
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "left"
+              }
+            ],
+            [
+              {
+                "embedding": [
+                  1.0,
+                  0.0
+                ],
+                "id": "right"
+              }
+            ]
+          ]
+        }
+      },
+      "family": "heavy-vector",
+      "is_refinable": false,
+      "name": "vector_similarity",
+      "operator_id": "vector_similarity@2.0.0",
+      "source_file": "src/blue_data_ops/operators/vector_similarity_operator.py",
+      "source_sha256": "4d8b0ef97c175fce63cf3554611f3752b62d6d69ba545dd4053a79b76cef163a"
+    }
+  ],
+  "schema_version": "operator-outcomes/1",
+  "shared_rules": {
+    "contained_failure": "FAILED / <code> / <stage>, retryable=False, no private payload",
+    "recoverable_invalid": "RECOVERABLE / INVALID_INPUT / VALIDATE; suggestion; no body",
+    "refine_success": "ordered DataPipeline alternatives; is_empty = not plans",
+    "run_success": "output data + a fresh output_attributes dict; is_empty=False",
+    "selected_identity": "run()/refine() errors carry name@2.0.0 from versioned_registry",
+    "successful_empty": "canonical [[]], is_empty=True, no error",
+    "timeout": "TIMEOUT / OPERATOR_TIMEOUT; body runs once; late result discarded"
+  },
+  "source_manifest": {
+    "aggregate_sha256": "ef6980d56feb06054a4f22122ed6f8c1244809f64ef2030ada7d28824eec7a42",
+    "files": {
+      "argmax": "5301be8c01d34ef890f4d94cba1738ab13cdcf053c0c3521ba4b08d28ff29b9a",
+      "argmin": "080a1148c5aa5e2db0517ea7b2427cd75d9575884efa2d2b626ca7042913b600",
+      "avg": "2ffc1e520e7ce1d65c9c030bdfbf6921f37bfcd97f3d8a66689437b66477c82d",
+      "classify": "f4550001f0cef86bb5a7b27dc2dd30c73830b458d6a4ce6bb30649314b6d0b49",
+      "cluster": "2ac4fdbbf672da3cdc0b50bce4f3ad712a877609dd5f493ba2a02d43a650babf",
+      "create_database": "5ceaf84cff3d46f1f41d2642e110a0533484f32fa2501912d3db78a431ef8c90",
+      "create_table": "4df34a0a7d6415b0cced1187c69c11714dffa556aa34188e2153b4973701d298",
+      "data_discover": "dc667fa5cbe2dfb9914e80c893d66b8d8ba25e89459e154988baf5f30b772acb",
+      "delete": "ab33f67a6e072192556a493d6e8570735c28417e74b3590b666621c0bc64cd02",
+      "insert": "5b77700cb7a1d56b7e57fd38e73f833da89ab382e17753a6f2e2383b001e7e32",
+      "insert_table": "19173b11837f13ec36465dcd5566db0c4e92f456e9f94577e7bd4025a372ae78",
+      "intersect": "08b04aac356d9935778653b98b22acbdd5d48a7dfd6a6dfa7fa085a9a16241a9",
+      "join": "c28ff17ee207b271a671a054f5585c7606d5b8773d4b0b892a5965bd8d272401",
+      "max": "5d9a4d2de8b402ca848e5553a726deeff18c18d28a54d4cb96b4ac2c61c6e4e2",
+      "min": "5ad7edbfc06b5d61af50c29c9255b48825679f94ca856bf9a4e0b631aa7a9c5c",
+      "multipart_query": "a9a134cea558c5e0f2b4f1d9dcc57fae3355269bf6c50fe816e1837c5ad375eb",
+      "nl2bn": "d0661f6bdae6d2b60d4336eeb70ff257ec67d2b461645d56488563c797d16b95",
+      "nl2llm": "6590239e76bdc07b1451ebc5f458aef12158bf217989c3aefd76fb9cd0721836",
+      "nl2query_router": "e3c4c25b46e2f0e1950c84fbcb3f43998dc6136070574686dc305dbffe8934d0",
+      "nl2sql": "5ce4a8cfdd1269c2a578b54fe11d2c8a0d8e5011195e8709e047444fba683da0",
+      "normalize_text": "3ba875420c503489f90865e655ea5494161be9cec59eff6702d259470db43014",
+      "plan_discover": "3b1414db7579ab85a17a7bd3a24c58c883d61506f70f0cb87d76d475de7af68d",
+      "project": "ededc1a16f129310f44047b1fa013624ebc4d466c619d4712d1cb1583c239000",
+      "query_breakdown": "2ca98aabeb34a874fc7a7db57f0c58f6994afef4126298fd4528f4bf5d120356",
+      "segment_text": "8565aa50bed2e1124ee0d29b041453debbb05a89aac9fdc0323482eb64297153",
+      "select": "a4bf4e0bbd01c959ff075ba7e2a9737ff615c3fd8e945eaa2704adcf19e5e24c",
+      "semantic_extract": "a18dded536916266bccb226db40223e7cffd37a0f70beee393773b56ee5b9dd0",
+      "semantic_filter": "21ffb959c16f1e5a22ed9ecc82c4fe48b278453de62f321d62d96abea8fa0d84",
+      "semantic_join": "37c14697fc79d1b7aab34665b42f1963c0f0037ef95d4885cbd690ce67cc9538",
+      "semantic_project": "d7b4d288930670b7a3b3e7bbd647007f4a48757ca0bbc181f50cf6780cfffd6c",
+      "semantic_transform": "82487a3dabb55cea91254925da34aedbfb4e4acea5614347e494631c58a39975",
+      "sum": "57de9ac53c365356fa76ed8eb4e1968a9342daabb172eaeadcb934dafabbfeac",
+      "union": "b08bffdd9a6bb397c7764e68fec8e41f103b4404338ce2b2c7a71baccd2fe95b",
+      "vector_embed": "6a15fe204e50c63b343f9f991c844077fc8a6a86b7550268a4805ea9820288af",
+      "vector_search": "aa5b5888540919f12408e7cdf48af2cdb663139023818cee845021616a2dea60",
+      "vector_similarity": "4d8b0ef97c175fce63cf3554611f3752b62d6d69ba545dd4053a79b76cef163a"
+    }
+  },
+  "timeout_representatives": {
+    "data-registry": "data_discover",
+    "llm": "nl2llm",
+    "normalized-refinement": "query_breakdown",
+    "pure": "sum"
+  }
+}

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Any
 
 import litellm  # the tests/stubs deterministic fake (conftest inserts the stub path)
 import pytest
 
-from blue_data_ops.llm import LLMClient, LLMError
+from blue_data_ops.llm import LLMClient, LLMError, prepare_llm_operator_properties
 
 OP_PROPS: dict[str, Any] = {
     "service_prefix": "openai",
@@ -27,10 +26,17 @@ OP_PROPS: dict[str, Any] = {
 }
 
 
+def _prepared(defaults: dict[str, Any], supplied: dict[str, Any]) -> dict[str, Any]:
+    merged = {**defaults, **supplied}
+    return prepare_llm_operator_properties(merged, defaults, supplied)
+
+
 @pytest.fixture(autouse=True)
 def _reset_fake(  # pyright: ignore[reportUnusedFunction] — autouse
     monkeypatch: pytest.MonkeyPatch,
+    _selected_provider_names: tuple[str, ...],
 ) -> None:
+    monkeypatch.setattr(litellm, "provider_list", list(_selected_provider_names))
     litellm.calls.clear()
     litellm.fail_next.clear()
     # Dispatch configuration is the deployment's, so every test states its own rather
@@ -44,9 +50,333 @@ def test_operator_defaults_reach_the_provider() -> None:
     out = client.execute_api_call({}, additional_data={})
     assert out == "echo:Say {}"
     call = litellm.calls[-1]
-    assert call["model"] == "gpt-4o"  # the op default survives
+    assert call["model"] == "gpt-4o"
     assert call["temperature"] == 0
     assert call["messages"] == [{"role": "user", "content": "Say {}"}]
+
+
+@pytest.mark.parametrize(
+    ("model", "effort", "keeps_temperature"),
+    [
+        ("gpt-4o", None, True),
+        ("gpt-4o-mini", None, True),
+        ("gpt-4.1", None, True),
+        ("gpt-4-turbo", None, True),
+        ("gpt-5-mini", "low", False),
+        ("gpt-5.1", None, True),
+        ("gpt-5.1", "low", False),
+        ("gpt-5.6-sol", None, False),
+        ("gpt-5.6-sol", "none", True),
+        ("gpt-6-astra", None, False),
+        ("gpt-6-astra", "none", False),
+        ("gpt-6-sol", None, False),
+        ("gpt-6-sol", "none", False),
+        ("gpt-6-luna", "medium", False),
+        ("unlisted-gpt-model", None, True),
+    ],
+)
+def test_operator_default_temperature_follows_model(
+    model: str, effort: str | None, keeps_temperature: bool
+) -> None:
+    supplied: dict[str, Any] = {"llm.model": model}
+    if effort is not None:
+        supplied["llm.reasoning_effort"] = effort
+    merged = _prepared(OP_PROPS, supplied)
+    assert ("openai.temperature" in merged) is keeps_temperature
+    assert OP_PROPS["openai.temperature"] == 0  # no mutation of class defaults
+
+
+@pytest.mark.parametrize("key", ["openai.temperature", "llm.temperature"])
+def test_operator_merge_preserves_explicit_temperature(key: str) -> None:
+    merged = _prepared(OP_PROPS, {"llm.model": "gpt-6-sol", key: 0.4})
+    assert merged[key] == 0.4
+    if key == "llm.temperature":
+        assert "openai.temperature" not in merged
+
+
+def test_operator_merge_replaces_inherited_token_cap() -> None:
+    defaults = {**OP_PROPS, "openai.max_tokens": 1024}
+    merged = _prepared(defaults, {"llm.model": "gpt-6-sol", "openai.max_completion_tokens": 8192})
+    assert "openai.max_tokens" not in merged
+    assert merged["openai.max_completion_tokens"] == 8192
+
+
+def test_other_provider_keeps_its_operator_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BLUE_DATA_LLM_PROVIDER", "anthropic")
+    merged = _prepared(OP_PROPS, {"llm.model": "gpt-6-sol"})
+    assert merged["openai.temperature"] == 0
+
+
+def test_other_provider_replaces_inherited_token_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BLUE_DATA_LLM_PROVIDER", "azure")
+    defaults = {**OP_PROPS, "openai.max_tokens": 1024}
+    merged = _prepared(defaults, {"openai.max_completion_tokens": 2048})
+    assert "openai.max_tokens" not in merged
+    assert merged["openai.max_completion_tokens"] == 2048
+
+
+def test_injected_client_model_selects_default_filter() -> None:
+    injected = LLMClient("injected", {"llm.model": "gpt-6-sol"})
+    merged = _prepared(OP_PROPS, {"llm_client": injected})
+    assert "openai.temperature" not in merged
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    assert litellm.calls[-1]["model"] == "gpt-6-sol"
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_injected_client_prefixed_model_overrides_operator_default() -> None:
+    injected = LLMClient("injected", {"openai.model": "gpt-6-sol"})
+    merged = _prepared(OP_PROPS, {"llm_client": injected})
+    assert "openai.model" not in merged
+    assert "openai.temperature" not in merged
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    assert litellm.calls[-1]["model"] == "gpt-6-sol"
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_injected_client_zero_is_explicit_even_when_it_matches_operator_default() -> None:
+    injected = LLMClient("injected", {**OP_PROPS, "llm.model": "gpt-6-sol"})
+    merged = _prepared(OP_PROPS, {"llm_client": injected})
+    with pytest.raises(LLMError, match="does not accept"):
+        injected.execute_api_call({}, properties=merged, additional_data={})
+
+
+def test_injected_client_explicit_sampling_conflict_is_not_hidden() -> None:
+    injected = LLMClient("injected", {"llm.model": "gpt-6-sol", "openai.temperature": 0.3})
+    merged = _prepared(OP_PROPS, {"llm_client": injected})
+    assert "openai.temperature" not in merged
+    with pytest.raises(LLMError) as raised:
+        injected.execute_api_call({}, properties=merged, additional_data={})
+    assert raised.value.code == "unsupported_parameter"
+    assert litellm.calls == []
+
+
+def test_explicit_prefixed_operator_model_overrides_injected_neutral_model() -> None:
+    injected = LLMClient("injected", {"llm.model": "gpt-6-sol"})
+    merged = _prepared(OP_PROPS, {"llm_client": injected, "openai.model": "gpt-4o-mini"})
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    assert litellm.calls[-1]["model"] == "gpt-4o-mini"
+    assert litellm.calls[-1]["temperature"] == 0
+
+
+def test_explicit_prefixed_operator_temperature_overrides_injected_neutral() -> None:
+    injected = LLMClient("injected", {"llm.temperature": 0.3})
+    merged = _prepared(OP_PROPS, {"llm_client": injected, "openai.temperature": 0.4})
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    assert litellm.calls[-1]["temperature"] == 0.4
+
+
+def test_injected_prefixed_generation_settings_replace_operator_defaults() -> None:
+    defaults = {**OP_PROPS, "openai.max_tokens": 1024, "openai.stream": False}
+    injected = LLMClient(
+        "injected",
+        {
+            **defaults,
+            "openai.model": "gpt-5-mini",
+            "openai.max_tokens": 16000,
+            "openai.temperature": None,
+            "openai.stream": True,
+        },
+    )
+    merged = _prepared(defaults, {"llm_client": injected})
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    call = litellm.calls[-1]
+    assert call["model"] == "gpt-5-mini"
+    assert call["max_completion_tokens"] == 16000
+    assert call["stream"] is True
+    assert "temperature" not in call
+
+
+def test_injected_prefixed_temperature_replaces_operator_default() -> None:
+    injected = LLMClient("injected", {**OP_PROPS, "openai.temperature": 0.3})
+    merged = _prepared(OP_PROPS, {"llm_client": injected})
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    assert litellm.calls[-1]["temperature"] == 0.3
+
+
+@pytest.mark.parametrize("stored_key", ["openai.max_tokens", "llm.max_tokens"])
+def test_injected_client_native_cap_replaces_stored_limit(stored_key: str) -> None:
+    defaults = {**OP_PROPS, "openai.max_tokens": 1024}
+    injected = LLMClient("injected", {**defaults, stored_key: 2048})
+    merged = _prepared(
+        defaults,
+        {"llm_client": injected, "openai.max_completion_tokens": 8192},
+    )
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    call = litellm.calls[-1]
+    assert call["max_completion_tokens"] == 8192
+    assert "max_tokens" not in call
+
+
+def test_explicit_neutral_cap_replaces_injected_native_limit() -> None:
+    injected = LLMClient("injected", {**OP_PROPS, "openai.max_completion_tokens": 8192})
+    merged = _prepared(OP_PROPS, {"llm_client": injected, "llm.max_tokens": 2048})
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    call = litellm.calls[-1]
+    assert call["max_tokens"] == 2048
+    assert "max_completion_tokens" not in call
+
+
+@pytest.mark.parametrize("copy_defaults", [False, True])
+@pytest.mark.parametrize(
+    ("default_key", "stored_key", "sent_key"),
+    [
+        ("openai.max_tokens", "openai.max_completion_tokens", "max_completion_tokens"),
+        ("llm.max_tokens", "openai.max_completion_tokens", "max_completion_tokens"),
+        ("openai.max_completion_tokens", "openai.max_tokens", "max_tokens"),
+        ("openai.max_completion_tokens", "llm.max_tokens", "max_tokens"),
+    ],
+)
+def test_injected_client_cap_replaces_equivalent_operator_default(
+    default_key: str, stored_key: str, sent_key: str, copy_defaults: bool
+) -> None:
+    defaults = {**OP_PROPS, default_key: 1024}
+    stored: dict[str, Any] = {**defaults} if copy_defaults else {"openai.model": "gpt-4o"}
+    stored[stored_key] = 8192
+    injected = LLMClient("injected", stored)
+    merged = _prepared(defaults, {"llm_client": injected})
+    injected.execute_api_call({}, properties=merged, additional_data={})
+    call = litellm.calls[-1]
+    assert call[sent_key] == 8192
+    assert ({"max_tokens", "max_completion_tokens"} & call.keys()) == {sent_key}
+
+
+def test_distinct_caps_stored_on_one_client_still_conflict() -> None:
+    defaults = {**OP_PROPS, "openai.max_tokens": 1024}
+    injected = LLMClient(
+        "injected",
+        {
+            "openai.model": "gpt-4o",
+            "openai.max_tokens": 2048,
+            "openai.max_completion_tokens": 8192,
+        },
+    )
+    merged = _prepared(defaults, {"llm_client": injected})
+    with pytest.raises(LLMError) as raised:
+        injected.execute_api_call({}, properties=merged, additional_data={})
+    assert raised.value.code == "conflicting_token_limits"
+    assert litellm.calls == []
+
+
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5-mini"])
+def test_reasoning_model_call_omits_inherited_temperature_and_uses_chat_cap(
+    model: str,
+) -> None:
+    defaults = {**OP_PROPS, "openai.max_tokens": 1024}
+    client = LLMClient("test", _prepared(defaults, {"llm.model": model}))
+    client.execute_api_call({}, additional_data={})
+    call = litellm.calls[-1]
+    assert "temperature" not in call
+    assert call["max_completion_tokens"] == 1024
+    assert "max_tokens" not in call
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "openai.temperature",
+        "llm.temperature",
+        "openai.top_p",
+        "openai.logprobs",
+        "openai.top_logprobs",
+    ],
+)
+def test_explicit_sampling_conflict_fails_before_provider_call(key: str) -> None:
+    props = _prepared(
+        OP_PROPS, {"llm.model": "gpt-6-sol", "llm.reasoning_effort": "medium", key: 0}
+    )
+    with pytest.raises(LLMError) as raised:
+        LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert raised.value.code == "unsupported_parameter"
+    assert raised.value.retryable is False
+    assert key.split(".")[-1] in str(raised.value)
+    assert litellm.calls == []
+
+
+@pytest.mark.parametrize(
+    ("model", "effort"),
+    [
+        ("gpt-5-mini", "none"),
+        ("gpt-5.1", "low"),
+        ("gpt-5.6-sol", "high"),
+        ("gpt-6-astra", None),
+        ("gpt-6-astra", "none"),
+        ("gpt-6-sol", None),
+    ],
+)
+def test_other_reasoning_profiles_refuse_explicit_temperature(
+    model: str, effort: str | None
+) -> None:
+    supplied: dict[str, Any] = {"llm.model": model, "llm.temperature": 0.2}
+    if effort is not None:
+        supplied["llm.reasoning_effort"] = effort
+    props = _prepared(OP_PROPS, supplied)
+    with pytest.raises(LLMError) as raised:
+        LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert raised.value.code == "unsupported_parameter"
+    assert litellm.calls == []
+
+
+def test_null_effort_uses_model_default_in_sampling_check() -> None:
+    props = _prepared(
+        OP_PROPS,
+        {
+            "llm.model": "gpt-6-sol",
+            "llm.reasoning_effort": None,
+            "llm.temperature": 0.2,
+        },
+    )
+    with pytest.raises(LLMError) as raised:
+        LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert raised.value.code == "unsupported_parameter"
+    assert litellm.calls == []
+
+
+def test_default_none_effort_allows_sampling_for_gpt_5_1() -> None:
+    props = _prepared(OP_PROPS, {"llm.model": "gpt-5.1", "llm.temperature": 0.2})
+    LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert litellm.calls[-1]["model"] == "gpt-5.1"
+    assert litellm.calls[-1]["temperature"] == 0.2
+
+
+def test_prefixed_null_sampling_does_not_reach_provider() -> None:
+    client = LLMClient(
+        "test",
+        {**OP_PROPS, "llm.model": "gpt-6-sol", "openai.temperature": None},
+    )
+    client.execute_api_call({}, additional_data={})
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_neutral_null_sampling_clears_unknown_model_default() -> None:
+    props = _prepared(OP_PROPS, {"llm.model": "unlisted-gpt-model", "llm.temperature": None})
+    LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_reasoning_model_async_call_has_the_same_kwargs() -> None:
+    props = _prepared(OP_PROPS, {"llm.model": "gpt-6-luna"})
+    asyncio.run(LLMClient("test", props).aexecute_api_call({}, additional_data={}))
+    assert litellm.calls[-1]["model"] == "gpt-6-luna"
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_two_explicit_token_caps_are_rejected() -> None:
+    props = {
+        **OP_PROPS,
+        "llm.model": "gpt-6-sol",
+        "openai.temperature": None,
+        "openai.max_tokens": 1024,
+        "openai.max_completion_tokens": 2048,
+    }
+    with pytest.raises(LLMError) as raised:
+        LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert raised.value.code == "conflicting_token_limits"
+    assert litellm.calls == []
 
 
 def test_reserved_fields_never_reach_the_provider() -> None:
@@ -107,6 +437,40 @@ def test_neutral_reasoning_effort_reaches_the_async_provider_call() -> None:
     client = LLMClient("test", {**OP_PROPS, "llm.reasoning_effort": "medium"})
     asyncio.run(client.aexecute_api_call({}, additional_data={}))
     assert litellm.calls[-1]["reasoning_effort"] == "medium"
+
+
+@pytest.mark.parametrize(
+    "model", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6-luna-2026-09-22"]
+)
+def test_gpt6_effort_passes_through_older_openai_adapter(model: str) -> None:
+    props = _prepared(OP_PROPS, {"llm.model": model, "llm.reasoning_effort": "low"})
+    LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert litellm.calls[-1]["reasoning_effort"] == "low"
+    assert litellm.calls[-1]["allowed_openai_params"] == ["reasoning_effort"]
+
+
+def test_gpt6_effort_reaches_async_provider() -> None:
+    props = _prepared(OP_PROPS, {"llm.model": "gpt-6-luna", "llm.reasoning_effort": "low"})
+    asyncio.run(LLMClient("test", props).aexecute_api_call({}, additional_data={}))
+    assert litellm.calls[-1]["allowed_openai_params"] == ["reasoning_effort"]
+
+
+@pytest.mark.parametrize("effort", [None, "low"])
+def test_gpt6_effort_pass_through_is_not_caller_controlled(effort: str | None) -> None:
+    props = _prepared(OP_PROPS, {"llm.model": "gpt-6-luna", "llm.reasoning_effort": effort})
+    LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert ("allowed_openai_params" in litellm.calls[-1]) is (effort is not None)
+
+    with pytest.raises(LLMError, match="outside the generation set"):
+        LLMClient("test", {**props, "openai.allowed_openai_params": ["api_key"]}).execute_api_call(
+            {}, additional_data={}
+        )
+
+
+def test_other_model_does_not_get_gpt6_pass_through() -> None:
+    props = _prepared(OP_PROPS, {"llm.model": "gpt-5.6-sol", "llm.reasoning_effort": "low"})
+    LLMClient("test", props).execute_api_call({}, additional_data={})
+    assert "allowed_openai_params" not in litellm.calls[-1]
 
 
 def test_no_model_is_an_error() -> None:
@@ -177,6 +541,113 @@ def test_server_unsupported_generation_parameter_is_safe_and_not_retried() -> No
     assert raised.value.retryable is False
     assert private_detail not in str(raised.value)
     assert len(litellm.calls) == 1
+
+
+def test_server_unsupported_value_is_safe_and_not_retried() -> None:
+    client = LLMClient("test", OP_PROPS)
+    private_detail = "provider-private-value-detail"
+    litellm.fail_next.append(
+        litellm.BadRequestError(
+            private_detail,
+            body={"error": {"code": "unsupported_value", "message": private_detail}},
+        )
+    )
+    with pytest.raises(LLMError) as raised:
+        client.execute_api_call({}, additional_data={})
+    assert raised.value.code == "unsupported_parameter"
+    assert raised.value.retryable is False
+    assert private_detail not in str(raised.value)
+    assert len(litellm.calls) == 1
+
+
+def test_length_limited_response_is_not_treated_as_an_answer() -> None:
+    class PayloadProbe(LLMClient):
+        def reject(self, response: dict[str, Any]) -> None:
+            self._reject_truncated(self._materialize_payload(response))
+
+    response = {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+    client = PayloadProbe("test", OP_PROPS)
+    with pytest.raises(LLMError) as raised:
+        client.reject(response)
+    assert raised.value.code == "truncated_response"
+    assert raised.value.retryable is False
+
+
+def test_truncated_provider_response_records_usage_without_caching(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_dir = str(tmp_path / "llm-cache")
+    client = LLMClient("test", {**OP_PROPS, "llm.cache": True, "llm.cache_dir": cache_dir})
+
+    def truncated(**kwargs: Any) -> dict[str, Any]:
+        litellm.calls.append(kwargs)
+        return {
+            "choices": [{"finish_reason": "length", "message": {"content": ""}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 100},
+        }
+
+    monkeypatch.setattr(litellm, "completion", truncated)
+
+    def fixed_cost(**kwargs: Any) -> float:
+        return 0.4
+
+    monkeypatch.setattr(litellm, "completion_cost", fixed_cost)
+    with pytest.raises(LLMError) as raised:
+        client.execute_api_call({}, additional_data={})
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 1
+    assert client.last_usage is not None
+    assert client.last_usage.prompt_tokens == 12
+    assert client.last_usage.completion_tokens == 100
+    assert client.last_usage.cost == 0.4
+    assert len(client.ledger.records) == 1
+    assert len(client._caches[cache_dir]) == 0  # pyright: ignore[reportPrivateUsage]
+
+
+def test_async_truncated_response_records_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = LLMClient("test", OP_PROPS)
+
+    async def truncated(**kwargs: Any) -> dict[str, Any]:
+        litellm.calls.append(kwargs)
+        return {
+            "choices": [{"finish_reason": "length", "message": {"content": ""}}],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 8},
+        }
+
+    monkeypatch.setattr(litellm, "acompletion", truncated)
+
+    def fixed_cost(**kwargs: Any) -> float:
+        return 0.2
+
+    monkeypatch.setattr(litellm, "completion_cost", fixed_cost)
+    with pytest.raises(LLMError) as raised:
+        asyncio.run(client.aexecute_api_call({}, additional_data={}))
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 1
+    assert client.last_usage is not None
+    assert client.last_usage.prompt_tokens == 4
+    assert client.last_usage.completion_tokens == 8
+    assert client.last_usage.cost == 0.2
+
+
+def test_cached_length_limited_response_is_not_treated_as_an_answer(
+    tmp_path: Any,
+) -> None:
+    cache_dir = str(tmp_path / "llm-cache")
+    client = LLMClient("test", {**OP_PROPS, "llm.cache": True, "llm.cache_dir": cache_dir})
+    client.execute_api_call({}, additional_data={})
+    cache = client._caches[cache_dir]  # pyright: ignore[reportPrivateUsage]
+    key = next(iter(cache))
+    cache[key] = {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+    with pytest.raises(LLMError) as raised:
+        client.execute_api_call({}, additional_data={})
+    assert raised.value.code == "truncated_response"
+    assert len(litellm.calls) == 1
+    assert client.last_usage is not None and client.last_usage.cache_hit is True
+    assert client.last_usage.cost == 0.0
+    assert len(client.ledger.records) == 2
 
 
 def test_other_bad_request_codes_keep_the_ordinary_retry_policy() -> None:
@@ -453,6 +924,22 @@ def test_a_refusal_names_the_field_and_where_the_setting_belongs() -> None:
     assert "temperature" in message  # and what a caller may set instead
 
 
+def test_forbidden_properties_are_not_retryable_on_sync_or_async_paths() -> None:
+    for namespace, code in (("llm", "bad_override"), ("openai", "reserved_field")):
+        for field in ("api_key", "api_base", "mock_response", "mock_timeout"):
+            client = LLMClient("test", {**OP_PROPS, f"{namespace}.{field}": "private value"})
+            for use_async in (False, True):
+                litellm.calls.clear()
+                with pytest.raises(LLMError) as raised:
+                    if use_async:
+                        asyncio.run(client.aexecute_api_call({}, additional_data={}))
+                    else:
+                        client.execute_api_call({}, additional_data={})
+                assert raised.value.code == code
+                assert raised.value.retryable is False
+                assert litellm.calls == []
+
+
 def test_a_routing_selector_is_refused_on_the_async_path() -> None:
     import asyncio
 
@@ -677,7 +1164,10 @@ def test_a_slash_that_belongs_to_the_model_identifier_is_not_a_route(
 @pytest.mark.parametrize(
     "provider, model",
     [
-        ("anthropic", "azure/command-r-plus"),  # the reproduced bypass, exactly as reported
+        (
+            "anthropic",
+            "azure/command-r-plus",
+        ),  # the reproduced bypass, exactly as reported
         ("azure", "azure/command-r-plus"),
         ("openai", "vertex_ai/gemini-2.5-pro"),
         ("openai", "anthropic/claude-sonnet-4-5"),
@@ -715,7 +1205,9 @@ def test_a_model_the_deployment_does_not_offer_is_refused(
     assert litellm.calls == []
 
 
-def test_an_offered_model_still_reaches_the_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_offered_model_still_reaches_the_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv(OFFERED_MODELS_VAR, "gpt-4o")
     client = LLMClient("test", OP_PROPS)
     client.execute_api_call({}, additional_data={})
@@ -798,20 +1290,21 @@ def test_a_litellm_that_names_nothing_makes_every_slash_a_route(
 
 
 # --- against the installed LiteLLM ----------------------------------------------------
-# Everything above runs against the offline stub, which answers the spelling question with
-# LiteLLM's real provider names and deliberately will not answer the resolution one. The
-# cases below put the gate in front of the installed release instead. They need a separate
-# interpreter, because the stub is on `sys.path` for the whole suite, and they skip when
-# the optional llm extra is not installed. `get_llm_provider` is a pure function over
-# LiteLLM's model map: the probe builds call kwargs and stops, so no provider is contacted.
+# The offline tests use reviewed provider names selected below. The cases here use the
+# installed release when the optional llm extra is present. They need a separate interpreter
+# because the stub is on `sys.path` for the whole suite. The probe uses the local model-cost
+# map, builds call kwargs and stops; it does not contact a provider.
 
 REAL_LITELLM_PROBE = """
-import json, os, sys
+import json, os, sys, socket
+socket.socket.connect = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("offline test"))
 
 sys.path.insert(0, sys.argv[1])
 try:
     import litellm
-except Exception:
+except ModuleNotFoundError as error:
+    if error.name != "litellm":
+        raise
     print(json.dumps({"litellm": None}))
     raise SystemExit(0)
 
@@ -863,33 +1356,127 @@ print(json.dumps({
 
 
 @pytest.fixture(scope="module")
-def real_litellm() -> dict[str, Any]:
+def _installed_litellm_probe(  # pyright: ignore[reportUnusedFunction]
+) -> dict[str, Any] | None:
     import json
+    import os
     import subprocess
     import sys
     from pathlib import Path
 
     src = str(Path(__file__).resolve().parents[3] / "src")
-    environment = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
-    environment.pop("PYTHONPATH", None)
+    probe_env = {
+        "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+    if sys.platform == "win32":
+        for name in ("SystemRoot", "WINDIR"):
+            if name in os.environ:
+                probe_env[name] = os.environ[name]
     completed = subprocess.run(
-        [sys.executable, "-c", REAL_LITELLM_PROBE, src],
+        [sys.executable, "-B", "-c", REAL_LITELLM_PROBE, src],
         capture_output=True,
         text=True,
-        env=environment,
+        env=probe_env,
         timeout=300,
         check=True,
     )
     observed: dict[str, Any] = json.loads(completed.stdout)
     if observed["litellm"] is None:
-        pytest.skip("litellm is not installed; the llm extra is optional")
+        return None
     assert not observed["stubbed"], "the probe imported the stub, so it measured nothing"
     return observed
 
 
-def test_the_stubs_provider_names_are_litellms_own(real_litellm: dict[str, Any]) -> None:
-    """The offline gate is only as good as the names the stub carries."""
-    assert real_litellm["provider_names"] == sorted(litellm.provider_list)
+_STUB_NAMES_198 = tuple(litellm.provider_list)
+_STUB_ADDITIONS_1102 = tuple(litellm.provider_additions_1102)
+_STUB_ADDITIONS_11065 = tuple(litellm.provider_additions_11065)
+
+
+def _select_provider_names(provider_names: list[str] | None) -> tuple[str, ...]:
+    baseline = set(_STUB_NAMES_198)
+    additions = set(_STUB_ADDITIONS_1102)
+    latest = set(_STUB_ADDITIONS_11065)
+    assert len(latest) == len(_STUB_ADDITIONS_11065), "duplicate 1.106.5 additions"
+    assert not (latest & (baseline | additions)), "1.106.5 additions overlap older snapshots"
+    assert len(baseline) == len(_STUB_NAMES_198), "duplicate names in 1.98.0 snapshot"
+    assert len(additions) == len(_STUB_ADDITIONS_1102), "duplicate 1.102.0 additions"
+    assert not (baseline & additions), "1.102.0 additions overlap 1.98.0 snapshot"
+    if provider_names is None:
+        return tuple(sorted(baseline))
+    assert provider_names, "installed LiteLLM reported no provider names"
+    observed = set(provider_names)
+    assert len(observed) == len(provider_names), "duplicate installed provider names"
+    unlisted = sorted(observed - (baseline | additions | latest))
+    assert not unlisted, f"unreviewed installed provider names {unlisted}"
+    return tuple(sorted(observed))
+
+
+@pytest.fixture(scope="module")
+def _selected_provider_names(  # pyright: ignore[reportUnusedFunction]
+    _installed_litellm_probe: dict[str, Any] | None,
+) -> tuple[str, ...]:
+    observed = (
+        None if _installed_litellm_probe is None else _installed_litellm_probe["provider_names"]
+    )
+    return _select_provider_names(observed)
+
+
+@pytest.fixture(scope="module")
+def real_litellm(_installed_litellm_probe: dict[str, Any] | None) -> dict[str, Any]:
+    if _installed_litellm_probe is None:
+        pytest.skip("litellm is not installed; the llm extra is optional")
+    return _installed_litellm_probe
+
+
+def test_provider_coverage_rejects_a_new_installed_provider() -> None:
+    with pytest.raises(
+        AssertionError,
+        match="unreviewed installed provider names.*provider_not_in_stub",
+    ):
+        _select_provider_names([*_STUB_NAMES_198, *_STUB_ADDITIONS_1102, "provider_not_in_stub"])
+
+
+def test_provider_coverage_accepts_a_reviewed_subset() -> None:
+    names = [name for name in _STUB_NAMES_198 if name != "a2a"]
+    assert _select_provider_names(names) == tuple(sorted(names))
+
+
+def test_provider_coverage_accepts_partial_new_additions() -> None:
+    names = [*_STUB_NAMES_198, _STUB_ADDITIONS_1102[0], _STUB_ADDITIONS_11065[0]]
+    assert _select_provider_names(names) == tuple(sorted(names))
+
+
+def test_provider_coverage_rejects_duplicate_names() -> None:
+    with pytest.raises(AssertionError, match="duplicate installed provider names"):
+        _select_provider_names([*_STUB_NAMES_198, _STUB_NAMES_198[0]])
+
+
+def test_provider_coverage_rejects_an_empty_list() -> None:
+    with pytest.raises(AssertionError, match="no provider names"):
+        _select_provider_names([])
+
+
+def test_provider_coverage_uses_198_when_litellm_is_absent() -> None:
+    assert _select_provider_names(None) == tuple(sorted(_STUB_NAMES_198))
+
+
+@pytest.mark.parametrize("provider", (*_STUB_ADDITIONS_1102, *_STUB_ADDITIONS_11065))
+def test_new_provider_names_follow_the_installed_snapshot(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    monkeypatch.setenv(PROVIDER_VAR, provider)
+    client = LLMClient("test", OP_PROPS)
+    if provider in litellm.provider_list:
+        client.execute_api_call({}, additional_data={})
+        assert litellm.calls[-1][DISPATCH_FIELD] == provider
+    else:
+        with pytest.raises(LLMError, match=PROVIDER_VAR) as raised:
+            client.execute_api_call({}, additional_data={})
+        assert raised.value.code == "bad_provider"
+        assert litellm.calls == []
 
 
 @pytest.mark.parametrize(
@@ -925,7 +1512,9 @@ def test_the_installed_litellm_passes_the_same_models(
 
 
 # --- the name the lock rests on -------------------------------------------------------
-def test_a_provider_litellm_does_not_serve_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_provider_litellm_does_not_serve_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Every call is pinned to this name, so a typo in it is a typo in the lock."""
     monkeypatch.setenv(PROVIDER_VAR, "openai-but-misspelled")
     client = LLMClient("test", OP_PROPS)

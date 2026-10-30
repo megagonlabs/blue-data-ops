@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from blue_data_ops.llm import resolve_llm_client
+from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
+from blue_data_ops.llm.client import validate_llm_caller_controls
+from blue_data_ops.llm.errors import raise_reply_failure
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -10,6 +12,7 @@ from blue_data_ops.operators.semantic_join_operator import (
     SemanticJoinOperator,
     _estimate_join_cost,  # pyright: ignore[reportPrivateUsage]
     _evaluate_join_predicate_batch_strict,  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue, reportUnknownVariableType]
+    _JoinResponseFormatError,  # pyright: ignore[reportPrivateUsage]
     _perform_semantic_join_optimized,  # pyright: ignore[reportPrivateUsage]
 )
 from blue_data_ops.operators.types import (
@@ -21,6 +24,14 @@ from blue_data_ops.operators.types import (
 )
 
 
+def _reply_batch(*args: Any, **kwargs: Any) -> dict[tuple[int, int], bool]:
+    try:
+        return _evaluate_join_predicate_batch_strict(*args, **kwargs)
+    except _JoinResponseFormatError:
+        pass
+    raise_reply_failure()
+
+
 class SemanticJoinOutcomeOperator(_OutcomeOperator, SemanticJoinOperator):
     """Require two groups and reject malformed batch or optimization responses."""
 
@@ -30,6 +41,9 @@ class SemanticJoinOutcomeOperator(_OutcomeOperator, SemanticJoinOperator):
         attributes: Attributes,
         properties: Properties | None = None,
     ) -> FunctionResult:
+        validate_llm_caller_controls(
+            properties, service_prefix=str(self.DEFAULT_PROPERTIES.get("service_prefix", "openai"))
+        )
         join_predicate = cast(str, attributes.get("join_predicate", ""))
         join_type = cast(str, attributes.get("join_type", "inner"))
         left_fields = cast(list[str], attributes.get("left_fields", []))
@@ -72,6 +86,7 @@ class SemanticJoinOutcomeOperator(_OutcomeOperator, SemanticJoinOperator):
             return FunctionResult([], {})
 
         merged = {**self.DEFAULT_PROPERTIES, **(properties or {})}
+        merged = prepare_llm_operator_properties(merged, self.DEFAULT_PROPERTIES, properties)
         merged.update(
             {
                 "use_embedding_filter": use_embedding_filter,
@@ -104,7 +119,7 @@ class SemanticJoinOutcomeOperator(_OutcomeOperator, SemanticJoinOperator):
                 {} if use_cache else None,
                 use_embedding_filter,
                 embedding_threshold,
-                _evaluate_join_predicate_batch_strict,
+                _reply_batch,
                 True,
             ),
         )

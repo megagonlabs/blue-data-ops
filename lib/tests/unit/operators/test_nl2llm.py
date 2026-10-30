@@ -9,6 +9,7 @@ import pytest
 
 from blue_data_ops.llm import LLMClient, LLMError
 from blue_data_ops.operators.nl2llm_operator import NL2LLMOperator
+from blue_data_ops.operators.registry import versioned_registry
 
 INPUT: list[list[dict[str, Any]]] = [[]]
 
@@ -84,15 +85,10 @@ def test_fenced_json_output_pipeline(op: NL2LLMOperator, monkeypatch: pytest.Mon
     assert out == [[{"language": "Python", "rank": 1}]]  # [cast-output] wrap
 
 
-# --- Literal "json" substring removal ---
-def test_json_substring_is_removed_before_parsing(
-    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The fence cleanup replaces the SUBSTRING "json" anywhere: a key "jsonish"
-    # becomes "ish" before the JSON cast.
+def test_json_substring_is_preserved(op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch) -> None:
     _json_provider('[{"jsonish": 1}]', monkeypatch)
     out = op.apply(INPUT, {"query": "q"})
-    assert out == [[{"ish": 1}]]
+    assert out == [[{"jsonish": 1}]]
 
 
 # --- Provider defaults and caller overrides ---
@@ -100,10 +96,36 @@ def test_defaults_reach_provider(op: NL2LLMOperator, monkeypatch: pytest.MonkeyP
     _json_provider("[]", monkeypatch)
     op.apply(INPUT, {"query": "q"})
     call = litellm.calls[-1]
-    assert call["model"] == "gpt-4o"
-    assert call["max_tokens"] == 4096
-    assert call["temperature"] == 0
+    assert call["model"] == "gpt-6-luna"
+    assert call["max_completion_tokens"] == 4096
+    assert "max_tokens" not in call
+    assert "temperature" not in call
+    assert "reasoning_effort" not in call
     assert "api" not in call and "service_url" not in call
+
+
+def test_active_default_reaches_provider_without_sampling_or_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _json_provider("[]", monkeypatch)
+    operator = versioned_registry().resolve("nl2llm@3.0.0")
+    _, _, meta = operator.run(INPUT, {"query": "q"})
+    assert not meta.errors
+    call = litellm.calls[-1]
+    assert call["model"] == "gpt-6-luna"
+    assert call["max_completion_tokens"] == 4096
+    assert "max_tokens" not in call
+    assert "temperature" not in call
+    assert "reasoning_effort" not in call
+
+    _, _, meta = operator.run(INPUT, {"query": "q"}, {"llm.model": "gpt-4o"})
+    assert not meta.errors
+    override = litellm.calls[-1]
+    assert override["model"] == "gpt-4o"
+    assert override["max_tokens"] == 4096
+    assert override["temperature"] == 0
+    assert "max_completion_tokens" not in override
+    assert "reasoning_effort" not in override
 
 
 def test_caller_properties_override_defaults(
@@ -114,12 +136,109 @@ def test_caller_properties_override_defaults(
     assert litellm.calls[-1]["model"] == "gpt-4o-mini"
 
 
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5-mini"])
+def test_reasoning_model_omits_operator_temperature(
+    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch, model: str
+) -> None:
+    _json_provider("[]", monkeypatch)
+    op.apply(INPUT, {"query": "q"}, {"llm.model": model, "llm.reasoning_effort": "low"})
+    call = litellm.calls[-1]
+    assert call["model"] == model
+    assert "temperature" not in call
+    assert call["max_completion_tokens"] == 4096
+
+
+def test_explicit_sampling_conflict_is_not_discarded(
+    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _json_provider("[]", monkeypatch)
+    with pytest.raises(LLMError) as raised:
+        op.apply(
+            INPUT,
+            {"query": "q"},
+            {
+                "llm.model": "gpt-6-sol",
+                "llm.reasoning_effort": "medium",
+                "llm.temperature": 0,
+            },
+        )
+    assert raised.value.code == "unsupported_parameter"
+    assert litellm.calls == []
+
+
+def test_conflicting_token_limits_have_a_useful_run_error(op: NL2LLMOperator) -> None:
+    _, _, meta = op.run(
+        INPUT,
+        {"query": "q"},
+        {"openai.max_tokens": 1024, "openai.max_completion_tokens": 2048},
+    )
+    [error] = meta.errors
+    assert error.message == "conflicting LLM token limits"
+    assert error.suggestion == "Set only one of max_tokens and max_completion_tokens."
+    assert litellm.calls == []
+
+
 def test_injected_client_is_used(op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch) -> None:
     _json_provider("[]", monkeypatch)
-    client = LLMClient("mine", NL2LLMOperator.DEFAULT_PROPERTIES)
+    client = LLMClient("mine", {**NL2LLMOperator.DEFAULT_PROPERTIES, "openai.temperature": None})
     out = op.apply(INPUT, {"query": "q"}, {"llm_client": client})
     assert out == [[]]
     assert len(client.ledger.records) == 1  # the injected client did the call
+
+
+def test_injected_client_model_does_not_keep_incompatible_operator_default(
+    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _json_provider("[]", monkeypatch)
+    client = LLMClient("mine", {"llm.model": "gpt-6-sol"})
+    op.apply(INPUT, {"query": "q"}, {"llm_client": client})
+    assert litellm.calls[-1]["model"] == "gpt-6-sol"
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_injected_client_with_operator_defaults_can_switch_model(
+    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _json_provider("[]", monkeypatch)
+    client = LLMClient(
+        "mine",
+        {**NL2LLMOperator.DEFAULT_PROPERTIES, "openai.temperature": None, "llm.model": "gpt-6-sol"},
+    )
+    assert op.apply(INPUT, {"query": "q"}, {"llm_client": client}) == [[]]
+    assert litellm.calls[-1]["model"] == "gpt-6-sol"
+    assert "temperature" not in litellm.calls[-1]
+
+
+def test_injected_client_can_replace_default_token_limit(
+    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _json_provider("[]", monkeypatch)
+    client = LLMClient("mine", {**NL2LLMOperator.DEFAULT_PROPERTIES, "openai.temperature": None})
+    assert op.apply(
+        INPUT,
+        {"query": "q"},
+        {"llm_client": client, "openai.max_completion_tokens": 8192},
+    ) == [[]]
+    assert litellm.calls[-1]["max_completion_tokens"] == 8192
+    assert "max_tokens" not in litellm.calls[-1]
+
+
+@pytest.mark.parametrize("copy_defaults", [False, True])
+@pytest.mark.parametrize("model", ["gpt-4o", "gpt-6-sol"])
+def test_injected_client_native_cap_replaces_default_token_limit(
+    op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch, copy_defaults: bool, model: str
+) -> None:
+    _json_provider("[]", monkeypatch)
+    stored = dict(NL2LLMOperator.DEFAULT_PROPERTIES) if copy_defaults else {}
+    if model == "gpt-6-sol":
+        stored["openai.temperature"] = None
+    stored["openai.model"] = model
+    stored["openai.max_completion_tokens"] = 8192
+    client = LLMClient("mine", stored)
+    assert op.apply(INPUT, {"query": "q"}, {"llm_client": client}) == [[]]
+    assert litellm.calls[-1]["max_completion_tokens"] == 8192
+    assert "max_tokens" not in litellm.calls[-1]
+    assert ("temperature" in litellm.calls[-1]) is (model == "gpt-4o")
 
 
 # --- Provider errors propagate ---
@@ -177,30 +296,20 @@ def test_prompt_template_bytes() -> None:
 def test_rendered_prompt_full_equality(op: NL2LLMOperator, monkeypatch: pytest.MonkeyPatch) -> None:
     # Full-content equality (not substrings): the rendered prompt must equal the
     # template with exactly these three substitutions and nothing else changed.
-    from string import Template
-
-    from blue_data_ops.operators.nl2llm_operator import (
-        _PROMPT,  # pyright: ignore[reportPrivateUsage]
-    )
+    import json
+    from pathlib import Path
 
     _json_provider("[]", monkeypatch)
     attrs = [{"name": "language", "type": "string"}, {"name": "rank"}]
     op.apply(INPUT, {"query": "top languages", "context": "job market", "attrs": attrs})
     content = litellm.calls[-1]["messages"][0]["content"]
 
-    templated = Template(_PROMPT).safe_substitute(
-        query="top languages",
-        context="job market",
-        attrs=(
-            "Required output attributes:\n- language: string\n- rank: (type will be inferred)\n"
-        ),
+    frozen = json.loads(
+        (Path(__file__).parents[2] / "fixtures/llm_benign_prompts.json").read_text()
     )
-    # The Jinja pass follows Template substitution and trims the final newline.
-    from jinja2 import BaseLoader, Environment
-
-    expected = Environment(loader=BaseLoader()).from_string(templated).render()
+    expected = frozen["nl2llm"]["prompt"]
     assert content == expected
-    assert not content.endswith("\n")  # the Jinja trailing-newline trim, explicit
+    assert not expected.endswith("\n")
 
 
 # --- Complete 15-field defaults contract ---
@@ -211,7 +320,7 @@ def test_default_properties_field_by_field() -> None:
 
     assert NL2LLMOperator.DEFAULT_PROPERTIES == {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 4096,
         "openai.temperature": 0,
@@ -223,8 +332,11 @@ def test_default_properties_field_by_field() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",

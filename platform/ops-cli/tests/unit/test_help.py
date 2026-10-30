@@ -106,6 +106,15 @@ def test_the_two_options_with_a_resolved_default_say_where_it_comes_from(
     assert "the profile's selection, else active" in text
 
 
+def test_profile_config_help_shows_closed_values_and_bounds(runner: CliRunner) -> None:
+    text = " ".join(help_text(runner, ["profile", "config"]).split())
+    for choices in ("table|json|nl", "active|history", "rule|openai", "memory|file|redis"):
+        assert choices in text
+    assert "finite and positive" in text
+    assert "300 seconds" in text
+    assert "256–16384" in text
+
+
 @pytest.mark.parametrize("path", WORKED_EXAMPLES, ids=lambda p: "-".join(p))
 def test_a_worked_example_is_present_where_the_usage_is_not_obvious(
     path: list[str], runner: CliRunner

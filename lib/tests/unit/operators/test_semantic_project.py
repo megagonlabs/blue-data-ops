@@ -55,7 +55,7 @@ def test_mapping_projects_renames_and_omits_missing(
     op: SemanticProjectOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider(
-        '{"name": "person", "score": "rating", "missing": "ghost"}',
+        '{"name": "person", "score": "rating"}',
         monkeypatch,
     )
     assert op.apply(DATA, {"projection_instructions": "keep and rename"}) == [
@@ -72,25 +72,28 @@ def test_mapping_projects_renames_and_omits_missing(
     assert "## Projection Instructions\nkeep and rename" in prompt
 
 
-def test_non_dict_mapping_produces_empty_group(
+def test_non_dict_mapping_is_rejected(
     op: SemanticProjectOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider('["name"]', monkeypatch)
-    assert op.apply(DATA, {"projection_instructions": "keep name"}) == [[]]
+    with pytest.raises(ValueError, match="model reply"):
+        op.apply(DATA, {"projection_instructions": "keep name"})
 
 
-def test_nonempty_mapping_with_only_missing_keys_produces_empty_records(
+def test_mapping_with_only_missing_keys_is_rejected(
     op: SemanticProjectOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider('{"missing": "ghost"}', monkeypatch)
-    assert op.apply(DATA, {"projection_instructions": "keep missing"}) == [[{}, {}]]
+    with pytest.raises(ValueError, match="model reply"):
+        op.apply(DATA, {"projection_instructions": "keep missing"})
 
 
-def test_duplicate_target_last_mapping_entry_wins(
+def test_duplicate_target_is_rejected(
     op: SemanticProjectOperator, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _json_provider('{"a": "x", "b": "x"}', monkeypatch)
-    assert op.apply([[{"a": 1, "b": 2}]], {"projection_instructions": "merge"}) == [[{"x": 2}]]
+    with pytest.raises(ValueError, match="model reply"):
+        op.apply([[{"a": 1, "b": 2}]], {"projection_instructions": "merge"})
 
 
 def test_nested_value_identity_is_preserved(
@@ -138,7 +141,7 @@ def test_prompt_and_defaults_are_pinned() -> None:
     )
     assert SemanticProjectOperator.DEFAULT_PROPERTIES == {
         "openai.api": "ChatCompletion",
-        "openai.model": "gpt-4o",
+        "openai.model": "gpt-6-luna",
         "openai.stream": False,
         "openai.max_tokens": 1024,
         "openai.temperature": 0,
@@ -150,8 +153,11 @@ def test_prompt_and_defaults_are_pinned() -> None:
         "output_path": "$.choices[0].message.content",
         "service_prefix": "openai",
         "output_transformations": [
-            {"transformation": "replace", "from": "```", "to": ""},
-            {"transformation": "replace", "from": "json", "to": ""},
+            {
+                "transformation": "sub",
+                "from": r"(?is)\A```(?:json)?[ \t]*\r?\n(.*)\r?\n```\Z",
+                "to": r"\1",
+            },
         ],
         "output_strip": True,
         "output_cast": "json",

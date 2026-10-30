@@ -1063,6 +1063,28 @@ def effective_read_census(
             "scalar",
         )
     )
+    # These statuses come from the same controls used at operator admission.
+    if any(helper == "resolve_llm_client" for helper, _ in helper_calls):
+        from dataclasses import replace
+
+        from blue_data_ops.llm.client import RESERVED_OPERATOR_LLM_CONTROLS
+        from blue_data_ops.llm.sql_execution import SQL_CALLER_POLICY_VALIDATION
+
+        statuses = {name: "reserved" for name in RESERVED_OPERATOR_LLM_CONTROLS}
+        if getattr(operator, "name", None) == "nl2sql":
+            statuses.update(SQL_CALLER_POLICY_VALIDATION)
+        expected = {
+            replace(row, validation=statuses.get(row.name, row.validation))
+            if row.input == "properties"
+            else row
+            for row in expected
+        }
+        known = {row.name for row in expected if row.input == "properties"}
+        expected.update(
+            SettingExpectation(name, "properties", "no", "none", status, "scalar")
+            for name, status in statuses.items()
+            if name not in known
+        )
     ordered = tuple(
         sorted(expected, key=lambda row: (row.name.encode("utf-8"), row.input, row.kind))
     )
