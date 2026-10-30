@@ -38,7 +38,7 @@ blue-data-ops/
 
 ## Requirements
 
-- Python 3.12 recommended; release verification covers Python 3.11 and 3.12.
+- Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`).
 - A `blue-data` checkout beside this repository for the source installer. The library requires `blue-data>=1.0.0` at import time.
 - Provider credentials for LLM-backed operators and OpenAI planning; record transforms and the rule-based planner need none.
 

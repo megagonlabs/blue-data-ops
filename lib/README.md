@@ -8,7 +8,7 @@ Every active operator has a reference package. The library ships 54 exact-versio
 
 ## Requirements
 
-- Python 3.12 recommended; Python 3.11 is the minimum
+- Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`)
 - `blue-data` 1.0.0 or later. This is an eager dependency and must be importable with `blue_data_ops`.
 
 ## Installation

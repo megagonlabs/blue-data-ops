@@ -42,7 +42,7 @@ _string_to_python_type = string_to_python_type
 _check_type = validate_parameter_type
 
 _INVALID_TIMEOUT_SUGGESTION = "execution.timeout_seconds must be a finite number greater than zero"
-_MISSING_LLM_SUGGESTION = "Install blue-data-ops[llm] on Python 3.11 or later."
+_MISSING_LLM_SUGGESTION = "Install blue-data-ops[llm] on Python 3.12 or 3.13."
 _UNSUPPORTED_LLM_SETTING_SUGGESTION = (
     "For temperature, set llm.temperature=null; otherwise remove the unsupported "
     "setting or choose a compatible model."

@@ -16,8 +16,8 @@ The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md
 | Project config | `pyproject.toml`, one per distribution |
 | Build backend | `setuptools.build_meta` |
 
-Python 3.12 is recommended; release verification covers 3.11 and 3.12. Python 3.11 is the minimum and is declared in `requires-python`, the Ruff
-`target-version`, and the Pyright `pythonVersion` for all three distributions. Adding Python 3.10
+Python 3.12 and 3.13 are supported: all three distributions declare `requires-python = ">=3.12,<3.14"`, and 3.12 is the Ruff
+`target-version` and the Pyright `pythonVersion`. Adding another version
 requires adding it to the supported test matrix and updating
 `lib/scripts/check_real_llm_install.py`, which currently rejects earlier versions.
 

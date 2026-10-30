@@ -7,7 +7,7 @@ name = "blue-data-ops-mcp"
 version = "1.0.0"
 description = "MCP adapter for Blue Data Operators"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.14"
 # The core pin is exact and names the core release this adapter was verified against.
 dependencies = [
     "blue-data-ops==1.0.0",
@@ -38,13 +38,13 @@ blue_data_ops_mcp = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.pyright]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"

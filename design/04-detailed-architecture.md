@@ -84,7 +84,7 @@ In addition to calling the transform, it ensures that the caller receives a usab
 Two details of that table do real work downstream.
 
 A missing LLM extra is `RECOVERABLE` rather than `FAILED`, because the caller can fix it.
-The runtime inspects the exception and its `__cause__` for a `ModuleNotFoundError` naming `litellm`, `diskcache`, or `jinja2`, and returns the message `LLM dependency is unavailable` with the suggestion `Install blue-data-ops[llm] on Python 3.11 or later.`
+The runtime inspects the exception and its `__cause__` for a `ModuleNotFoundError` naming `litellm`, `diskcache`, or `jinja2`, and returns the message `LLM dependency is unavailable` with the suggestion `Install blue-data-ops[llm] on Python 3.12 or 3.13.`
 
 Every error record carries the operator's own exact ID.
 For a registered instance that is the pinned ID it was bound to; for a directly constructed instance it is `name@2.0.0`, the direct-call identity.

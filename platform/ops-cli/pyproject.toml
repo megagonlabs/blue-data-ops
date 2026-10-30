@@ -9,7 +9,7 @@ description = "Command line interface for Blue Data Operators"
 readme = "README.md"
 # The core floor, not the family's. Lowering it is a verification obligation on an
 # interpreter this repository does not test; see design/05-software-stack.md.
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.14"
 # The core pin is exact and names the core release this adapter was verified against,
 # the same rule platform/ops-mcp follows. The three extras are the ones the active
 # operators need to load: ml, vector and llm.
@@ -45,13 +45,13 @@ blue_data_ops_cli = ["py.typed", "profile_spec.json"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.pyright]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"

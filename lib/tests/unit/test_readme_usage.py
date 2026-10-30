@@ -271,9 +271,9 @@ def test_readme_embedding_discovery_example() -> None:
 def test_readme_source_distribution_version() -> None:
     metadata = tomllib.loads((LIB_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert metadata["project"]["version"] == "1.0.0"
-    assert metadata["project"]["requires-python"] == ">=3.11"
-    assert metadata["tool"]["ruff"]["target-version"] == "py311"
-    assert metadata["tool"]["pyright"]["pythonVersion"] == "3.11"
+    assert metadata["project"]["requires-python"] == ">=3.12,<3.14"
+    assert metadata["tool"]["ruff"]["target-version"] == "py312"
+    assert metadata["tool"]["pyright"]["pythonVersion"] == "3.12"
 
 
 def test_readme_operator_skill_inventory_matches_the_package_index() -> None:

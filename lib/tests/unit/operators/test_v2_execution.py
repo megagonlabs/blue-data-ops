@@ -375,7 +375,7 @@ def test_missing_litellm_uses_the_existing_code_with_actionable_fields() -> None
     assert error.stage is ErrorStage.EXECUTE
     assert error.message == "LLM dependency is unavailable"
     assert error.retryable is False
-    assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
+    assert error.suggestion == "Install blue-data-ops[llm] on Python 3.12 or 3.13."
 
 
 def test_missing_llm_extras_keep_recoverable_errors_when_wrapped() -> None:
@@ -405,7 +405,7 @@ def test_missing_llm_extras_keep_recoverable_errors_when_wrapped() -> None:
                 assert error.stage is ErrorStage.EXECUTE
                 assert error.message == "LLM dependency is unavailable"
                 assert error.retryable is False
-                assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
+                assert error.suggestion == "Install blue-data-ops[llm] on Python 3.12 or 3.13."
                 assert "private" not in str(error)
 
 
@@ -451,7 +451,7 @@ def test_real_llm_path_names_the_missing_extra_dependency(
     assert error.code is ErrorCode.EXECUTION_FAILED
     assert error.stage is ErrorStage.EXECUTE
     assert error.message == "LLM dependency is unavailable"
-    assert error.suggestion == "Install blue-data-ops[llm] on Python 3.11 or later."
+    assert error.suggestion == "Install blue-data-ops[llm] on Python 3.12 or 3.13."
 
 
 def test_an_unrelated_missing_module_keeps_the_generic_contained_failure() -> None:

@@ -19,7 +19,7 @@ The paths below are those commands spelled out, for an install that is not a sou
 
 ## Requirements
 
-- Python 3.12 recommended; release verification covers Python 3.11 and 3.12.
+- Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`).
 - `blue-data` 1.0.0 or later. The library imports it eagerly, so it must be importable before `blue_data_ops` is.
 - For a source checkout, `blue-data` and `blue-data-ops` under the same parent directory:
 
@@ -33,7 +33,7 @@ The core runtime dependencies are `blue-data>=1.0.0`, `pydantic>=2`, `jsonmerge=
 Everything heavier sits behind an extra.
 Editable installs also need the build requirements declared by each package, including `setuptools>=68` and `wheel`. Configure a package index or provide a wheelhouse containing these and the runtime dependencies before installing in a fresh environment.
 
-Python 3.11 and 3.12 are the standard release test interpreters, with 3.12 recommended. Regular CPython 3.15 on macOS ARM64 uses the compatibility-wheel installation below. Other platforms and free-threaded Python 3.15 have not been verified.
+Python 3.12 and 3.13 are the supported interpreters (`requires-python = ">=3.12,<3.14"`). The CPython 3.15 compatibility-wheel route below is outside the declared range and unsupported. Other platforms and free-threaded Python 3.15 have not been verified.
 
 Select a source whose metadata satisfies blue-data 1.0.0 or later. The verified 1.0 source
 includes `blue_data.server` and the `server` extra; the 0.1.0 development source cannot
@@ -52,7 +52,7 @@ immutable; resolve any version conflict before uploading.
 
 Run these from the parent directory that holds both checkouts.
 
-Select Python 3.12 (or the supported minimum, 3.11), then create and activate a standard virtual environment:
+Select Python 3.12 or 3.13, then create and activate a standard virtual environment:
 
 ```bash
 python3.12 --version

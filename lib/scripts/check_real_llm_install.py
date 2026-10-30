@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 def main() -> None:
-    if sys.version_info < (3, 11):  # noqa: UP036 - fail before importing optional packages
-        raise SystemExit("the llm extra requires Python 3.11 or later")
+    if sys.version_info < (3, 12):  # noqa: UP036 - fail before importing optional packages
+        raise SystemExit("the llm extra requires Python 3.12 or 3.13")
 
     spec = importlib.util.find_spec("litellm")
     if spec is None or spec.origin is None:
