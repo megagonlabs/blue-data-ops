@@ -10,7 +10,7 @@ The coding rules those tools enforce are [08-coding-style.md](08-coding-style.md
 | Concern | Choice |
 |---|---|
 | Language | Python |
-| Minimum version | 3.11 |
+| Supported versions | 3.12 and 3.13 |
 | Typing | annotations throughout, `from __future__ import annotations` in every module that declares one, a `py.typed` marker in all three distributions |
 | Package manager | pip |
 | Project config | `pyproject.toml`, one per distribution |
@@ -29,9 +29,9 @@ The repository publishes three packages from one source tree.
 
 | Package | Version | Path | Requires |
 |---|---|---|---|
-| `blue-data-ops` | `1.0.0` | `lib/` | Python >= 3.11 |
-| `blue-data-ops-mcp` | `1.0.0` | `platform/ops-mcp/` | Python >= 3.11, `blue-data-ops==1.0.0` |
-| `blue-data-ops-cli` | `1.0.0` | `platform/ops-cli/` | Python >= 3.11, `blue-data-ops[ml,vector,llm]==1.0.0` |
+| `blue-data-ops` | `1.0.0` | `lib/` | Python >=3.12,<3.14 |
+| `blue-data-ops-mcp` | `1.0.0` | `platform/ops-mcp/` | Python >=3.12,<3.14, `blue-data-ops==1.0.0` |
+| `blue-data-ops-cli` | `1.0.0` | `platform/ops-cli/` | Python >=3.12,<3.14, `blue-data-ops[ml,vector,llm]==1.0.0` |
 
 ### The core carries no server dependency
 

@@ -22,13 +22,13 @@ This is the block from [`lib/pyproject.toml`](../lib/pyproject.toml):
 ```toml
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.pyright]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
@@ -70,7 +70,7 @@ python -m pytest
 
 ## Type Hints
 
-The Python floor is 3.11, and each package states it three times: `requires-python = ">=3.11"`, Ruff's `target-version = "py311"`, and Pyright's `pythonVersion = "3.11"`.
+The supported interpreters are Python 3.12 and 3.13, and each package states the floor three times: `requires-python = ">=3.12,<3.14"`, Ruff's `target-version = "py312"`, and Pyright's `pythonVersion = "3.12"`.
 For the core package, `lib/tests/unit/test_readme_usage.py` reads all three values from `lib/pyproject.toml` and fails if they diverge.
 
 Pyright strict is the real standard here, and it is stricter than a convention: every parameter and every return is annotated, private functions included, and an unannotated signature is an error rather than a style note.

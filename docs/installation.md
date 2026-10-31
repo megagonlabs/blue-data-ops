@@ -7,9 +7,9 @@ Every supported way to install the three distributions in this repository, and w
 
 | Package | Version | Path | Depends on |
 |---|---|---|---|
-| `blue-data-ops` | `1.0.0` | [`lib/`](../lib/README.md) | Python >= 3.11, `blue-data>=1.0.0` |
-| `blue-data-ops-mcp` | `1.0.0` | [`platform/ops-mcp/`](../platform/ops-mcp/README.md) | Python >= 3.11, `blue-data-ops==1.0.0` |
-| `blue-data-ops-cli` | `1.0.0` | [`platform/ops-cli/`](../platform/ops-cli/README.md) | Python >= 3.11, `blue-data-ops[ml,vector,llm]==1.0.0`, `click>=8.0`, `rich>=13.0` |
+| `blue-data-ops` | `1.0.0` | [`lib/`](../lib/README.md) | Python >=3.12,<3.14, `blue-data>=1.0.0` |
+| `blue-data-ops-mcp` | `1.0.0` | [`platform/ops-mcp/`](../platform/ops-mcp/README.md) | Python >=3.12,<3.14, `blue-data-ops==1.0.0` |
+| `blue-data-ops-cli` | `1.0.0` | [`platform/ops-cli/`](../platform/ops-cli/README.md) | Python >=3.12,<3.14, `blue-data-ops[ml,vector,llm]==1.0.0`, `click>=8.0`, `rich>=13.0` |
 
 Install `blue-data-ops` first.
 Both interface packages pin it exactly, so their versions move with it.
@@ -33,7 +33,7 @@ The core runtime dependencies are `blue-data>=1.0.0`, `pydantic>=2`, `jsonmerge=
 Everything heavier sits behind an extra.
 Editable installs also need the build requirements declared by each package, including `setuptools>=68` and `wheel`. Configure a package index or provide a wheelhouse containing these and the runtime dependencies before installing in a fresh environment.
 
-Python 3.12 and 3.13 are the supported interpreters (`requires-python = ">=3.12,<3.14"`). The CPython 3.15 compatibility-wheel route below is outside the declared range and unsupported. Other platforms and free-threaded Python 3.15 have not been verified.
+Python 3.12 and 3.13 are the supported interpreters (`requires-python = ">=3.12,<3.14"`). The historical CPython 3.15 compatibility-wheel notes below are outside the declared range; pip refuses that install. Other platforms and free-threaded Python 3.15 have not been verified.
 
 Select a source whose metadata satisfies blue-data 1.0.0 or later. The verified 1.0 source
 includes `blue_data.server` and the `server` extra; the 0.1.0 development source cannot
@@ -263,7 +263,9 @@ python -m pyright
 - [cli.md](cli.md) — the same operators from a shell
 - [../examples/README.md](../examples/README.md) — which scripts need which extra, and which need a credential
 
-## Python 3.15 compatibility wheels
+## Python 3.15 compatibility wheels (historical)
+
+This route no longer works: every package declares `requires-python = ">=3.12,<3.14"`, so pip refuses to install it on Python 3.15. The notes below are kept only as a record of the earlier compatibility builds and their scripts in `lib/scripts/`.
 
 Regular CPython 3.15 on macOS ARM64 can use local `fastuuid==0.14.0+blue.1` and `litellm==1.106.5+blue.1` wheels. These builds are selected with `lib/scripts/python315-constraints.txt`; published dependency ranges stay unchanged. These local versions are not on PyPI.
 

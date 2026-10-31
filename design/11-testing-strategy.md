@@ -317,8 +317,8 @@ cd platform/ops-cli
 python -m pytest
 ```
 
-`requires-python = ">=3.11"` sets the floor and declares no ceiling, so run each suite on the interpreters the change is meant to support.
-In practice that is 3.11 and 3.12.
+`requires-python = ">=3.12,<3.14"` sets the supported range, so run each suite on the interpreters the change is meant to support.
+In practice that is 3.12 and 3.13.
 
 ---
 
