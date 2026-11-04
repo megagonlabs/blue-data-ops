@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from blue_data_ops.operators._discovery import DiscoveryError, DiscoverySpec
+from blue_data_ops.operators._nl2sql_outcome import NL2SQLOutcomeOperator
 from blue_data_ops.operators.argmax_operator import ArgmaxOperator
 from blue_data_ops.operators.argmin_operator import ArgminOperator
 from blue_data_ops.operators.avg_operator import AvgOperator
@@ -102,6 +103,7 @@ __all__ = [
     "NL2BNOperator",
     "NL2LLMOperator",
     "NL2SQLOperator",
+    "NL2SQLOutcomeOperator",
     "NormalizeTextOperator",
     "DiscoverySpec",
     "DiscoveryError",

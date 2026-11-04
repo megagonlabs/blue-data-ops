@@ -217,7 +217,9 @@ def test_cache_effective_identity_and_explicit_isolation(
         assert observation.provider_attempts == 0 and observation.complete_cost() == 0
     cache = cast(Any, second)._caches[str(tmp_path)]
     request_keys = [
-        json.loads(key) for key in cache if not key.startswith("operator-temperature-fallback:")
+        json.loads(key.removeprefix("blue-data-ops:llm:v1:response:"))
+        for key in cache
+        if key.startswith("blue-data-ops:llm:v1:response:")
     ]
     assert len(request_keys) == 1 and "temperature" not in request_keys[0]
     # Explicit null reuses the effective request; explicit zero must face refusal.

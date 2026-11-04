@@ -7,7 +7,7 @@ Every supported way to install the three distributions in this repository, and w
 
 | Package | Version | Path | Depends on |
 |---|---|---|---|
-| `blue-data-ops` | `1.0.0` | [`lib/`](../lib/README.md) | Python >=3.12,<3.14, `blue-data>=1.0.0` |
+| `blue-data-ops` | `1.0.0` | [`lib/`](../lib/README.md) | Python >=3.12,<3.14, `blue-data>=1.0.0,<2` |
 | `blue-data-ops-mcp` | `1.0.0` | [`platform/ops-mcp/`](../platform/ops-mcp/README.md) | Python >=3.12,<3.14, `blue-data-ops==1.0.0` |
 | `blue-data-ops-cli` | `1.0.0` | [`platform/ops-cli/`](../platform/ops-cli/README.md) | Python >=3.12,<3.14, `blue-data-ops[ml,vector,llm]==1.0.0`, `click>=8.0`, `rich>=13.0` |
 
@@ -29,16 +29,16 @@ workspace/
 └── blue-data-ops/
 ```
 
-The core runtime dependencies are `blue-data>=1.0.0`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng`, and `tenacity`.
+The core runtime dependencies are `blue-data>=1.0.0,<2`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng<2`, and `tenacity<10`.
 Everything heavier sits behind an extra.
-Editable installs also need the build requirements declared by each package, including `setuptools>=68` and `wheel`. Configure a package index or provide a wheelhouse containing these and the runtime dependencies before installing in a fresh environment.
+Editable installs also need the build requirements declared by each package, including `setuptools>=77.0.3` and `wheel`. Configure a package index or provide a wheelhouse containing these and the runtime dependencies before installing in a fresh environment.
 
 Python 3.12 and 3.13 are the supported interpreters (`requires-python = ">=3.12,<3.14"`). The historical CPython 3.15 compatibility-wheel notes below are outside the declared range; pip refuses that install. Other platforms and free-threaded Python 3.15 have not been verified.
 
-Select a source whose metadata satisfies blue-data 1.0.0 or later. The verified 1.0 source
+Select a source whose metadata satisfies `blue-data>=1.0.0,<2`. The verified 1.0 source
 includes `blue_data.server` and the `server` extra; the 0.1.0 development source cannot
-satisfy this release. The installers validate the selected metadata and ask pip to resolve
-the source and floor together. Set `BLUE_DATA_PATH` to a compatible `lib` directory and
+satisfy this release. The preflight checks source identity and layout; pip enforces
+the core dependency range when installing the core. Set `BLUE_DATA_PATH` to a compatible `lib` directory and
 `PYTHON` to the intended interpreter when using `scripts/install.sh`. MCP additionally
 validates and installs that same source's `[server]` extra. CLI alone does not need it.
 
@@ -69,11 +69,11 @@ conda activate blue-data-ops
 
 If Conda reports that activation is unavailable, run `conda init zsh` once (replace `zsh` with your shell), reopen the shell, and return to the directory that holds both checkouts.
 
-With either environment active, install the two packages:
+With either environment active, install the two source packages. Their `pyproject.toml` files declare the dependency requirements:
 
 ```bash
-python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
-python -m pip install -e ./blue-data-ops/lib "blue-data-ops==1.0.0"
+python -m pip install -e ./blue-data/lib
+python -m pip install -e ./blue-data-ops/lib
 ```
 
 Installation, runtime use, and pytest work in either environment. The repository's Pyright configuration still looks for `lib/.venv`, so use the standard virtual-environment path when running the Pyright check.
@@ -81,7 +81,7 @@ Installation, runtime use, and pytest work in either environment. The repository
 Add the extras you need in the same command:
 
 ```bash
-python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]" "blue-data-ops==1.0.0"
+python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]"
 ```
 
 This is the direct path for a contributor, and the one [quickstart.md](quickstart.md) follows.
@@ -92,11 +92,14 @@ This is the direct path for a contributor, and the one [quickstart.md](quickstar
 |---|---|---|
 | `ml` | `numpy`, `scikit-learn` | `classify`, `cluster`, `sklearn_estimator` |
 | `vector` | `numpy`, `sentence-transformers` | `vector_embed`, `vector_search`, `vector_similarity` |
-| `llm` | `litellm>=1.98,<2`, `tenacity`, `diskcache`, `jinja2` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
+| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
 | `openai` | `openai>=2.54,<3` | `OpenAIPlanGenerator` |
-| `dev` | `numpy`, `scikit-learn`, `tenacity`, `diskcache`, `jinja2`, `openai>=2.54,<3`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff`, `pyright`, `build`, `twine` | running the tests, the linters, and the build |
+| `dev` | `numpy`, `scikit-learn`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff==0.17.3`, `pyright==1.1.414`, `build`, `twine` | running the tests, the linters, and the build |
 
-Jinja2 remains in the compatibility bundle; prompt rendering uses one standard-library dollar-placeholder pass.
+The package bounds `jsonpath-ng` below 2, `tenacity` below 10, and `diskcache` below 6 without adding minimum versions. `blue-data` retains its `>=1.0.0` minimum and adds `<2`.
+The next major version of each requires a compatibility review.
+
+Prompt rendering uses one standard-library dollar-placeholder pass and requires no direct Jinja2 dependency.
 
 `dev` deliberately leaves out `litellm` and `sentence-transformers`.
 The test suite substitutes deterministic stubs for those two from `lib/tests/stubs/`, so the default test run needs neither the download nor a provider.
@@ -124,7 +127,7 @@ It adds no general sdist-contamination guarantee and does not clear `*.egg-info`
 Wheel lookup and the metadata prefix assume the version in `pyproject.toml` is already canonical.
 
 ```bash
-python -m pip install ./blue-data/lib "blue-data>=1.0.0"
+python -m pip install ./blue-data/lib
 cd blue-data-ops
 (cd lib && ./scripts/build.sh)
 python -m pip install "./lib/dist/blue_data_ops-1.0.0-py3-none-any.whl[ml,vector,llm]"
@@ -148,7 +151,7 @@ The [examples](../examples/README.md) are in the checkout only: they sit above t
 ## Path 3: released artifact
 
 If your artifact index is configured separately, install the published distributions instead of building them.
-The index must also provide `blue-data>=1.0.0`.
+The index must also provide `blue-data>=1.0.0,<2`.
 
 ```bash
 python -m pip install --index-url "$PIP_INDEX_URL" \
@@ -157,7 +160,7 @@ python -m pip install --index-url "$PIP_INDEX_URL" \
   "blue-data-ops-cli==1.0.0"
 ```
 
-MCP wheel installs also need `blue-data[server]>=1.0.0`; install it from a compatible
+MCP wheel installs also need `blue-data[server]>=1.0.0,<2`; install it from a compatible
 source with `[server]` or from the configured index.
 
 ## The MCP adapter
@@ -166,14 +169,14 @@ Install the core first, then the adapter.
 From the repository root:
 
 ```bash
-python -m pip install "../blue-data/lib[server]" "blue-data[server]>=1.0.0"
-python -m pip install "./lib[ml,vector,llm]" "blue-data-ops==1.0.0"
-python -m pip install ./platform/ops-mcp "blue-data-ops-mcp==1.0.0"
+python -m pip install "../blue-data/lib[server]"
+python -m pip install "./lib[ml,vector,llm]"
+python -m pip install ./platform/ops-mcp
 ```
 
 `platform/ops-mcp/scripts/install.sh` runs those three steps through the library's own installer, and adds the dev extras on top.
 
-The adapter also requires `blue-data[server]>=1.0.0` for the shared HTTP guards and requires `mcp>=1.28.1,<2` and `pydantic>=2.11,<3` on top of the core's dependencies.
+The adapter also requires `blue-data[server]>=1.0.0,<2` for the shared HTTP guards and requires `mcp>=1.28.1,<2` and `pydantic>=2.11,<3` on top of the core's dependencies.
 It serves 33 primary tools, the same selection the core's `active_registry()` returns, each named `ops_` plus its operator name.
 Installing it puts one command on `PATH`, `blue-data-ops-mcp`, which serves on the loopback defaults; [mcp.md](mcp.md) covers the rest.
 
@@ -183,9 +186,9 @@ Install the core first, then the command.
 From the repository root:
 
 ```bash
-python -m pip install ../blue-data/lib "blue-data>=1.0.0"
-python -m pip install "./lib[ml,vector,llm]" "blue-data-ops==1.0.0"
-python -m pip install ./platform/ops-cli "blue-data-ops-cli==1.0.0"
+python -m pip install ../blue-data/lib
+python -m pip install "./lib[ml,vector,llm]"
+python -m pip install ./platform/ops-cli
 ```
 
 `platform/ops-cli/scripts/install.sh` runs those three steps through the library's own installer, and adds the dev extras on top.
@@ -229,7 +232,7 @@ python -c "from blue_data_ops.operators import active_registry; print(len(active
 
 The first prints the distribution version, `1.0.0`.
 The second prints `33`, the number of active operator cards.
-Those two numbers move independently: an operator card carries its own version, and twelve of the 33 are active at `@2.0.0` while the other twenty-one are at `@3.0.0`.
+Those numbers move independently: an operator card carries its own version. Of the 33 active cards, twelve are at `@2.0.0`, twenty at `@3.0.0`, and `nl2sql` at `@4.0.0`.
 
 ## Running the tests
 
@@ -293,7 +296,7 @@ python3.15 -m venv .venv315
 source .venv315/bin/activate
 export PIP_FIND_LINKS="$PWD/.wheels315"
 export PYYAML_FORCE_LIBYAML=0
-python -m pip install -e "$BLUE_DATA_PATH" 'blue-data>=1.0.0'
+python -m pip install -e "$BLUE_DATA_PATH"
 python -m pip install -c lib/scripts/python315-constraints.txt -e './lib[llm]'
 python -m pip check
 python -c 'import blue_data_ops, litellm, fastuuid; print("imports OK")'

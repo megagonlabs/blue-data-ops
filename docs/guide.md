@@ -24,7 +24,7 @@ The other two views exist for narrower jobs.
 |---|---|---|
 | `active_registry()` | 33 | everything ordinary: discovery, resolution, execution, planning |
 | `default_registry()` | 33 | the raw v1-compatible view, when legacy code passes per-name version overrides |
-| `versioned_registry()` | 87 | retained history, when migration code has to resolve a 1.x or 2.x card on purpose |
+| `versioned_registry()` | 88 | retained history, when migration code has to resolve a 1.x or 2.x card on purpose |
 
 Raw cards from `default_registry()` carry no tags and no invocation guidance, and the planner rejects every one of them as planning authority even when the id text matches a supported version.
 Use `active_registry()` unless you have a reason not to.
@@ -259,7 +259,7 @@ An invalid vector, a failing callback, or a stale snapshot raises `EmbeddingDisc
 
 ## Load an operator's resource package
 
-`operator_skills` ships 54 exact-version packages: 33 retained at `@2.0.0` and 21 outcome packages at `@3.0.0`.
+`operator_skills` ships 55 exact-version packages: 33 retained at `@2.0.0`, 21 outcome packages at `@3.0.0`, and `nl2sql@4.0.0`.
 Loading one reads text about the operator.
 It does not call the operator, and it does not add anything to planner or provider input.
 
@@ -270,12 +270,12 @@ from blue_data_ops.operators import active_registry
 registry = active_registry()
 loader = OperatorSkillLoader(registry)
 
-descriptor = loader.describe("nl2sql@3.0.0")
+descriptor = loader.describe("nl2sql@4.0.0")
 print(descriptor.declared_kinds)     # ('guide', 'examples')
 print(descriptor.declared_levels)    # (2, 3)
 
-skill = loader.load("nl2sql@3.0.0", level=3)
-print(skill.card.operator_id)                      # nl2sql@3.0.0
+skill = loader.load("nl2sql@4.0.0", level=3)
+print(skill.card.operator_id)                      # nl2sql@4.0.0
 print(skill.io.attributes["question"].required)    # True
 ```
 
@@ -293,7 +293,7 @@ from blue_data_ops.operators import versioned_registry
 history = versioned_registry()
 loader = OperatorSkillLoader(history)
 eligible = set(loader.available_operator_ids())
-print(len(eligible))   # 54
+print(len(eligible))   # 55
 
 matches = history.find("average", tags=["domain-arithmetic"])
 skipped = next(card for card in matches if card.operator_id not in eligible)
@@ -638,7 +638,7 @@ They need the `llm` extra and a provider credential in the environment.
 export OPENAI_API_KEY=<your-key>
 ```
 
-Select the model with the `openai.model` call property; the default is `gpt-6-luna`.
+Select the model with the `llm.model` call property; the default is `gpt-6-luna`. The service-prefixed `openai.model` spelling is also accepted on OpenAI deployments.
 
 ```python
 from blue_data_ops.operators import active_registry
@@ -650,7 +650,7 @@ output_data, _, meta = operator.run(
         "query": "Return two example products",
         "attrs": [{"name": "name", "type": "string"}, {"name": "price", "type": "float"}],
     },
-    {"openai.model": "gpt-4o-mini"},
+    {"llm.model": "gpt-4o-mini"},
 )
 print(output_data if not meta.errors else meta.errors[0].code.value)
 ```
@@ -658,8 +658,7 @@ print(output_data if not meta.errors else meta.errors[0].code.value)
 Without the extra or without the credential, that prints `EXECUTION_FAILED` and `output_data` is `[[]]`.
 Nothing raises, so the same branch handles both.
 
-`nl2sql` can run the SQL it writes.
-Generation is the default and returns `[[{"sql": "..."}]]`. Supply `source`, `protocol`, `database`, and `collection` for schema lookup. Execution requires a host-configured `ReadOnlySQLExecutor` and a boolean `execute_query=True`; see [LLM settings](llm-settings.md#sql-execution). Caller registry selectors are denied during execution. The fixed SELECT check measures query shape; the bound database connection enforces read-only access.
+`nl2sql` returns generated SQL by default. Supply `source`, `protocol`, `database` and `collection` to identify the registered target. Execution needs a host-bound `ReadOnlySQLExecutor`, an approved target, and `execute_query=True`; caller registry selectors cannot grant access. See [LLM settings](llm-settings.md#sql-execution) for configuration and limits.
 
 `nl2llm@3.0.0` may report an estimated USD `cost` in `ExecMeta.traces` after exactly one priced attempt.
 A proven local cache hit reports `0.0`.

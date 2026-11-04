@@ -15,12 +15,12 @@ scripts/install.sh
 ```
 
 That installs the sibling `blue-data` checkout, the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
-`blue-data` is a core dependency of the library and is not on a public index, so it has to be resolvable first; [installation.md](installation.md) is the source of truth for the paths that put it there.
+`blue-data` is a core dependency of the library, so the selected source must be installed first; [installation.md](installation.md) is the source of truth for the paths that put it there.
 
 Add the provider-backed planner's dependency with the `openai` extra:
 
 ```bash
-python -m pip install -e ".[dev,openai]" "blue-data-ops-cli==1.0.0" "blue-data-ops==1.0.0"
+python -m pip install -e ".[dev,openai]"
 ```
 
 Confirm the install:
@@ -209,14 +209,14 @@ Either one naming a profile that does not exist is refused rather than run as an
 
 Registry configuration now rejects an unsupported store selector, surrounding selector whitespace, or an explicit missing, unreadable or malformed sources file. The sources document must contain a `sources` list of objects. `{"sources": []}` remains valid. CLI construction still defaults to empty memory and warns that registry metadata is ephemeral. File/Redis helpers can write/connect, and source loading can connect, enrich and sync before execution starts. `--timeout` bounds the later operator wait, not initial registry construction or backend connection setup; a late worker can still change the backend.
 
-SQL and Bayesian operators check caller template and transport controls before the CLI builds a data registry. Stock SQL operators support generation only. A host-configured exact built-in `NL2SQLOperator` or `NL2SQLOutcomeOperator` instance, including registered version/name aliases, can use its bound read-only executor. Other subclasses, including those that customize prompts, require the direct Python host API for SQL execution.
+SQL operators generate by default. Stock CLI tools have no executor; a host-configured exact built-in `NL2SQLOperator` or `NL2SQLOutcomeOperator` can use a bound executor. Other subclasses require the direct Python host API. Caller template and transport controls are checked before CLI registry construction.
 
 A catalog is a view of the operator registry, and `--catalog` says which one a command reads.
 
 | View | Cards | What it holds |
 |---|---|---|
 | `active` | 33 | the reviewed built-ins, one version per operator name |
-| `history` | 87 | every retained version, including the reviewed ones |
+| `history` | 88 | every retained version, including the reviewed ones |
 
 The selection follows the same four tiers: `--catalog` > `BLUE_DATA_OPS_CATALOG` > `~/.blue-ops/<profile>/.selected.catalog` > `active`.
 
@@ -232,7 +232,7 @@ blue-ops catalog list
 ┃ Catalog ┃ Selected ┃ Cards ┃ Operators ┃ Planning     ┃
 ┡━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
 │ active  │ *        │ 33    │ 33        │ yes          │
-│ history │          │ 87    │ 33        │ by allowlist │
+│ history │          │ 88    │ 33        │ by allowlist │
 └─────────┴──────────┴───────┴───────────┴──────────────┘
 ```
 
@@ -377,7 +377,7 @@ Python and MCP, plus an offline precedence example.
 
 ## Operator resources
 
-Most operators ship a reviewed package: a guide at level 2, and worked examples at level 3.
+Every active operator ships a reviewed package: a guide at level 2, and worked examples at level 3. In the history catalog, 55 of the 88 exact operator IDs have a package.
 
 ```bash
 blue-ops operator resource list
@@ -678,6 +678,9 @@ The CLI code is what a script branches on; the library code is what diagnoses th
 | `PLANNING` | 7 | Any other planning failure, with the `PlanningErrorCode` and its stage in the message |
 | `EXECUTION` | 8 | An operator run returned a failed `ErrorRecord`, including a contained LLM provider failure. A `RECOVERABLE` record is not one: the run keeps exit 0, and the record is written to standard error |
 | `TIMEOUT` | 9 | An operator run exceeded its time allowance |
+
+The stock CLI does not configure a host SQL executor: `nl2sql` generates SQL.
+The recoverable SQL schema error applies to host-bound library and MCP instances.
 
 `CONFIG` and `PROFILE` share exit 4 and are told apart by the code token.
 Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own families.

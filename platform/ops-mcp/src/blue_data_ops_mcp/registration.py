@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
+from blue_data_ops import _execution_scope as _scope
 from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.operators import (
     ErrorRecord,
@@ -88,7 +89,7 @@ ACTIVE_OPERATOR_IDS: tuple[str, ...] = (
     "min@3.0.0",
     "nl2bn@3.0.0",
     "nl2llm@3.0.0",
-    "nl2sql@3.0.0",
+    "nl2sql@4.0.0",
     "normalize_text@2.0.0",
     "project@3.0.0",
     "segment_text@2.0.0",
@@ -106,7 +107,7 @@ ACTIVE_OPERATOR_IDS: tuple[str, ...] = (
     "vector_similarity@3.0.0",
 )
 
-_SUPPORTED_BUILTIN_IDS = frozenset((*V2_OPERATOR_IDS, *ACTIVE_OPERATOR_IDS))
+_SUPPORTED_BUILTIN_IDS = frozenset((*V2_OPERATOR_IDS, *ACTIVE_OPERATOR_IDS, "nl2sql@3.0.0"))
 _SUPPORTED_BUILTIN_NAMES = frozenset(
     operator_id.partition("@")[0] for operator_id in _SUPPORTED_BUILTIN_IDS
 )
@@ -164,9 +165,10 @@ def freeze_deployment(
         requested_name, separator, requested_version = requested_id.partition("@")
         if not separator or card.name != requested_name or card.version != requested_version:
             raise ValueError(f"requested/card identity mismatch for {requested_id!r}")
-        if card.version not in _SUPPORTED_VERSIONS:
+        if card.version not in _SUPPORTED_VERSIONS and requested_id != "nl2sql@4.0.0":
             raise ValueError(
-                f"the MCP adapter supports exact v2/v3 selections only, got {requested_id!r}"
+                "the MCP adapter supports exact v2/v3 and built-in nl2sql@4.0.0 "
+                f"selections only, got {requested_id!r}"
             )
         operator = deployment_registry.resolve(requested_id)
         if operator.operator_id != requested_id or operator.name != card.name:
@@ -314,21 +316,29 @@ def make_run_handler(
             }
             if controls:
                 call_properties = {**controls, **(properties or {})}
-        if deployment is not None and (requires_registry or bound_execution):
-            result = await deployment.run(
-                operator,
-                input_data,
-                call_attributes,
-                call_properties,
-                bound_execution=bound_execution,
-            )
-            payload = run_payload(result)
-        else:
-            payload = await asyncio.to_thread(
-                lambda: run_payload(
-                    run_body(operator, input_data, call_attributes, call_properties)
-                )
-            )
+        scope = _scope.create(None)
+        try:
+            with _scope.activate(scope):
+                if deployment is not None and (requires_registry or bound_execution):
+                    result = await deployment.run(
+                        operator,
+                        input_data,
+                        call_attributes,
+                        call_properties,
+                        bound_execution=bound_execution,
+                    )
+                    payload = run_payload(result)
+                else:
+                    payload = await asyncio.to_thread(
+                        lambda: run_payload(
+                            run_body(operator, input_data, call_attributes, call_properties)
+                        )
+                    )
+        except asyncio.CancelledError:
+            scope.stop.set()
+            raise
+        except _scope.ScopeExpired as error:
+            payload = run_payload(failure_result(operator, error))
         return RunResult.model_validate(payload)
 
     handler.__name__ = tool_name(operator.name)

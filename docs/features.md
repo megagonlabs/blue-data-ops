@@ -6,7 +6,7 @@ The generated [operator reference](../lib/OPERATORS.md) is the source of truth f
 ## An operator catalog pinned by exact version
 
 Thirty-three logical operators, each addressed as `name@<MAJOR.MINOR.PATCH>`.
-Twelve are active at `@2.0.0` and the other twenty-one at `@3.0.0`, so the version you resolve is part of the contract rather than a detail of the release.
+Twelve cards are active at `@2.0.0`, twenty at `@3.0.0`, and `nl2sql@4.0.0` is the remaining active card. Resolve the exact version as part of the operator contract.
 
 | Category | Active logical operators |
 |---|---|
@@ -130,7 +130,7 @@ The legacy `properties["timeout"]` field is still observable, but it does not se
 
 ## Execution measurements
 
-The 21 operators active at `@3.0.0` may add shallow shape counts and a monotonic elapsed time to `ExecMeta.traces`.
+The 20 operators active at `@3.0.0` and `nl2sql@4.0.0` may add shallow shape counts and a monotonic elapsed time to `ExecMeta.traces`.
 `input_shape` is captured before validation; `output_shape` appears only after a successful normalization, so its absence tells you the call did not get that far.
 
 ```python
@@ -154,14 +154,14 @@ The same catalog is exposed three ways, because discovery, execution, and migrat
 |---|---|---|
 | `active_registry()` | 33 | ordinary 3.0 discovery and execution |
 | `default_registry()` | 33 | the raw v1-compatible view, with per-name version overrides |
-| `versioned_registry()` | 87 | retained history, when migration code must resolve a 1.x or 2.x card |
+| `versioned_registry()` | 88 | retained history, when migration code must resolve a 1.x or 2.x card |
 
 ```python
 from blue_data_ops.operators import active_registry, default_registry, versioned_registry
 
 print(len(active_registry().list_cards()))       # 33
 print(len(default_registry().list_cards()))      # 33
-print(len(versioned_registry().list_cards()))    # 87
+print(len(versioned_registry().list_cards()))    # 88
 print(versioned_registry().resolve("avg@1.0.0").operator_id)   # avg@1.0.0
 ```
 
@@ -222,7 +222,7 @@ print([card.operator_id for card in index.find("filter rows", tags=["produces-da
 
 ## Operator resource packages
 
-`blue_data_ops.operator_skills` ships 54 exact-version resource packages: 33 retained at `@2.0.0` and 21 outcome packages at `@3.0.0`.
+`blue_data_ops.operator_skills` ships 55 exact-version resource packages: 33 retained at `@2.0.0`, 21 outcome packages at `@3.0.0`, and `nl2sql@4.0.0`.
 Every active exact id has one.
 Loading a package reads text; it does not invoke the operator or feed anything to a planner or a provider.
 
@@ -233,9 +233,9 @@ from blue_data_ops.operators import active_registry
 registry = active_registry()
 loader = OperatorSkillLoader(registry)
 
-print(loader.describe("nl2sql@3.0.0").declared_levels)   # (2, 3)
-skill = loader.load("nl2sql@3.0.0", level=3)
-print(skill.card.operator_id)                            # nl2sql@3.0.0
+print(loader.describe("nl2sql@4.0.0").declared_levels)   # (2, 3)
+skill = loader.load("nl2sql@4.0.0", level=3)
+print(skill.card.operator_id)                            # nl2sql@4.0.0
 print(skill.io.attributes["question"].required)          # True
 ```
 

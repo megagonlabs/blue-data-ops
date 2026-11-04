@@ -8,7 +8,7 @@ from threading import Event
 from typing import Any, NoReturn, Protocol, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.operators import FunctionResult, Operator, versioned_registry
 from blue_data_ops.operators.types import Attributes, DataBundle, Properties
@@ -281,8 +281,8 @@ async def test_operator_deadline_does_not_bound_initial_build(
 
 
 async def test_real_write_tools_persist_and_partial_failure_is_visible(tmp_path: Path) -> None:
-    from blue_data.source.json.file_json_source import FileJSONSource
-    from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+    from blue_data.source.json.file_json_source import FileJSONSource  # pyright: ignore[reportMissingTypeStubs]
+    from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 
     registry = DataRegistry(
         store=FileJSONSource(properties={"connection": {"path": str(tmp_path / "registry.json")}})

@@ -6,6 +6,6 @@ PYTHON="${PYTHON:-python}"
 export PYTHON
 
 "${LIB_ROOT}/scripts/install.sh"
-"${PYTHON}" -m pip install -e "${LIB_ROOT}[ml,vector,llm]" "blue-data-ops==1.0.0"
-"${PYTHON}" -m pip install -e "${CLI_ROOT}[dev]" "blue-data-ops-cli==1.0.0"
+"${PYTHON}" -m pip install -e "${LIB_ROOT}[ml,vector,llm]"
+"${PYTHON}" -m pip install -e "${CLI_ROOT}[dev]"
 echo "Done. Run: blue-ops metadata inspect"

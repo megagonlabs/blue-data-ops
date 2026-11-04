@@ -55,6 +55,7 @@ Thumbs.db
 # User database files
 *.userdb
 ~/.userdb/
+.blue-data-ops-cache/
 
 # temp files
 *.tmp

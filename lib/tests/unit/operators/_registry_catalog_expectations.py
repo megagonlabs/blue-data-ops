@@ -50,7 +50,7 @@ SUPPLEMENTAL_OPERATOR_IDS = (
 )
 FULL_OPERATOR_IDS = tuple(
     sorted(
-        (*LEGACY_OPERATOR_IDS, *ADDED_OPERATOR_IDS, *SUPPLEMENTAL_OPERATOR_IDS),
+        (*LEGACY_OPERATOR_IDS, *ADDED_OPERATOR_IDS, *SUPPLEMENTAL_OPERATOR_IDS, "nl2sql@4.0.0"),
         key=lambda oid: (
             oid.split("@")[0],
             tuple(-int(part) for part in oid.split("@")[1].split(".")),
@@ -76,7 +76,7 @@ def assert_legacy_cards(cards: Sequence[OperatorCard]) -> list[OperatorCard]:
 
 def assert_full_inventory(cards: Sequence[OperatorCard]) -> None:
     ids = tuple(card.operator_id for card in cards)
-    assert len(ids) == len(set(ids)) == 87, "expected 87 distinct operator IDs"
+    assert len(ids) == len(set(ids)) == 88, "expected 88 distinct operator IDs"
     assert ids == FULL_OPERATOR_IDS, "full inventory/order changed"
 
 

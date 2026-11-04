@@ -78,20 +78,24 @@ In addition to calling the transform, it ensures that the caller receives a usab
 | projection | the live attribute definitions are projected back into frozen `AttributeSpec` values | `FAILED` / `VALIDATION_FAILED` / `VALIDATE` |
 | defaults | declared optional defaults are deep-copied into a copy of the call attributes, unless the spec sets `materialize_default=False` | `FAILED` / `DEFAULTS_FAILED` / `DEFAULTS` |
 | validate | `_validate_input()` returns a `ValidationResult`. A raise is one outcome; a wrong return type and a false result with no usable reason share a second; an ordinary false result with a reason is the third | `FAILED` / `VALIDATION_FAILED`, `FAILED` / `VALIDATION_RESULT_INVALID`, or `RECOVERABLE` / `INVALID_INPUT` carrying the validator's reason as the suggestion |
-| execute | `_execute()` returns `FunctionResult(output_data, output_attributes)` | `FAILED` / `EXECUTION_FAILED` / `EXECUTE`, or `RECOVERABLE` / `EXECUTION_FAILED` when the cause is a missing LLM extra |
+| execute | `_execute()` returns `FunctionResult(output_data, output_attributes)` | `FAILED` / `EXECUTION_FAILED` / `EXECUTE`, or `RECOVERABLE` / `EXECUTION_FAILED` when the cause is a missing LLM extra or a host-bound SQL schema mistake |
 | normalize | the bundle is checked, an all-empty bundle becomes `[[]]` with `is_empty=True`, and the output attributes are deep-copied into a fresh mapping | `FAILED` / `EXECUTION_RESULT_INVALID` / `NORMALIZE` |
 
 Two details of that table do real work downstream.
 
 A missing LLM extra is `RECOVERABLE` rather than `FAILED`, because the caller can fix it.
-The runtime inspects the exception and its `__cause__` for a `ModuleNotFoundError` naming `litellm`, `diskcache`, or `jinja2`, and returns the message `LLM dependency is unavailable` with the suggestion `Install blue-data-ops[llm] on Python 3.12 or 3.13.`
+The runtime inspects the exception and its `__cause__` for a `ModuleNotFoundError` naming `litellm` or `diskcache`, and returns the message `LLM dependency is unavailable` with the suggestion `Install blue-data-ops[llm] on Python 3.12 or 3.13.`
+
+A host-bound SQL schema mistake is also `RECOVERABLE`, including on retained operator
+versions. The caller can repair the query parameters; `retryable=False` prevents
+automatically repeating the identical query. Raw driver messages remain private.
 
 Every error record carries the operator's own exact ID.
 For a registered instance that is the pinned ID it was bound to; for a directly constructed instance it is `name@2.0.0`, the direct-call identity.
 
 ### Outcome operators
 
-The 21 `@3.0.0` cards wrap the same five stages and add measurement around them.
+The 21 retained `@3.0.0` cards and `nl2sql@4.0.0` wrap the same five stages and add measurement around them.
 
 1. Before calling the base `run()`, the outcome operator reads a monotonic clock and computes the input bundle's shallow shape: group count and row count per group.
 2. `_validate_input()` rejects a value that is not a list of record groups with the reason `supply a list of record groups`, ahead of the attribute checks.
@@ -116,7 +120,7 @@ An outcome operator's `_execute()` returns a second value alongside the bundle, 
 ### Building a registry
 
 1. A factory reads every built-in's module-level `DISCOVERY` constant in one pre-pass and validates it against the closed vocabularies. An invalid spec fails there, so no partial catalog is ever registered.
-2. For each entry in the catalog tuple, the factory constructs an instance and registers it at the version that view calls for. `active_registry()` walks an explicit name-and-version table; `versioned_registry()` registers `1.0.0` and `2.0.0` for every name and `3.0.0` for the 21 with an outcome class.
+2. For each entry in the catalog tuple, the factory constructs an instance and registers it at the version that view calls for. `active_registry()` walks an explicit name-and-version table; `versioned_registry()` registers `1.0.0` and `2.0.0` for every name and `3.0.0` for the 21 with an outcome class, plus `nl2sql@4.0.0`.
 3. `register()` validates the name and the semver, rejects an already-registered ID, and binds the instance to that pinned identity.
 4. When one instance is registered twice — the same class at two versions — the second registration cannot rebind it, so the registry wraps it in a version-bound delegate instead. The delegate shares the target's properties and attributes and forwards every hook through a context variable that makes `operator_id` report the pinned identity for the duration of the call. One implementation, two identities, no copy.
 5. A built-in registration also records the pinned ID in a private provenance set on the registry instance, and the reviewed ones additionally record the exact card and operator objects.
@@ -345,7 +349,7 @@ Row counts are per-batch, and a batch whose cursor does not report one drops the
 4. Substitution merges the property, parameter, and additional-data sources and raises a `TypeError` on a duplicate key rather than giving one source implicit precedence.
 5. Call kwargs are assembled. Only the documented `llm.*` override keys are accepted, and an unknown one is an `LLMError` with code `bad_override`. The four control keys are consumed here and never forwarded. Two dispatch-only fields, `api` and `service_url`, are stripped after every merge, because they are operator defaults rather than caller intent. A field on any namespace that would set a provider endpoint or a credential, or that would substitute the provider's answer, is refused with code `reserved_field` before the cache key is built. A missing model is an `LLMError` with code `no_model`.
 6. With caching enabled, the cache key is the canonically serialized kwargs. A hit records usage with zero tokens and zero cost and returns immediately. The cache is keyed per directory, so a per-call `cache_dir` override selects its own isolated cache.
-7. Rate limiting sleeps under a lock to hold the configured minimum interval between calls.
+7. Rate admission is nonblocking: early attempts and contention are refused locally; callers pace retries.
 8. The provider call runs through LiteLLM under `tenacity`, retrying a retryable `LLMError` up to
    three attempts with exponential backoff and re-raising the last one. A LiteLLM parameter
    rejection or a provider 400 with structured code `unsupported_parameter` is non-retryable.
@@ -397,6 +401,7 @@ One table, because the split is the part callers most often get wrong.
 | invalid operator attributes | error record | `exec_meta.errors`, `RECOVERABLE` / `INVALID_INPUT` |
 | transform raised | error record | `exec_meta.errors`, `FAILED` / `EXECUTION_FAILED` |
 | missing LLM extra | error record | `exec_meta.errors`, `RECOVERABLE` / `EXECUTION_FAILED`, with an install suggestion |
+| host-bound SQL schema mistake | error record | `exec_meta.errors`, `RECOVERABLE` / `EXECUTION_FAILED`, with fixed schema guidance |
 | wrapper deadline expired | error record | `exec_meta.errors`, `TIMEOUT` / `OPERATOR_TIMEOUT` |
 | successful empty result | not a failure | `output_data == [[]]`, `is_empty=True`, no errors |
 | unknown or malformed operator ID | raised | `ResolveError` |

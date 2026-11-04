@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import pytest
 
-from blue_data_ops.plan import DataPipeline, EntityType, NodeType, Status
+from blue_data_ops.plan import DataPipeline, EntityType, NodeType, PipelineError, Status
 from blue_data_ops.plan import pipeline as pipeline_module
 
 
@@ -71,7 +71,7 @@ def test_operator_references_must_be_pinned_and_portable(operator_id: str) -> No
 
 
 def test_missing_operator_name_keeps_the_reference_exception() -> None:
-    with pytest.raises(Exception, match="^Name is not specified$"):
+    with pytest.raises(PipelineError, match="^Name is not specified$"):
         DataPipeline().define_operator(None)  # type: ignore[arg-type]
 
 
@@ -91,7 +91,7 @@ def test_from_dict_mutates_defaults_and_adopts_the_callers_record() -> None:
     }
     assert pipeline.to_dict() is record
     assert pipeline.get_data("provenance") is None
-    with pytest.raises(Exception, match="^Failed validation$"):
+    with pytest.raises(PipelineError, match="^Failed validation$"):
         DataPipeline.from_dict({"id": "missing-type"})
 
 
@@ -135,18 +135,18 @@ def test_edges_traversal_filtering_counts_and_leaf_rules() -> None:
     assert not pipeline.is_node_leaf(last)
     assert not pipeline.is_node_leaf(isolated)
 
-    with pytest.raises(Exception, match="^Undefined from node$"):
+    with pytest.raises(PipelineError, match="^Undefined from node$"):
         pipeline.connect_nodes("missing", first)
-    with pytest.raises(Exception, match="^Undefined to node$"):
+    with pytest.raises(PipelineError, match="^Undefined to node$"):
         pipeline.connect_nodes(first, "missing")
 
 
 def test_label_collision_enforcement_is_asymmetric_across_layers() -> None:
     node_first = DataPipeline()
     node_first.create_node(label="same")
-    with pytest.raises(Exception, match="failed varification"):
+    with pytest.raises(PipelineError, match="failed verification"):
         node_first.create_node(label="same")
-    with pytest.raises(Exception, match="failed varification"):
+    with pytest.raises(PipelineError, match="failed verification"):
         node_first.create_entity(label="same", type="CUSTOM")
 
     entity_first = DataPipeline()
@@ -177,7 +177,7 @@ def test_values_statuses_properties_and_attributes_are_live() -> None:
     assert pipeline.get_attribute("live") is True
     with pytest.raises(AttributeError):
         pipeline.get_node_value("missing")
-    with pytest.raises(Exception, match="non-existing node cannot be get"):
+    with pytest.raises(PipelineError, match="non-existing node cannot be retrieved"):
         pipeline.get_node_entity("missing")
 
 
@@ -203,7 +203,7 @@ def test_append_data_keeps_list_and_uniqueness_behavior() -> None:
     node.append_data("next", "n", unique=True)
     node.append_data("next", "n", unique=True)
     assert node.get_data("next") == ["n"]
-    with pytest.raises(Exception, match="^Data is not a list$"):
+    with pytest.raises(PipelineError, match="^Data is not a list$"):
         node.append_data("value", "x")
 
 

@@ -9,8 +9,8 @@ from threading import Barrier
 from typing import Any, Protocol, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 
 import blue_data_ops.operators.operator as operator_runtime
 from blue_data_ops.data import RegistrySeam
@@ -49,7 +49,7 @@ def test_bad_selector_fails_before_construction(monkeypatch: pytest.MonkeyPatch,
 def test_invalid_source_document_before_any_helper(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str
 ):
-    import blue_data.config as config
+    import blue_data.config as config  # pyright: ignore[reportMissingTypeStubs]
 
     path = tmp_path / "sources.json"
     path.write_text(content)
@@ -86,8 +86,8 @@ def test_configuration_intent_and_empty_success(monkeypatch: pytest.MonkeyPatch,
 def test_shared_builder_four_arguments_and_scoped_logs(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
-    import blue_data.config as config
-    import blue_data.registry.data_registry as module
+    import blue_data.config as config  # pyright: ignore[reportMissingTypeStubs]
+    import blue_data.registry.data_registry as module  # pyright: ignore[reportMissingTypeStubs]
 
     calls: list[dict[str, str]] = []
     for name in ("build_store", "build_enricher", "build_hybrid_config", "get_vector_dim"):

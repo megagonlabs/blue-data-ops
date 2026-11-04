@@ -580,7 +580,7 @@ def _synthetic_census() -> EffectiveReadCensus:
 
 def test_expected_membership_matches_the_exact_version_inventory() -> None:
     assert_skill_package_inventory(CATALOG.package_ids, versioned_registry())
-    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 54
+    assert len(EXPECTED_PACKAGE_IDS) == EXPECTED_PACKAGE_COUNT == 55
 
 
 def test_historical_package_membership_matches_all_retained_v2_cards() -> None:
@@ -637,7 +637,7 @@ def test_synthetic_inventory_rejects_extra_or_replacement_packages(
         )
     )
     if replace_id is not None:
-        assert len(actual) == len(expected) == 54
+        assert len(actual) == len(expected) == 55
     with pytest.raises(AssertionError, match="skill package inventory differs"):
         assert_skill_package_inventory(actual, registry)
 

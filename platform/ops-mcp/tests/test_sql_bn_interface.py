@@ -4,12 +4,12 @@ import sqlite3
 from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Literal, NoReturn, Protocol, TypeAlias, cast
+from typing import Any, Literal, NoReturn, Protocol, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.json.memory_json_source import MemoryJSONSource
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.json.memory_json_source import MemoryJSONSource  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.llm import LLMClient
 from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor
@@ -82,8 +82,8 @@ class Client(LLMClient):
         return deepcopy(self.response)
 
 
-Host: TypeAlias = tuple[ReadOnlySQLExecutor, Client, list[str]]
-SQLImplementation: TypeAlias = NL2SQLOperator | NL2SQLOutcomeOperator
+type Host = tuple[ReadOnlySQLExecutor, Client, list[str]]
+type SQLImplementation = NL2SQLOperator | NL2SQLOutcomeOperator
 
 
 class EnvironmentBuilder(Protocol):
@@ -128,7 +128,7 @@ def configured(host: Host, selection: str) -> tuple[OperatorRegistry, SQLImpleme
     registry = OperatorRegistry()
     operator = (
         NL2SQLOutcomeOperator(read_only_executor=host[0])
-        if selection == "outcome"
+        if selection in ("outcome", "v4")
         else NL2SQLOperator(read_only_executor=host[0])
     )
     if selection == "alias":
@@ -139,14 +139,16 @@ def configured(host: Host, selection: str) -> tuple[OperatorRegistry, SQLImpleme
     else:
         cast(Any, registry)._register_builtin(
             operator,
-            "3.0.0" if selection == "outcome" else "2.0.0",
+            "4.0.0" if selection == "v4" else "3.0.0" if selection == "outcome" else "2.0.0",
             tags=("requires-data-registry",),
         )
-    operator_id = operator.name + ("@3.0.0" if selection == "outcome" else "@2.0.0")
+    operator_id = operator.name + (
+        "@4.0.0" if selection == "v4" else "@3.0.0" if selection == "outcome" else "@2.0.0"
+    )
     return registry, operator, operator_id
 
 
-@pytest.mark.parametrize("selection", ["direct", "alias", "outcome", "custom"])
+@pytest.mark.parametrize("selection", ["direct", "alias", "outcome", "v4", "custom"])
 async def test_freeze_and_real_bound_select_without_ordinary_registry(
     host: Host,
     selection: str,
@@ -432,8 +434,14 @@ async def test_sql_generation_uses_deployment_registry_after_original_policy(
         def __init__(self) -> None:
             pass
 
-        def get_data_source_schema(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-            return {"tables": {"records": {"id": "INTEGER"}}}
+        def list_collection_entities(self, *args: Any, **kwargs: Any) -> list[Any]:
+            return [{"name": "records"}]
+
+        def list_entity_attributes(self, *args: Any, **kwargs: Any) -> list[Any]:
+            return [{"name": "id", "properties": {"info": {"type": "INTEGER"}}}]
+
+        def list_collection_relations(self, *args: Any, **kwargs: Any) -> list[Any]:
+            return []
 
         def execute_query(self, *args: Any, **kwargs: Any) -> NoReturn:
             raise AssertionError("generation must not execute")

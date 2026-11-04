@@ -6,6 +6,7 @@ from blue_data_ops.data.local_names import sqlite_connect_missing
 from blue_data_ops.data.registry_seam import (
     _diagnose_source,  # pyright: ignore[reportPrivateUsage]
 )
+from blue_data_ops.data.sql_insert import insert_batch
 from blue_data_ops.operators._outcomes import (
     _OutcomeOperator,  # pyright: ignore[reportPrivateUsage]
 )
@@ -62,10 +63,6 @@ class InsertTableOutcomeOperator(_OutcomeOperator, InsertTableOperator):
             for offset in range(0, len(group), batch_size):
                 batch = group[offset : offset + batch_size]
                 columns = list(batch[0])
-                column_sql = ", ".join('"' + column.replace('"', '""') + '"' for column in columns)
-                table_sql = '"' + attributes["table"].replace('"', '""') + '"'
-                placeholders = ", ".join("?" for _ in columns)
-                query = f"INSERT INTO {table_sql} ({column_sql}) VALUES ({placeholders})"
                 rows = [tuple(record[column] for column in columns) for record in batch]
                 checked = (
                     _diagnose_source(registry, attributes["source"]) if _diagnose_registry else None
@@ -80,23 +77,15 @@ class InsertTableOutcomeOperator(_OutcomeOperator, InsertTableOperator):
                         raise RegistryFailure(RegistryReason.SOURCE_UNAVAILABLE)
                     raise RuntimeError("data source is unavailable")
                 try:
-                    connection = source._db_connect(attributes["database"])
+                    batch_count = insert_batch(
+                        source, attributes["database"], attributes["table"], columns, rows
+                    )
                 except FileNotFoundError as error:
                     if _diagnose_registry and sqlite_connect_missing(error, attributes["database"]):
                         raise RegistryFailure(RegistryReason.DATABASE_NOT_FOUND) from None
                     raise
-                try:
-                    cursor = connection.cursor()
-                    cursor.executemany(query, rows)
-                    connection.commit()
-                    try:
-                        batch_count = cursor.rowcount
-                    except Exception:
-                        batch_count = None
-                    if type(batch_count) is int and batch_count >= 0:
-                        count += batch_count
-                    else:
-                        count_known = False
-                finally:
-                    source._db_disconnect(connection)
+                if batch_count is not None:
+                    count += batch_count
+                else:
+                    count_known = False
         return FunctionResult(input_data, {"num_rows_insert": count} if count_known else {})

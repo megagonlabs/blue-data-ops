@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from blue_data_ops.data.sql_errors import query_schema_failure
+from blue_data_ops.data.sql_schema import project_sql_schema
 from blue_data_ops.data.sql_types import is_data_registry, sql_source_base
 from blue_data_ops.llm.errors import LLMError, sql_schema_failure
+from blue_data_ops.llm.sql_guard import is_read_query
 
 SQL_REGISTRY_SELECTORS = frozenset({"data_registry", "platform.name", "data_registry.name"})
 SQL_CALLER_POLICY_VALIDATION = {
@@ -113,11 +115,13 @@ class ReadOnlySQLExecutor:
     def get_schema(self, target: tuple[str, str, str]) -> Any:
         self.preflight(target)
         try:
-            return self._registry.get_data_source_schema(*target)
+            return project_sql_schema(self._registry, *target)
         except Exception:
             raise sql_error("sql_execution_failed") from None
 
     def execute(self, query: str, target: tuple[str, str, str]) -> Any:
+        if not is_read_query(query):
+            raise sql_error("sql_query_rejected")
         source = self._source(target)
         try:
             return source.execute_query(

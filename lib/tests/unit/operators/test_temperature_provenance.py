@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from typing import Any
 
 import litellm
@@ -10,6 +12,7 @@ import pytest
 
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.llm import LLMClient
+from blue_data_ops.llm.client import _AdmissionControls  # pyright: ignore[reportPrivateUsage]
 from blue_data_ops.operators.registry import active_registry, default_registry, versioned_registry
 from tests.doubles.data import RegistrySeamDouble
 from tests.unit.llm.test_temperature_fallback import invoke, prepared, price, rejection
@@ -44,7 +47,7 @@ def test_operator_call_boundaries(
     operator: Any = (
         default_registry().resolve(f"{family}@1.0.0")
         if version == "default"
-        else active_registry().resolve(f"{family}@3.0.0")
+        else active_registry().resolve(f"{family}@" + ("4.0.0" if family == "nl2sql" else "3.0.0"))
         if version == "active"
         else versioned_registry().resolve(f"{family}@{version}")
     )
@@ -142,11 +145,63 @@ def test_fallback_reserves_second_rate_slot(monkeypatch: pytest.MonkeyPatch, mod
 
     calls = install(monkeypatch, [rejection("structured")])
     slots: list[int] = []
+    starts: list[float] = []
+    admitted_at: list[float] = []
+    heartbeat_at_start: list[int] = []
+    heartbeat = 0
+    original_delay = LLMClient._rate_delay  # pyright: ignore[reportPrivateUsage]
+    original_completion = litellm.completion
 
-    def reserve(client: LLMClient, properties: dict[str, Any]) -> None:
-        slots.append(len(calls))
+    def rate_delay(client: LLMClient, controls: _AdmissionControls) -> float:
+        required = original_delay(client, controls)
+        if required == 0:
+            slots.append(len(calls))
+            admitted = client._last_call_at  # pyright: ignore[reportPrivateUsage]
+            assert admitted is not None
+            admitted_at.append(admitted)
+        return required
 
-    monkeypatch.setattr(LLMClient, "_apply_rate_limit", reserve)
-    props = prepared()
-    invoke(LLMClient("rate", props), props, mode)
-    assert slots == [0, 1]
+    def completion(**kwargs: Any) -> Any:
+        assert slots == list(range(len(calls) + 1))
+        starts.append(time.monotonic())
+        heartbeat_at_start.append(heartbeat)
+        return original_completion(**kwargs)
+
+    async def acompletion(**kwargs: Any) -> Any:
+        return completion(**kwargs)
+
+    monkeypatch.setattr(LLMClient, "_rate_delay", rate_delay)
+    monkeypatch.setattr(litellm, "completion", completion)
+    monkeypatch.setattr(litellm, "acompletion", acompletion)
+    props = prepared({"llm.rate_limit": 20})
+    client = LLMClient("rate", props)
+    if mode == "async":
+
+        async def exercise() -> None:
+            async def tick() -> None:
+                nonlocal heartbeat
+                while True:
+                    await asyncio.sleep(0.005)
+                    heartbeat += 1
+
+            task = asyncio.create_task(tick())
+            try:
+                assert await client.aexecute_api_call({}, props) == "ok"
+            finally:
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+        asyncio.run(exercise())
+        assert heartbeat_at_start[1] > heartbeat_at_start[0]
+    else:
+        observation = invoke(client, props, mode)
+        if observation is not None:
+            assert observation.provider_attempts == 2
+            assert observation.complete_cost() is None
+    assert slots == [0, 1] and len(calls) == 2
+    assert admitted_at[1] - admitted_at[0] >= 1 / 20
+    assert starts[1] - starts[0] >= 0.045
+    assert calls[0].pop("temperature") == 0
+    assert calls[0] == calls[1]
+    assert client.last_usage is not None and client.last_usage.cost == 0.125

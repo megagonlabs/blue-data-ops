@@ -18,8 +18,8 @@ It installs as an ordinary Python library, resolves operators by exact version, 
 - Builds, serializes, and executes `DataPipeline` graphs — nodes, reciprocal edge lists, and operator entities that store only pinned IDs — through an executor that preflights structure and resolution before any operator runs.
 - Compiles a pipeline from a stated goal through `PipelinePlanner`: discovery, bounded data-context collection, candidate generation, selection, compilation, and preflight.
 - Hands a plan generator a bounded read-only schema snapshot of one registered collection — entity names, descriptions, and declared attribute types, never rows.
-- Ships 54 operator resource packages keyed by exact operator ID, each file digest-checked against its manifest before its text is returned.
-- Keeps 87 historical cards resolvable — 33 at `@1.0.0`, 33 at `@2.0.0`, and 21 at `@3.0.0` — so migration code can reach the exact behavior it was written against.
+- Ships 55 operator resource packages keyed by exact operator ID, each file digest-checked against its manifest before its text is returned.
+- Keeps 88 exact-version cards resolvable — 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0` — so migration code can reach the exact behavior it was written against.
 - Exposes the same 33 active operators as MCP tools from a separate distribution, over the structured result envelope.
 - Reaches the same operators, catalogs, and pipelines from a shell through the `blue-ops` command in a third distribution.
 - Reaches `blue-data` through a single facade in a single package directory, so that dependency has one place to change.

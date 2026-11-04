@@ -100,7 +100,7 @@ Changing to stdio would be a breaking transport change.
 
 ### HTTP authentication and bind settings
 
-HTTP requires `blue-data[server]>=1.0.0`. A missing helper or FastAPI installation fails
+HTTP requires `blue-data[server]>=1.0.0,<2`. A missing helper or FastAPI installation fails
 with an installation error; use the compatible source's `[server]` extra or the configured
 index. The same shared guards protect streamable HTTP and SSE, including custom routes,
 unknown paths, `/health`, and both SSE endpoints. There are no public path exemptions.
@@ -193,7 +193,7 @@ The shared builder uses blue-data's store, enricher, hybrid-search, vector-dimen
 
 Registry calls enter an async queue before executor work is scheduled. They serialize within one server. When an explicit `notifications/cancelled` reaches a handler after it enters `DeploymentRegistry.run()`, a call still waiting for admission is removed from the queue and does not execute. Local task cancellation and client-side timeouts in the tested Python MCP 1.30.0 do not send that notification. An explicit notification sent immediately can arrive before the handler starts and be lost, so the request may execute later. Cancelling a handler after its worker starts leaves admission held until the worker finishes. Initial construction has no deadline: `execution.timeout_seconds` bounds only the later operator wait. Configure backend/provider connection timeouts separately. A hung build or an operator without a deadline can stall that server's registry lane indefinitely. An `OPERATOR_TIMEOUT` returns to the caller at once, but the timed-out body keeps this server's registry lane until the worker finishes. Calls already queued and new calls wait for it and then run normally, with no restart. Active or timed-out work may finish and change the backend. A code 0 `Request cancelled` response acknowledges cancellation handling; it does not prove that the operator or backend had no effects. There is no atomic rollback or no-effects guarantee, and cancellation does not terminate a worker. There is no automatic retry. Check backend effects before retrying a cancelled or timed-out write. A body that never finishes keeps the lane. Late non-daemon threads can delay process exit. Untagged calls and other servers continue. Injecting one registry into multiple servers provides no cross-server serialization.
 
-`ops_create_database`, `ops_create_table` and `ops_insert_table` now reach deployment sources and can persist writes, including partial writes before a contained error or timeout. Check backend effects before restarting. Stock NL2SQL tools have no executor and deny execution before registry construction. A host-configured exact built-in `NL2SQLOperator` or `NL2SQLOutcomeOperator` instance, including registered version/name aliases, can use its bound read-only capability; that path builds no ordinary deployment registry and injects no registry/naming selectors. Other subclasses, including those that customize prompts, require the direct Python host API for SQL execution.
+Database write tools can leave partial effects before an error or timeout; inspect the backend before retrying. Stock NL2SQL tools have no executor. Host code can bind approved targets to an exact built-in NL2SQL operator through `ReadOnlySQLExecutor`; custom subclasses use the direct Python host API. See [LLM settings](llm-settings.md#sql-execution) for the execution contract.
 
 ## Embed or serve
 
@@ -393,6 +393,9 @@ Every tool accepts the same three open arguments:
 - optional `attributes`: an open object of operator arguments, defaulting to a fresh empty object;
 - optional `properties`: an open object or `null` carrying execution and backend settings. The recognized keys are `execution.timeout_seconds`; `algorithm`, which selects the estimator for `ops_classify`, `ops_cluster`, and `ops_sklearn_estimator` and without which `ops_sklearn_estimator` does not run at all; the deployment registry is configured by the host, while caller registry and naming selectors are discarded for ordinary registry calls and rejected for SQL execution; and the two provider namespaces, `openai.*` and `llm.*`, both closed. `llm.*` takes `model`, `stream`, `max_tokens`, `temperature`, `reasoning_effort`, `cache`, `cache_dir`, `max_parallel` and `rate_limit`. `openai.*` takes the generation parameters of the provider call and nothing else. Which provider answers, at which endpoint, in which project, tenant or region, and under which credential are the deployment's to set, from its own environment; a service-prefixed property naming any of them is refused with `reserved_field` rather than quietly dropped, because silently dropping it could route the request to a different provider without telling the caller.
 
+Rate admission, concurrency limits, and response-cache setup apply to the operator
+tools as described in [LLM settings](llm-settings.md#rate-admission-and-response-cache).
+
 `reserved_field` is the internal LLM error code for forbidden service-prefixed properties, including routing, credentials, and response-mocking settings. Forbidden `llm.*` settings instead produce `bad_override`. Both refusals happen before any provider request. The tool returns a non-retryable `EXECUTION_FAILED` record with a safe message and guidance to remove the forbidden property or use a documented setting.
 
 Use the neutral property names when selecting a model or effort for one tool call. These are the
@@ -439,7 +442,7 @@ An attribute that violates the schema still reaches operator validation and come
 ### Default tool inventory
 
 The 33 tools `create_server()` registers without an `operator_ids` argument, derived from `ACTIVE_OPERATOR_IDS`.
-Each row's operator ID is what that tool's `_meta.operator_id` carries, and it is the logical name without the prefix.
+Each row's operator ID is what that tool's `_meta.operator_id` carries, and it is the unprefixed exact operator ID (for example `select@2.0.0`).
 Only the `domain-*` and `capability-*` tags are shown; `_meta.tags` carries all six axes in canonical order, and [`lib/OPERATORS.md`](../lib/OPERATORS.md) has each operator's full card.
 
 | Tool | Operator ID | Domain tag | Capability tags |
@@ -461,7 +464,7 @@ Only the `domain-*` and `capability-*` tags are shown; `_meta.tags` carries all 
 | `ops_min` | `min@3.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-reduction` |
 | `ops_nl2bn` | `nl2bn@3.0.0` | `domain-query-compound` | `capability-bayesian-query`, `capability-query-execution`, `capability-query-generation` |
 | `ops_nl2llm` | `nl2llm@3.0.0` | `domain-query-compound` | `capability-generation` |
-| `ops_nl2sql` | `nl2sql@3.0.0` | `domain-query-compound` | `capability-query-execution`, `capability-query-generation`, `capability-sql` |
+| `ops_nl2sql` | `nl2sql@4.0.0` | `domain-query-compound` | `capability-query-execution`, `capability-query-generation`, `capability-sql` |
 | `ops_normalize_text` | `normalize_text@2.0.0` | `domain-text` | `capability-normalization` |
 | `ops_project` | `project@3.0.0` | `domain-relational` | `capability-projection` |
 | `ops_segment_text` | `segment_text@2.0.0` | `domain-text` | `capability-segmentation` |
@@ -525,7 +528,7 @@ Each tool's operator version is in `_meta` and moves independently of it.
 The 33 names gain an `ops_` prefix, so `select` becomes `ops_select` and `create_database` becomes `ops_create_database`.
 **Every existing client call site changes.**
 A client holds one flat tool namespace across the servers it has loaded, and `create_database` was already served with a different meaning by `blue-data-user-source`; nothing in this catalog was prefixed, and half of it is a bare verb.
-Nothing else about a tool moves: `_meta.operator_id` still carries the unprefixed logical name, the arguments are the same three containers, and the result envelope is unchanged.
+Nothing else about a tool moves: `_meta.operator_id` still carries the unprefixed exact operator ID (for example `select@2.0.0`), the arguments are the same three containers, and the result envelope is unchanged.
 
 The published input schema now says what core already enforced.
 Each attribute carries its JSON Schema `type`, an attribute core declares required appears in the `attributes` object's `required` list — 46 of them, across 27 tools — and 17 attributes whose values core's validator closes carry an `enum`.

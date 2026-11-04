@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.json.memory_json_source import MemoryJSONSource
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.json.memory_json_source import MemoryJSONSource  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 from blue_data_ops.llm import LLMClient
 from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor
 from blue_data_ops.operators import (
@@ -143,12 +143,14 @@ def test_bn_original_transport_controls_precede_cli_registry_build(
 
 
 @pytest.mark.parametrize("alias", [False, True])
+@pytest.mark.parametrize("version", ["2.0.0", "4.0.0"])
 def test_host_bound_cli_select_builds_no_ordinary_registry(
     monkeypatch: pytest.MonkeyPatch,
     install_catalog: Callable[[OperatorRegistry | Exception], object],
     runner: CliRunner,
     tmp_path: Path,
     alias: bool,
+    version: str,
 ) -> None:
     import blue_data_ops.operators.nl2sql_operator as module
 
@@ -183,7 +185,7 @@ def test_host_bound_cli_select_builds_no_ordinary_registry(
     registry = OperatorRegistry()
     if alias:
         registry.register(operator, "1.0.0")
-    registry.register(operator, "2.0.0", tags=("requires-data-registry",))
+    registry.register(operator, version, tags=("requires-data-registry",))
     install_catalog(registry)
     cast(_ResolverPatch, monkeypatch).setattr(
         module, "resolve_llm_client", lambda properties: Client()
@@ -196,7 +198,7 @@ def test_host_bound_cli_select_builds_no_ordinary_registry(
 
     monkeypatch.setattr(config, "build_registry_seam", forbidden)
     monkeypatch.setattr(module, "resolve_registry", forbidden)
-    result = invoke(runner, tmp_path, "nl2sql@2.0.0", {"execute_query": True})
+    result = invoke(runner, tmp_path, "nl2sql@" + version, {"execute_query": True})
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["result"]["output_data"] == [[{"id": 1}]]
     assert builds == []

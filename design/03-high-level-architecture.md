@@ -36,7 +36,7 @@ See [04-detailed-architecture.md](04-detailed-architecture.md) for information f
 │  ┌────────────────────────┐  ┌────────────────────────────────────────────┐  │
 │  │   Operator Registry    │─▶│            Operator Catalog                │  │
 │  │ resolve — pinned only  │  │  33 active exact cards · 21 outcome        │  │
-│  │ find — text and tags   │  │  variants · 87 historical cards            │  │
+│  │ find — text and tags   │  │  variants · 88 historical cards            │  │
 │  │ + Embedding Index      │  └────────────────────────────────────────────┘  │
 │  └────────────────────────┘                                                  │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
@@ -46,7 +46,7 @@ See [04-detailed-architecture.md](04-detailed-architecture.md) for information f
 │                                                                              │
 │  ┌──────────────────────┐  ┌──────────────────┐  ┌────────────────────────┐  │
 │  │   operator_skills/   │  │       llm/       │  │         data/          │  │
-│  │  54 exact packages   │  │    LLMClient     │  │      RegistrySeam      │  │
+│  │  55 exact packages   │  │    LLMClient     │  │      RegistrySeam      │  │
 │  │  digest-verified     │  │  + client seam   │  │ + DataRegistryProvider │  │
 │  └──────────────────────┘  └─────────┬────────┘  └───────────┬────────────┘  │
 │                                      │                       │               │
@@ -72,7 +72,7 @@ This table is the boundary list the rest of the design documents refer back to.
 | Operator Runtime | `operators/operator.py`, `operators/types.py`, `operators/_metadata.py`, `tools/` | the five-stage call boundary, the result and error types, the Blue metadata surface | `Operator.run()`, `Operator.apply()`, `Operator.invoke()` | resolve a name, touch the network, read a file |
 | Operator Catalog | `operators/*_operator.py`, `operators/sklearn_estimator.py`, `operators/_*_outcome.py` | the 33 built-in implementations and the 21 outcome subclasses | the registry factories, or direct class construction | register itself; the catalog tuple is explicit, never a package scan |
 | Operator Registry | `operators/registry.py`, `operators/_discovery.py`, `operators/embedding_discovery.py` | pinned identity, immutable registration, discovery scoring, the closed tag vocabulary, built-in provenance | `default_registry()`, `active_registry()`, `versioned_registry()`, `OperatorRegistry`, `OperatorEmbeddingIndex` | execute an operator, or answer "latest" from `resolve()` |
-| Operator Skill Store | `operator_skills/` | 54 exact-version resource packages, the closed index, digest verification | `OperatorSkillLoader` | invoke an operator, cache, or disclose text on its own |
+| Operator Skill Store | `operator_skills/` | 55 exact-version resource packages, the closed index, digest verification | `OperatorSkillLoader` | invoke an operator, cache, or disclose text on its own |
 | Plan | `plan/` | portable pipeline records, graph validation, execution ordering, the planning stages, the planning error vocabulary | `DataPipeline`, `PipelineExecutor`, `PipelinePlanner`, `DataContextProvider` | mutate the registry, or retry and replan |
 | Data Registry Seam | `data/` | the only `blue-data` import in the package, compatibility argument shapes, search-score normalization | `RegistrySeam`, `DataRegistryProvider`, `resolve_registry()` | import `operators`, `llm`, or `plan` |
 | LLM Client | `llm/` | request templating, provider dispatch, retry, caching, rate limiting, per-call usage records | `LLMClient`, `LLMClientProvider`, `resolve_llm_client()` | import `operators`; choose a provider credential |
@@ -164,8 +164,8 @@ Three factories build different views over the same catalog, and the difference 
 | Factory | Cards | Metadata | Intended use |
 |---|---|---|---|
 | `default_registry(**versions)` | 33 at `1.0.0`, with per-name version overrides | raw: empty `tags`, empty `when_to_invoke` | the retained v1 compatibility view |
-| `active_registry()` | 33 exact — 12 at `@2.0.0`, 21 at `@3.0.0` | validated discovery metadata, marked reviewed | ordinary discovery and execution |
-| `versioned_registry()` | 87 — 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0` | validated discovery metadata | migration code that needs retained history |
+| `active_registry()` | 33 exact — 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0` | validated discovery metadata, marked reviewed | ordinary discovery and execution |
+| `versioned_registry()` | 88 — 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0` | validated discovery metadata | migration code that needs retained history |
 
 - `resolve(operator_id)` accepts only `name@<MAJOR.MINOR.PATCH>` and raises `ResolveError` on a malformed reference or a miss. A bare name is a `ResolveError`, not a lookup.
 - `find(query, tags=...)` scores case-insensitively — name 10, any tag 8, `when_to_invoke` 6, description 5, each field at most once — after an exact AND tag filter, and returns already-pinned cards.
@@ -179,7 +179,7 @@ Three factories build different views over the same catalog, and the difference 
 
 Reviewed prose about an operator, addressed by the same exact ID the operator is.
 
-- 54 packages under `operator_skills/<name>/<version>/`, each with a `manifest.json` naming its files and their SHA-256 digests.
+- 55 packages under `operator_skills/<name>/<version>/`, each with a `manifest.json` naming its files and their SHA-256 digests.
 - `_index.json` is a closed exact-path map from pinned ID to manifest path. One malformed row invalidates the whole index rather than being skipped, including entries whose own rows are valid.
 - Every read is bounded before decoding: 4 KiB for the index and a manifest, 16 KiB for a resource, JSON depth 4.
 - The reader refuses symlinks at every path segment, rejects absolute and traversing relative paths, and confirms the resolved file sits under the package root and is a regular file.
@@ -225,7 +225,7 @@ The provider seam the LLM-backed operators call through.
 - Records one `UsageRecord` per call, cache hits included, with model, token counts, cost, end-to-end latency, and a cache-hit flag.
 - The default lifetime is one client per invocation. `properties["llm_client"]` injects one; `CachingLLMClientProvider` reuses one per configuration, and the cache's lifetime belongs to whoever created the provider.
 
-`tenacity` is imported at module import time here, which is why it is a core dependency rather than part of the `llm` extra. LiteLLM and `diskcache` are imported inside the functions that use them. The dollar renderer uses the standard library; Jinja2 remains declared in the compatibility bundle.
+`tenacity` is imported at module import time here, which is why it is a core dependency rather than part of the `llm` extra. LiteLLM and `diskcache` are imported inside the functions that use them. The dollar renderer uses the standard library; the core distribution declares no direct Jinja2 dependency.
 
 ### Utilities
 

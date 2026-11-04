@@ -21,8 +21,10 @@ from blue_data_ops.operators.operator import (
 # "latest"; find()/find_latest() take loose queries and return already-pinned cards.
 # A registered name@version is immutable — no overwrite, no deregister.
 
-_SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-_PINNED_ID = re.compile(r"^(?P<name>[^@]+)@(?P<version>\d+\.\d+\.\d+)$")
+_SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+_PINNED_ID = re.compile(
+    r"^(?P<name>[^@]+)@(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$"
+)
 # Blue deployment reference: /server/<server>/(operator|tool)/<name>
 _DEPLOYMENT_PATH = re.compile(r"^/server/[^/]+/(?:operator|tool)/(?P<name>[^/]+)$")
 
@@ -89,7 +91,7 @@ class OperatorRegistry:
         name = operator.name
         if not name:
             raise ValueError("operator has no name")
-        if not _SEMVER.match(version):
+        if not _SEMVER.fullmatch(version):
             raise ValueError(f"version must be MAJOR.MINOR.PATCH semver, got: {version!r}")
         operator_id = f"{name}@{version}"
         if operator_id in self._operators:
@@ -153,7 +155,7 @@ class OperatorRegistry:
         lives only in discovery.
         """
         name, separator, version = operator_id.partition("@")
-        if not separator or not name or not _SEMVER.match(version):
+        if not separator or not name or not _SEMVER.fullmatch(version):
             raise ResolveError(
                 f"not a pinned operator id (expected name@<MAJOR.MINOR.PATCH>): {operator_id!r}"
             )
@@ -357,10 +359,10 @@ def upgrade_legacy_operator_id(
     Missing, malformed, ambiguous, or unregistered targets raise ``UpgradeError``. ``resolve()`` and
     ``DataPipeline.from_dict()`` never call this; upgrading is always an explicit caller choice.
     """
-    if not _SEMVER.match(target_version):
+    if not _SEMVER.fullmatch(target_version):
         raise UpgradeError(f"target_version must be MAJOR.MINOR.PATCH semver: {target_version!r}")
 
-    pinned = _PINNED_ID.match(reference)
+    pinned = _PINNED_ID.fullmatch(reference)
     if pinned:
         if registry.get_card(reference) is None:
             raise UpgradeError(f"pinned reference is not registered: {reference!r}")
@@ -383,7 +385,7 @@ def upgrade_legacy_operator_id(
         )
     if is_alias:
         alias_target = (aliases or {})[reference]
-        if not _PINNED_ID.match(alias_target):
+        if not _PINNED_ID.fullmatch(alias_target):
             raise UpgradeError(f"alias value must be a pinned id: {alias_target!r}")
         if registry.get_card(alias_target) is None:
             raise UpgradeError(f"alias target is not registered: {alias_target!r}")
@@ -432,7 +434,7 @@ def default_registry(**versions: Any) -> OperatorRegistry:
         version = str(versions.get(operator_class.name, "1.0.0"))
         selected_class = (
             outcome_classes.get(operator_class.name, operator_class)
-            if version == "3.0.0"
+            if version == "3.0.0" or (operator_class.name == "nl2sql" and version == "4.0.0")
             else operator_class
         )
         instance = selected_class()
@@ -441,7 +443,7 @@ def default_registry(**versions: Any) -> OperatorRegistry:
 
 
 def versioned_registry() -> OperatorRegistry:
-    """Return 87 retained pinned cards, including 21 outcome operators at 3.0.0.
+    """Return 88 retained pinned cards, including the declared nl2sql@4.0.0 contract.
 
     Separate instances back each exact version. Every card carries validated
     discovery metadata.
@@ -470,6 +472,15 @@ def versioned_registry() -> OperatorRegistry:
                 when_to_invoke=spec.when_to_invoke,
                 reviewed=True,
             )
+        if operator_class.name == "nl2sql":
+            assert outcome_class is not None
+            registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
+                outcome_class(),
+                "4.0.0",
+                tags=spec.tags,
+                when_to_invoke=spec.when_to_invoke,
+                reviewed=True,
+            )
     return registry
 
 
@@ -491,7 +502,7 @@ _ACTIVE_OPERATOR_VERSIONS: tuple[tuple[str, str], ...] = (
     ("min", "3.0.0"),
     ("nl2bn", "3.0.0"),
     ("nl2llm", "3.0.0"),
-    ("nl2sql", "3.0.0"),
+    ("nl2sql", "4.0.0"),
     ("normalize_text", "2.0.0"),
     ("project", "3.0.0"),
     ("segment_text", "2.0.0"),
@@ -523,7 +534,11 @@ def active_registry() -> OperatorRegistry:
     outcomes = _outcome_operator_classes()
     registry = OperatorRegistry()
     for name, version in _ACTIVE_OPERATOR_VERSIONS:
-        operator_class = outcomes[name] if version == "3.0.0" else classes[name]
+        operator_class = (
+            outcomes[name]
+            if version == "3.0.0" or (name == "nl2sql" and version == "4.0.0")
+            else classes[name]
+        )
         spec = specs[classes[name]]
         registry._register_builtin(  # pyright: ignore[reportPrivateUsage]
             operator_class(),

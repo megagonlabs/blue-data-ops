@@ -8,7 +8,7 @@ Two boundaries are worth stating up front because the rest of the module serves 
 
 The allowlist is an authorization boundary, not a filter. A card reaches the model only
 when the caller allowlisted it, discovery returned it, this exact registry built it, it
-pins a supported built-in `@2.0.0` or `@3.0.0` version, and it carries no side-effect
+pins a supported built-in version (including exactly `nl2sql@4.0.0`), and it carries no side-effect
 tag. The decoder re-checks the same set, so a model naming anything else fails before a
 `PlanDraft` exists.
 
@@ -178,7 +178,7 @@ def _builtin_cards_required() -> PlanningError:
     return planning_error(
         PlanningStage.DISCOVERY,
         PlanningErrorCode.DISCOVERY_RESULT_INVALID,
-        "OpenAI plan generator requires supported built-in 2.0.0 or 3.0.0 operator cards",
+        "OpenAI plan generator requires supported built-in operator cards",
         category=ErrorCategory.RECOVERABLE,
         suggestion=(
             "Pass one shared, unmodified active_registry() or versioned_registry() instance "
@@ -343,10 +343,10 @@ class OpenAIPlanGenerator:
             not name.partition("@")[0]
             or "@" not in name
             or "@" in name.partition("@")[2]
-            or name.partition("@")[2] not in _SUPPORTED_CARD_VERSIONS
+            or (name.partition("@")[2] not in _SUPPORTED_CARD_VERSIONS and name != "nl2sql@4.0.0")
             for name in identifiers
         ):
-            raise _invalid_generator("allowed_operator_ids must be pinned 2.0.0 or 3.0.0 ids")
+            raise _invalid_generator("allowed_operator_ids must be supported pinned ids")
 
         self._model = model
         self._registry = registry
@@ -392,7 +392,7 @@ class OpenAIPlanGenerator:
                 continue
             if not is_reviewed_builtin_card(self._registry, card):
                 raise _builtin_cards_required()
-            if card.version not in _SUPPORTED_CARD_VERSIONS:
+            if card.version not in _SUPPORTED_CARD_VERSIONS and card.operator_id != "nl2sql@4.0.0":
                 raise _builtin_cards_required()
             self._resolve_exact_operator(card.operator_id)
             if card.deprecated:

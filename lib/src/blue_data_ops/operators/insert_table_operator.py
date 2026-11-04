@@ -10,6 +10,7 @@ from blue_data_ops.data.local_names import sqlite_connect_missing
 from blue_data_ops.data.registry_seam import (
     _diagnose_source,  # pyright: ignore[reportPrivateUsage]
 )
+from blue_data_ops.data.sql_insert import insert_batch
 from blue_data_ops.operators._discovery import DiscoverySpec
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
@@ -265,11 +266,6 @@ def _insert_data_group(
         # Column set comes from the batch's FIRST row; later rows fill missing
         # columns with None and drop extra keys.
         columns = list(batch[0].keys())
-        columns_str = ", ".join('"' + str(col).replace('"', '""') + '"' for col in columns)
-        placeholders = ", ".join(["?" for _ in columns])
-        table_sql = '"' + str(table).replace('"', '""') + '"'
-        insert_query = f"INSERT INTO {table_sql} ({columns_str}) VALUES ({placeholders})"
-
         batch_data = [tuple(row.get(col) for col in columns) for row in batch]
 
         try:
@@ -278,16 +274,13 @@ def _insert_data_group(
             source_connection = checked if checked is not None else registry.connect_source(source)
             if source_connection:
                 try:
-                    db_connection = source_connection._db_connect(database)
+                    count = insert_batch(source_connection, database, table, columns, batch_data)
                 except FileNotFoundError as error:
                     if sqlite_connect_missing(error, database):
                         raise RegistryFailure(RegistryReason.DATABASE_NOT_FOUND) from None
                     raise
-                cursor = db_connection.cursor()
-                cursor.executemany(insert_query, batch_data)
-                db_connection.commit()
-                group_inserted += cursor.rowcount
-                source_connection._db_disconnect(db_connection)
+                if count is not None:
+                    group_inserted += count
             else:
                 return None
         except Exception as error:

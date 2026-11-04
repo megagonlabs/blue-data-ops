@@ -5,6 +5,7 @@ Environment: llm
 The client and registry are deterministic in-process seams. The example neither contacts a provider nor executes SQL on a backend.
 
 ```python
+import json
 from copy import deepcopy
 
 from blue_data_ops.data import RegistrySeam
@@ -16,8 +17,10 @@ class LocalClient(LLMClient):
     def __init__(self, response):
         super().__init__("local")
         self.response = response
+        self.schemas = []
 
     def execute_api_call(self, input, properties=None, additional_data=None):
+        self.schemas.append(json.loads(additional_data["schema"]))
         return deepcopy(self.response)
 
 
@@ -43,14 +46,32 @@ attributes = {
     "protocol": "sqlite",
 }
 sql = {"query": "SELECT service FROM incidents WHERE open = 1"}
+client = LocalClient(sql)
 output, output_attributes, meta = operator.run(
-    [], attributes, {"llm_client": LocalClient(sql), "data_registry": LocalRegistry([])}
+    [], attributes, {"llm_client": client, "data_registry": LocalRegistry([])}
 )
 denied_output, _, denied_meta = operator.run(
-    [], attributes, {"llm_client": LocalClient(sql), "data_registry": LocalRegistry([["bad-row"]]), "execute_query": True}
+    [],
+    attributes,
+    {
+        "llm_client": LocalClient(sql),
+        "data_registry": LocalRegistry([["bad-row"]]),
+        "execute_query": True,
+    },
 )
 
 assert output == [[{"sql": sql["query"]}]]
+assert client.schemas == [
+    {
+        "entities": [
+            {
+                "name": "incidents",
+                "attributes": {"open": {"type": "integer"}, "service": {"type": "text"}},
+            }
+        ],
+        "relations": [],
+    }
+]
 assert output_attributes == {}
 assert not meta.errors
 assert denied_output == [[]]

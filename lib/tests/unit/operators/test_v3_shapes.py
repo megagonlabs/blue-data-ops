@@ -136,7 +136,7 @@ def test_shape_instrumentation_failure_does_not_change_success(
     assert not meta.errors and meta.traces == {"elapsed_ms": 0.0}
 
 
-def test_only_the_21_exact_outcome_versions_use_the_shape_wrapper() -> None:
+def test_only_the_declared_outcome_versions_use_the_shape_wrapper() -> None:
     registry = versioned_registry()
     cards = registry.list_cards()
     wrapped = {
@@ -145,8 +145,8 @@ def test_only_the_21_exact_outcome_versions_use_the_shape_wrapper() -> None:
         if isinstance(registry.resolve(card.operator_id), _OutcomeOperator)
     }
 
-    assert wrapped == set(ADDED_OPERATOR_IDS)
-    assert len(wrapped) == 21
+    assert wrapped == set(ADDED_OPERATOR_IDS) | {"nl2sql@4.0.0"}
+    assert len(wrapped) == 22
     assert not any(
         card.version in {"1.0.0", "2.0.0"} and card.operator_id in wrapped for card in cards
     )

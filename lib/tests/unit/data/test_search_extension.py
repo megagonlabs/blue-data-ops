@@ -43,14 +43,23 @@ _SEARCH_IDENTITIES = {
     ): "1.0",
 }
 
+_PLURAL_SEARCH_IDENTITIES = {
+    (
+        "017876a7d28f755874b9e9316490fcd8c31feb866f173f87856490bec14e2800",
+        "68b6e1703e4379babb45ef3ad76df94d02cb1eb946b045da6655fb3bc5edc381",
+        "d2225ed76078392aed15d241842e4409ba85e28cccecd28e40cc999a5eb69df1",
+    ): "1.0-plural",
+}
+
 
 def _search_contract() -> str:
     identity = tuple(
         hashlib.sha256(Path(cast(str, module.__file__)).read_bytes()).hexdigest()
         for module in (search_algorithm, hybrid_algorithm, similarity_algorithm)
     )
-    assert identity in _SEARCH_IDENTITIES, "unrecognized blue-data search algorithm identity"
-    return _SEARCH_IDENTITIES[cast(tuple[str, str, str], identity)]
+    contracts = {**_SEARCH_IDENTITIES, **_PLURAL_SEARCH_IDENTITIES}
+    assert identity in contracts, "unrecognized blue-data search algorithm identity"
+    return contracts[cast(tuple[str, str, str], identity)]
 
 
 def test_search_identity_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,11 +99,11 @@ def _keyword_registry() -> RegistrySeam:
 def test_keyword_fallback_normalized_shape_and_order() -> None:
     seam = _keyword_registry()
     results = seam.search_records_hierarchical("jobs", type="source", page=0, page_size=10)
-    expected = (
-        [("jobs_kb", 0.0), ("jobs_db", 1.0 / 3.0)]
-        if _search_contract() == "dev"
-        else [("jobs_kb", 3.0 / 23.0), ("jobs_db", 9.0 / 23.0)]
-    )
+    expected = {
+        "dev": [("jobs_kb", 0.0), ("jobs_db", 1.0 / 3.0)],
+        "1.0": [("jobs_kb", 3.0 / 23.0), ("jobs_db", 9.0 / 23.0)],
+        "1.0-plural": [("jobs_db", 3.0 / 23.0), ("jobs_kb", 3.0 / 23.0)],
+    }[_search_contract()]
     assert [r["name"] for r in results] == [name for name, _ in expected]
     assert [r["score"] for r in results] == pytest.approx([score for _, score in expected])
     assert all(math.isfinite(r["score"]) for r in results)
@@ -122,6 +131,39 @@ def test_keyword_scoring_tiers_invert_monotonically() -> None:
         assert [r["name"] for r in results] == ["alpha jobs"]
     assert all(math.isfinite(score) for score in scores)
     assert scores == sorted(scores)
+
+
+@pytest.mark.parametrize("query", ["job", "jobs"])
+def test_singular_plural_search_scores(query: str) -> None:
+    registry: Any = DataRegistry(name="kw_plural", rebuild=True)
+    for name in ("job", "jobs", "other"):
+        registry.register_record(name, "source", "/", description="unrelated")
+    seam = RegistrySeam(registry)
+    results = seam.search_records_hierarchical(query, type="source", page=0, page_size=10)
+    expected = {
+        "dev": {
+            "job": [("job", 1.0 / 3.0), ("jobs", 1.0 / 3.0)],
+            "jobs": [("jobs", 1.0 / 3.0)],
+        },
+        "1.0": {
+            "job": [("job", 3.0 / 23.0)],
+            "jobs": [("jobs", 3.0 / 23.0)],
+        },
+        "1.0-plural": {
+            "job": [("job", 3.0 / 23.0), ("jobs", 3.0 / 23.0)],
+            "jobs": [("job", 3.0 / 23.0), ("jobs", 3.0 / 23.0)],
+        },
+    }[_search_contract()][query]
+    assert [r["name"] for r in results] == [name for name, _ in expected]
+    scores = [r["score"] for r in results]
+    assert scores == pytest.approx([score for _, score in expected])
+    assert all(math.isfinite(score) for score in scores)
+    assert scores == sorted(scores)
+    for r in results:
+        assert set(r) == {"name", "type", "scope", "id", "score", "description"}
+        assert r["type"] == "source"
+        assert r["scope"] == "/"
+        assert r["id"] == f"//source/{r['name']}"
 
 
 # --- the flat variant normalization (unit: the delegate shape observed live) ----- #

@@ -299,14 +299,15 @@ from mcp.client.streamable_http import streamable_http_client
 
 
 async def main() -> None:
-    async with httpx.AsyncClient(
-        headers={"X-API-Key": os.environ["BLUE_DATA_OPS_MCP_KEY"]}
-    ) as http_client, streamable_http_client(
-        "http://127.0.0.1:8010/mcp", http_client=http_client
-    ) as (
-        read_stream,
-        write_stream,
-        _,
+    async with (
+        httpx.AsyncClient(
+            headers={"X-API-Key": os.environ["BLUE_DATA_OPS_MCP_KEY"]}
+        ) as http_client,
+        streamable_http_client("http://127.0.0.1:8010/mcp", http_client=http_client) as (
+            read_stream,
+            write_stream,
+            _,
+        ),
     ):
         async with ClientSession(read_stream, write_stream) as client:
             await client.initialize()
@@ -431,7 +432,7 @@ Business validation belongs to canonical `run()`. The published schema advertise
 
 ### Default tool inventory
 
-The 33 tools `create_server()` registers without an `operator_ids` argument, derived from `ACTIVE_OPERATOR_IDS`. Each row's operator ID is what that tool's `_meta.operator_id` carries, and it is the logical name without the prefix. Only the `domain-*` and `capability-*` tags are shown; `_meta.tags` carries all six axes in canonical order, and [`lib/OPERATORS.md`](../../lib/OPERATORS.md) has each operator's full card.
+The 33 tools `create_server()` registers without an `operator_ids` argument, derived from `ACTIVE_OPERATOR_IDS`. Each row's operator ID is what that tool's `_meta.operator_id` carries, and it is the unprefixed exact operator ID (for example `select@2.0.0`). Only the `domain-*` and `capability-*` tags are shown; `_meta.tags` carries all six axes in canonical order, and [`lib/OPERATORS.md`](../../lib/OPERATORS.md) has each operator's full card.
 
 | Tool | Operator ID | Domain tag | Capability tags |
 |---|---|---|---|
@@ -452,7 +453,7 @@ The 33 tools `create_server()` registers without an `operator_ids` argument, der
 | `ops_min` | `min@3.0.0` | `domain-arithmetic` | `capability-extrema`, `capability-reduction` |
 | `ops_nl2bn` | `nl2bn@3.0.0` | `domain-query-compound` | `capability-bayesian-query`, `capability-query-execution`, `capability-query-generation` |
 | `ops_nl2llm` | `nl2llm@3.0.0` | `domain-query-compound` | `capability-generation` |
-| `ops_nl2sql` | `nl2sql@3.0.0` | `domain-query-compound` | `capability-query-execution`, `capability-query-generation`, `capability-sql` |
+| `ops_nl2sql` | `nl2sql@4.0.0` | `domain-query-compound` | `capability-query-execution`, `capability-query-generation`, `capability-sql` |
 | `ops_normalize_text` | `normalize_text@2.0.0` | `domain-text` | `capability-normalization` |
 | `ops_project` | `project@3.0.0` | `domain-relational` | `capability-projection` |
 | `ops_segment_text` | `segment_text@2.0.0` | `domain-text` | `capability-segmentation` |
@@ -517,7 +518,7 @@ It runs against the sibling core source tree.
 
 ## Migrating from 0.13.0
 
-`1.0.0` renames every tool. The 33 names gain an `ops_` prefix, so `select` becomes `ops_select` and `create_database` becomes `ops_create_database`. **Every existing client call site changes.** A client holds one flat tool namespace across the servers it has loaded, and `create_database` was already served with a different meaning by `blue-data-user-source`; nothing in this catalog was prefixed, and half of it is a bare verb. Nothing else about a tool moves: `_meta.operator_id` still carries the unprefixed logical name, the arguments are the same three containers, and the result envelope is unchanged.
+`1.0.0` renames every tool. The 33 names gain an `ops_` prefix, so `select` becomes `ops_select` and `create_database` becomes `ops_create_database`. **Every existing client call site changes.** A client holds one flat tool namespace across the servers it has loaded, and `create_database` was already served with a different meaning by `blue-data-user-source`; nothing in this catalog was prefixed, and half of it is a bare verb. Nothing else about a tool moves: `_meta.operator_id` still carries the unprefixed exact operator ID (for example `select@2.0.0`), the arguments are the same three containers, and the result envelope is unchanged.
 
 The published input schema now says what core already enforced. Each attribute carries its JSON Schema `type`, an attribute core declares required appears in the `attributes` object's `required` list — 46 of them, across 27 tools — and 17 attributes whose values core's validator closes carry an `enum`. `input_data`, `attributes`, and `properties` each carry a description, which none of them had. This is a tightening of the advertised contract: a call that omits a required attribute, or passes a value outside a closed set, was schema-valid before and is not now. The server's own behavior is unchanged — such a call still reaches operator validation and returns a recoverable `INVALID_INPUT` record with `isError` false — but a client that validates against the published schema will refuse it before sending.
 

@@ -11,11 +11,11 @@ Blue coordinates AI agents that use existing data and tools, while `blue-data` c
 - **Standardize data operations** with reusable operators that share an execution contract across eight families: filtering and shaping, joins and set operations, aggregation, text processing, machine learning, vector operations, LLM and semantic operations, and registry-backed discovery and database operations.
 - **Work with registered data**: discover sources, create databases and tables, insert records, and turn natural-language requests into queries that can be executed against a configured backend when enabled.
 - **Use ML, vector, and LLM operators** for classification, clustering, embeddings, vector search and similarity, semantic filtering, extraction, and other LLM-based operations when their optional dependencies are installed.
-- **Discover** operators by keyword, six tag axes, or a caller-supplied embedding index. The active registry holds 33 cards, and a versioned registry retains 87. An exact ID such as `avg@3.0.0` continues to identify the same implementation after a release.
+- **Discover** operators by keyword, six tag axes, or a caller-supplied embedding index. The active registry holds 33 cards, and a versioned registry retains 88. An exact ID such as `avg@3.0.0` continues to identify the same implementation after a release.
 - **Plan and run** data flows with `DataPipeline`, `PipelineExecutor`, and a rule-based or OpenAI-backed `PipelinePlanner`.
 - **Call** the active operators from Python, the `blue-ops` command, or MCP clients. The MCP server exposes 33 `ops_`-prefixed tools. The library's `run()` result carries output records, optional output attributes, and execution metadata, including errors.
 
-See [features](docs/features.md) for the capabilities, [examples](examples/README.md) for runnable programs, and the [library guide](lib/README.md) for operator contracts, settings, and the 54 exact-version reference packages.
+See [features](docs/features.md) for the capabilities, [examples](examples/README.md) for runnable programs, and the [library guide](lib/README.md) for operator contracts, settings, and the 55 exact-version reference packages.
 
 ## Repository layout
 
@@ -24,10 +24,12 @@ blue-data-ops/
 ├── README.md              # this overview
 ├── CHANGELOG.md           # release history
 ├── LICENSE                # repository license
+├── NOTICE                 # attribution notices
+├── CODE_OF_CONDUCT.md     # contributor conduct
 ├── design/                # architecture and design decisions
 ├── docs/                  # user guides and API reference
 ├── examples/              # runnable programs and CLI sample inputs
-│   └── cli/               # order records and planning request used by the CLI guide
+│   └── cli/               # sample records, planning request and LLM pipeline inputs for the CLI guide
 ├── lib/                   # blue-data-ops Python library and install script
 ├── platform/
 │   ├── ops-cli/           # blue-ops command
@@ -39,7 +41,7 @@ blue-data-ops/
 ## Requirements
 
 - Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`).
-- A `blue-data` checkout beside this repository for the source installer. The library requires `blue-data>=1.0.0` at import time.
+- A `blue-data` checkout beside this repository for the source installer. The library requires `blue-data>=1.0.0,<2` at import time.
 - Provider credentials for LLM-backed operators and OpenAI planning; record transforms and the rule-based planner need none.
 
 For the source-install commands, keep the two checkouts under one parent:

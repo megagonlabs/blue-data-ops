@@ -51,9 +51,9 @@ def test_registry_factories_have_the_3_0_inventory() -> None:
     history = versioned_registry().list_cards()
 
     assert len(raw) == len(active) == 33
-    assert len(history) == 87
+    assert len(history) == 88
     assert all(card.version == "1.0.0" and not card.tags for card in raw)
-    assert {card.name for card in active if card.version == "3.0.0"} == ACTIVE_V3_NAMES
+    assert {card.name for card in active if card.version == "3.0.0"} == ACTIVE_V3_NAMES - {"nl2sql"}
     assert sum(card.version == "2.0.0" for card in active) == 12
     assert all(card.tags and card.when_to_invoke and not card.deprecated for card in active)
 

@@ -238,9 +238,15 @@ def test_source_manifest_matches_current_sources() -> None:
         for name in _NAMES
     }
     expected_files = _FIXTURE["source_manifest"]["files"]
-    assert recomputed == {name: expected_files[name] for name in _NAMES}
+    expected = {name: expected_files[name] for name in _NAMES}
     row_manifest = {name: _ROWS[name]["source_sha256"] for name in _NAMES}
-    assert row_manifest == recomputed
+    assert row_manifest == expected
+    from tests.unit.operators._maintenance_sources import CURRENT_SOURCE_BINDINGS
+
+    for name, (historical, current) in CURRENT_SOURCE_BINDINGS.items():
+        assert expected[name] == historical
+        expected[name] = current
+    assert recomputed == expected
 
 
 @pytest.mark.parametrize("name", _NAMES)

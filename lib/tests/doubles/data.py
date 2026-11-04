@@ -240,6 +240,39 @@ class RegistrySeamDouble:
         )
         return self.search_pages.get(page, [])
 
+    def list_collection_entities(self, source: str, database: str, collection: str) -> Any:
+        self._log(
+            "list_collection_entities", source=source, database=database, collection=collection
+        )
+        return self.schema_result.get("entities", [])
+
+    def list_entity_attributes(
+        self, source: str, database: str, collection: str, entity: str
+    ) -> Any:
+        self._log(
+            "list_entity_attributes",
+            source=source,
+            database=database,
+            collection=collection,
+            entity=entity,
+        )
+        record = next(
+            record for record in self.schema_result.get("entities", []) if record["name"] == entity
+        )
+        return [
+            {"name": name, "properties": {"info": info}}
+            for name, info in record.get("attributes", {}).items()
+        ]
+
+    def list_collection_relations(self, source: str, database: str, collection: str) -> Any:
+        self._log(
+            "list_collection_relations", source=source, database=database, collection=collection
+        )
+        return [
+            {"name": record["name"], "properties": record}
+            for record in self.schema_result.get("relations", [])
+        ]
+
     def get_data_source_schema(
         self,
         source: str,

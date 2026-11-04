@@ -1,0 +1,84 @@
+# SQL generation and execution admission
+
+Environment: llm
+
+The client and registry are deterministic in-process seams. The example neither contacts a provider nor executes SQL on a backend.
+
+```python
+import json
+from copy import deepcopy
+
+from blue_data_ops.data import RegistrySeam
+from blue_data_ops.llm import LLMClient
+from blue_data_ops.operators import versioned_registry
+
+
+class LocalClient(LLMClient):
+    def __init__(self, response):
+        super().__init__("local")
+        self.response = response
+        self.schemas = []
+
+    def execute_api_call(self, input, properties=None, additional_data=None):
+        self.schemas.append(json.loads(additional_data["schema"]))
+        return deepcopy(self.response)
+
+
+class LocalRegistry(RegistrySeam):
+    def __init__(self, result):
+        self.result = result
+
+    def get_data_source_schema(self, source, database, collection, protocol=None, format="dict"):
+        return {"incidents": {"service": "text", "open": "integer"}}
+
+    def execute_query(
+        self, query, source, database=None, collection=None, optional_properties=None
+    ):
+        return deepcopy(self.result)
+
+
+operator = versioned_registry().resolve("nl2sql@4.0.0")
+attributes = {
+    "question": "Which services have open incidents?",
+    "source": "local",
+    "database": "operations",
+    "collection": "incidents",
+    "protocol": "sqlite",
+}
+sql = {"query": "SELECT service FROM incidents WHERE open = 1"}
+client = LocalClient(sql)
+output, output_attributes, meta = operator.run(
+    [], attributes, {"llm_client": client, "data_registry": LocalRegistry([])}
+)
+denied_output, _, denied_meta = operator.run(
+    [],
+    attributes,
+    {
+        "llm_client": LocalClient(sql),
+        "data_registry": LocalRegistry([["bad-row"]]),
+        "execute_query": True,
+    },
+)
+
+assert output == [[{"sql": sql["query"]}]]
+assert client.schemas == [
+    {
+        "entities": [
+            {
+                "name": "incidents",
+                "attributes": {"open": {"type": "integer"}, "service": {"type": "text"}},
+            }
+        ],
+        "relations": [],
+    }
+]
+assert output_attributes == {}
+assert not meta.errors
+assert denied_output == [[]]
+assert denied_meta.errors[0].code.value == "EXECUTION_FAILED"
+assert denied_meta.errors[0].stage.value == "EXECUTE"
+```
+
+For execution, construct a `ReadOnlySQLExecutor` in trusted host code and register
+that NL2SQL instance in the same custom operator registry used by the planner and
+executor. Request properties cannot grant execution authority.

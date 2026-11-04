@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from types import MethodType
 from typing import Any, ClassVar, cast
@@ -12,6 +11,7 @@ from blue_data_ops.data.registry_seam import (
     _diagnose_source,  # pyright: ignore[reportPrivateUsage]
     diagnose_generation_target,
 )
+from blue_data_ops.data.sql_schema import project_sql_schema
 from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
 from blue_data_ops.llm.client import validate_llm_caller_controls
 from blue_data_ops.llm.sql_execution import SQL_REGISTRY_SELECTORS, ReadOnlySQLExecutor, sql_error
@@ -26,8 +26,6 @@ from blue_data_ops.operators.types import (
     Properties,
     ValidationResult,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class _MissingRegistryError(RegistryNotConfigured):
@@ -115,8 +113,7 @@ class NL2SQLOperator(Operator):
         "schema": AttributeSpec(
             type="str",
             description=(
-                "JSON string of database schema (optional - will be fetched automatically "
-                "if not provided)"
+                "Compatibility input; schema is projected from registered columns and types"
             ),
             default="",
         ),
@@ -259,9 +256,12 @@ class NL2SQLOperator(Operator):
                 _diagnose_source(registry, source)
             if _diagnose_generation_target:
                 diagnose_generation_target(registry, source, database, collection)
-            schema = registry.get_data_source_schema(source, database, collection)
-        logger.debug("SCHEMA:")
-        logger.debug(schema)
+            try:
+                schema = project_sql_schema(
+                    registry, source, database, collection, protocol=protocol
+                )
+            except Exception:
+                raise sql_error("sql_execution_failed") from None
         if isinstance(schema, dict):
             schema_str = json.dumps(schema, indent=2)
         else:

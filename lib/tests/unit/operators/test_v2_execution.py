@@ -379,7 +379,7 @@ def test_missing_litellm_uses_the_existing_code_with_actionable_fields() -> None
 
 
 def test_missing_llm_extras_keep_recoverable_errors_when_wrapped() -> None:
-    for missing in ("litellm", "jinja2", "diskcache"):
+    for missing in ("litellm", "diskcache"):
         for code in (None, "provider_error", "cache_unavailable"):
             for wrapped in (False, True):
 

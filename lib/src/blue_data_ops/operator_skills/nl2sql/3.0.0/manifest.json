@@ -4,11 +4,11 @@
   "resources": {
     "examples": {
       "path": "examples.md",
-      "sha256": "f285a1432835fb150d9eea2455fca971140d96f2c3159da2167d7e35ef924ea2"
+      "sha256": "18ec96b7b4da5573f33f20d0c386232f571a06a698c2ce5fec3364c4d37e9276"
     },
     "guide": {
       "path": "Operator.md",
-      "sha256": "ef8a51d614f0873fc5cfabc56cc745f1f577e5e76ea34b764068ba5fe1289283"
+      "sha256": "b7454af78ed740b6b3371edc61fb63ddc6f1af4a6ca8daf078882da2b3baaf25"
     }
   }
 }

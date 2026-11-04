@@ -37,6 +37,7 @@ ADDED_SKILL_PACKAGE_IDS = (
     "nl2bn@3.0.0",
     "nl2llm@3.0.0",
     "nl2sql@3.0.0",
+    "nl2sql@4.0.0",
     "project@3.0.0",
     "semantic_extract@3.0.0",
     "semantic_filter@3.0.0",
@@ -224,7 +225,7 @@ def expected_v2_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]
 def expected_skill_package_ids(registry: OperatorRegistry) -> tuple[str, ...]:
     legacy = expected_v2_skill_package_ids(registry)
     expected = (*legacy, *ADDED_SKILL_PACKAGE_IDS)
-    assert len(expected) == len(set(expected)) == 54
+    assert len(expected) == len(set(expected)) == 55
     return tuple(sorted(expected, key=lambda item: item.encode("utf-8")))
 
 

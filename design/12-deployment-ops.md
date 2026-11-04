@@ -30,8 +30,14 @@ Each distribution declares its own version and none reads another's.
 There is no repository-wide version, and no `MAJOR.MINOR.PATCH` for the repository as a whole.
 
 A card is registered under `name@<MAJOR.MINOR.PATCH>`, registration is immutable — no overwrite and no deregister — and a version is therefore never reused.
-The history registry retains 87 cards from earlier releases, while the active view offers the 33 cards intended for current callers.
+The versioned registry holds 88 exact cards. The active view offers 33 cards: twelve at `@2.0.0`, twenty at `@3.0.0`, and `nl2sql@4.0.0`.
 [`lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md) is the source of truth for which boundary a given change crosses, and [10-data-model.md](10-data-model.md) covers the card record itself.
+
+`nl2sql@4.0.0` is the active host-bound execution card.
+Retained @1/@2/@3 remain resolvable with the current host-only execution restrictions.
+Consumers must check the exact @4 card and public host constructor; a package range cannot distinguish builds carrying the same distribution label.
+The first published 1.0 release line replaces unpublished development labels and does not sort above an installed 3.x version.
+Explicitly reinstall an older 3.x checkout from the 1.0.0 source.
 
 A documentation-only change does not move any of the three versions.
 
@@ -44,8 +50,8 @@ The repository carries no Git tags, so a release is identified by its commit and
 
 | Package | Path | Version | Console script | Runtime dependencies |
 |---|---|---|---|---|
-| `blue-data-ops` | `lib/` | `1.0.0` | none | `blue-data>=1.0.0`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng`, `tenacity` |
-| `blue-data-ops-mcp` | `platform/ops-mcp/` | `1.0.0` | `blue-data-ops-mcp` | `blue-data-ops==1.0.0`, `blue-data[server]>=1.0.0`, `mcp>=1.28.1,<2`, `pydantic>=2.11,<3` |
+| `blue-data-ops` | `lib/` | `1.0.0` | none | `blue-data>=1.0.0,<2`, `pydantic>=2`, `jsonmerge==1.9.2`, `jsonpath-ng<2`, `tenacity<10` |
+| `blue-data-ops-mcp` | `platform/ops-mcp/` | `1.0.0` | `blue-data-ops-mcp` | `blue-data-ops==1.0.0`, `blue-data[server]>=1.0.0,<2`, `mcp>=1.28.1,<2`, `pydantic>=2.11,<3` |
 | `blue-data-ops-cli` | `platform/ops-cli/` | `1.0.0` | `blue-ops` | `blue-data-ops[ml,vector,llm]==1.0.0`, `click>=8.0`, `rich>=13.0` |
 
 Each package's own README is the source of truth for installing and using it: [`lib/README.md`](../lib/README.md), [`platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and [`platform/ops-cli/README.md`](../platform/ops-cli/README.md).
@@ -58,9 +64,7 @@ The adapter's tool schemas project the core's attribute specs, and the command r
 A core specification change could otherwise alter either interface contract without moving its version.
 Upgrading the core therefore requires an interface release, and each pair is verified together.
 
-The three `[project]` blocks are minimal — `name`, `version`, `description`, `readme`, `requires-python`, and `dependencies`.
-None declares a license expression, an author, a classifier, or a project URL. Each package has a `LICENSE` in its build root; its wheel carries that text and a `License-File: LICENSE` metadata field.
-A publishing workflow that needs a license expression or the other metadata fields has to add them.
+Each `[project]` block declares `license = "LicenseRef-BlueData"` and `license-files = ["LICENSE", "NOTICE"]` for the custom terms. The legal files are unchanged. The metadata uses setuptools' PEP 639 support; no `License ::` classifier is declared.
 
 The core's optional extras:
 
@@ -68,9 +72,9 @@ The core's optional extras:
 |---|---|---|
 | `ml` | `numpy`, `scikit-learn` | `classify`, `cluster`, `sklearn_estimator` |
 | `vector` | `numpy`, `sentence-transformers` | the three vector operators |
-| `llm` | `litellm>=1.98,<2`, `tenacity`, `diskcache`, `jinja2` | `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators |
+| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6` | `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators |
 | `openai` | `openai>=2.54,<3` | `OpenAIPlanGenerator` |
-| `dev` | `numpy`, `scikit-learn`, `tenacity`, `diskcache`, `jinja2`, `openai`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff`, `pyright`, `build`, `twine` | working on the package |
+| `dev` | `numpy`, `scikit-learn`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff==0.17.3`, `pyright==1.1.414`, `build`, `twine` | working on the package |
 
 `dev` is not the union of the other four.
 `sentence-transformers` is left out on purpose, so that a development environment cannot accidentally reach a real model download; the test suite substitutes a deterministic stub instead.
@@ -112,8 +116,8 @@ Then run the installer with either environment active:
 The same thing by hand, which is what to do when `blue-data` is somewhere `BLUE_DATA_PATH` would have to name:
 
 ```bash
-python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
-python -m pip install -e "./blue-data-ops/lib[dev]" "blue-data-ops==1.0.0"
+python -m pip install -e ./blue-data/lib
+python -m pip install -e "./blue-data-ops/lib[dev]"
 ```
 
 Against a configured artifact index, install the built distributions instead:
@@ -125,7 +129,7 @@ python -m pip install --index-url "$PIP_INDEX_URL" \
   "blue-data-ops-cli==1.0.0"
 ```
 
-That index must also serve `blue-data>=1.0.0`.
+That index must also serve `blue-data>=1.0.0,<2`.
 `PIP_INDEX_URL` is named in the READMEs as the variable to set; no index URL is configured anywhere in this repository, and none should be committed.
 
 ---
@@ -136,7 +140,7 @@ All three packages use the same backend, declared identically:
 
 ```toml
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 ```
 
@@ -165,7 +169,7 @@ Cleanup leaves `*.egg-info` alone. Wheel lookup and the allowed metadata prefix 
 
 `[tool.setuptools.packages.find] where = ["src"]` is what makes the `src/` layout work, and it is why a wheel contains the package and nothing above it.
 
-**Non-Python files in the wheel** are listed explicitly, because setuptools will not guess:
+**Non-Python files in the wheel** are listed explicitly, because setuptools will not guess. License files are selected through the project metadata above; their bytes are unchanged.
 
 ```toml
 [tool.setuptools.package-data]
@@ -280,9 +284,11 @@ The keys that matter operationally:
 | `execution.timeout_seconds` | A wrapper deadline on one `run()` call; must be a finite number greater than zero. The wrapper never retries, and a breach returns an `OPERATOR_TIMEOUT` record |
 | `openai.model` | The model an LLM-backed operator requests, within the provider the deployment names. Refused with `model_not_allowed` when it resolves elsewhere |
 | `llm.cache` | Enables the on-disk response cache; requires the `llm` extra's `diskcache` |
-| `llm.cache_dir` | Where that cache lives, defaulting to `.llm_cache` in the working directory |
-| `llm.max_parallel` | Bound on concurrent asynchronous provider calls |
-| `llm.rate_limit` | A ceiling in calls per second; the client sleeps to hold the resulting minimum interval |
+| `llm.cache_dir` | Where that cache lives, defaulting to `.blue-data-ops-cache` in the working directory |
+| `llm.max_parallel` | Positive integer bound on concurrent asynchronous provider calls; integral numeric values are accepted, but booleans, nonfinite, nonpositive, or fractional values are refused |
+| `llm.rate_limit` | `None` or `0` disables pacing; finite positive rates must be at least `0.1` calls per second per client |
+
+With a positive rate, semaphore, lock, and rate waits share a cumulative budget of at most 10 seconds per provider attempt, capped by the remaining operator deadline. Each retry and temperature fallback gets its own attempt budget. With unlimited pacing, concurrency-slot waits obey cancellation and the operator deadline without an additional 10-second limit. If no slot opens, the call returns a retryable local rate-limit error; the client does not retry that refusal automatically. Cache hits acquire no admission. Separate clients do not share admission state. A deadline cannot interrupt provider I/O that has already started. See [LLM settings](../docs/llm-settings.md#rate-admission-and-response-cache) for caller guidance.
 
 The two keys the deployment sets, rather than a caller:
 
@@ -304,8 +310,9 @@ A property that would substitute the provider's answer, `mock_response` or `mock
 Both are refused before the cache key is built, so nothing sent under one of those names is written to disk either.
 
 `llm.cache_dir` is the only path this package writes to on its own initiative, and only when `llm.cache` is set.
-Its default, `.llm_cache`, is relative to the process working directory and is not covered by either `.gitignore` in this repository, so a run with caching enabled inside a checkout leaves an untracked directory.
-Point it somewhere outside the tree, or add it to the ignore file, before enabling the cache during development.
+Its default, `.blue-data-ops-cache`, is relative to the process working directory. New cache directories are created with mode 0700; on POSIX, an existing directory must be owned by the process user with no group or other access, including on reuse. Unsafe directories are refused without changing permissions. A literal `$` is valid when the directory stays private and stable through diskcache's second path expansion.
+Ops uses versioned, namespaced entries even in an explicitly shared private directory. The old `.llm_cache` is neither read nor migrated. Diskcache still uses pickle for some values; privacy checks do not protect against a malicious same-owner writer.
+The default `.blue-data-ops-cache/` directory is ignored by Git. If you choose another path inside the tree, add it to the ignore file before enabling the cache during development.
 
 **Credentials are never read by this package.**
 An LLM-backed operator hands its request to LiteLLM, and the plan generator hands its request to the OpenAI SDK; each of those libraries reads its own provider variables, such as `OPENAI_API_KEY`, from the environment.

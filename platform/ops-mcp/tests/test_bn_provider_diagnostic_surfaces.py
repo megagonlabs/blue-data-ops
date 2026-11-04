@@ -173,7 +173,9 @@ async def check_surfaces(
         assert message in cli_wire["error"]["message"]
         assert_calls()
         if identity.endswith("1.0.0"):
-            with pytest.raises(ValueError, match="supports exact v2/v3 selections only"):
+            with pytest.raises(
+                ValueError, match="supports exact v2/v3 and built-in nl2sql@4.0.0 selections only"
+            ):
                 create_server(registry=catalog, data_registry=seam, operator_ids=(identity,))
             wire = {"v1_selection": "rejected by existing MCP contract"}
         else:

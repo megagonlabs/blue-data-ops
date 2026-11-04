@@ -147,8 +147,8 @@ python examples/feature-demos/nl2llm.py
 
 Builds the same ten-row `orders` database as the SQLite quickstart, then asks for the region with the highest total order value and prints the generated SQL.
 Generation and execution are separate: the query is returned but not run unless you pass `--execute`.
-The registry schema projection gives the model the `orders` table name but not its columns. This example supplies the known SQLite column names through the operator's `context` attribute so the model can use `region` and `total`.
-The `SELECT` prefix check is a guard against obvious misuse, not a SQL parser, so database permissions remain your responsibility.
+The registry schema projection supplies `orders` and its declared column names and types. The model receives no row samples.
+The executor accepts one plain SELECT and refuses INTO, extra statements and ambiguous syntax. It is not a SQL sandbox; give the database user read-only access.
 
 ```bash
 export OPENAI_API_KEY=<your-key>
@@ -189,7 +189,7 @@ Tag discovery first finds the three query-head operators: `nl2bn`, `nl2llm`, and
 Embedding discovery then ranks the full active catalog against the question.
 `OpenAIPlanGenerator`, not a rule or fixed template, receives the combined discovered catalog and chooses the plan.
 The NL2SQL attributes in the request constrain its database address if the model selects it; they do not force that selection.
-For the default question, the expected selection is `nl2sql@3.0.0`, which returns a generated `SELECT` without executing it.
+For the default question, the expected selection is `nl2sql@4.0.0`, which returns a generated `SELECT` without executing it.
 This is an NL2SQL demonstration, so the command exits nonzero if the planner selects another operator.
 
 The script prints the active allowlist, tag matches, embedding ranking, combined discovery snapshot, model-visible read-only candidates, selected steps, preflight result, and generated SQL.
@@ -197,8 +197,7 @@ It makes four outbound calls: one batch for the operator documents, one for the 
 The embedding cache prevents the planner from sending the same question embedding twice.
 The planner provider receives the question, operator metadata, caller-constrained NL2SQL address, and a registry-derived schema snapshot, but no database rows.
 NL2SQL separately sends the question and its current registry-derived schema to its configured model.
-That inner schema currently includes the `orders` entity but not its separately registered columns, so the default count query deliberately needs no column names.
-A shared column-aware projection is required before this example can claim broader source-backed coverage.
+That inner schema includes registered columns and declared types. The default count query remains a simple demonstration; registered metadata can be stale.
 
 ```bash
 export OPENAI_API_KEY=<your-key>

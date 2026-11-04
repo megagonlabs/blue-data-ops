@@ -112,7 +112,7 @@ async def test_meta_matches_exact_mixed_active_selection() -> None:
     tools = await create_server().list_tools()
     assert len(tools) == 33
     assert [(tool.meta or {})["operator_id"] for tool in tools] == list(ACTIVE_OPERATOR_IDS)
-    assert {(tool.meta or {})["version"] for tool in tools} == {"2.0.0", "3.0.0"}
+    assert {(tool.meta or {})["version"] for tool in tools} == {"2.0.0", "3.0.0", "4.0.0"}
     for tool in tools:
         assert set(tool.meta or {}) == {"operator_id", "version", "tags"}
         assert not tool.name.endswith("__refine")

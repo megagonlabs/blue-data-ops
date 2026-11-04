@@ -13,6 +13,7 @@ from blue_data_ops.operators.types import (
     ExecMeta,
     Properties,
 )
+from blue_data_ops.plan.errors import PipelineError
 from blue_data_ops.plan.pipeline import DataPipeline, Entity, Node
 from blue_data_ops.plan.types import EntityType, NodeType, Status
 
@@ -45,10 +46,6 @@ def _merge_property_layers(
                     if key in layer:
                         merged[key] = layer[key]
     return merged
-
-
-class PipelineError(ValueError):
-    """The pipeline cannot be executed safely."""
 
 
 @dataclass(frozen=True)

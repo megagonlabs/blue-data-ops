@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import stat
 import threading
 import time
 from dataclasses import dataclass
@@ -11,9 +12,11 @@ from decimal import Decimal
 from math import isfinite
 from numbers import Real
 from typing import Any, cast
+from weakref import WeakKeyDictionary
 
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from blue_data_ops import _execution_scope as _scope
 from blue_data_ops.data.sql_errors import loaded_class
 from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.llm.templating import build_message, extract_output
@@ -174,7 +177,11 @@ def _sampling_allowed(model: str, effort: Any) -> bool | None:
 
 
 def _retryable_llm_error(exception: BaseException) -> bool:
-    return isinstance(exception, LLMError) and exception.retryable
+    return (
+        isinstance(exception, LLMError)
+        and exception.retryable
+        and exception.code != "local_rate_limit"
+    )
 
 
 def _structured_provider_error_code(exception: Exception) -> str | None:
@@ -377,10 +384,106 @@ _UNKNOWN_LLM_OVERRIDE_MESSAGE = "unsupported llm.* override; accepted: " + ", ".
 )
 
 
+MIN_RATE = 0.1
+MAX_ADMISSION_WAIT = 1 / MIN_RATE
+_ADMISSION_TOLERANCE = 0.005
+_CACHE_DIR_MESSAGE = (
+    "llm.cache_dir must be an owned, private directory (mode 0700) with a stable expanded path"
+)
+
+
+@dataclass(frozen=True)
+class _AdmissionControls:
+    rate: float | None = None
+    max_parallel: int = 8
+
+
+def _finite_scalar(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (Real, Decimal, str)):
+        raise ValueError
+    number = float(value)
+    if not isfinite(number):
+        raise ValueError
+    if number == 0 and (Decimal(value) if isinstance(value, str) else value) != 0:
+        raise ValueError
+    return number
+
+
+def _normalize_admission_controls(properties: dict[str, Any]) -> _AdmissionControls:
+    rate = properties.get("llm.rate_limit")
+    try:
+        normalized_rate = None if rate is None else _finite_scalar(rate)
+        if normalized_rate is not None and normalized_rate != 0 and normalized_rate < MIN_RATE:
+            raise ValueError
+    except (ValueError, TypeError, OverflowError, ArithmeticError):
+        raise LLMError(
+            "llm.rate_limit must be 0, None, or a finite number at least 0.1 calls/s",
+            code="bad_rate_limit",
+            retryable=False,
+        ) from None
+    parallel = properties.get("llm.max_parallel", 8)
+    try:
+        number = _finite_scalar(parallel)
+        integer = int(number)
+        exact = Decimal(parallel) if isinstance(parallel, str) else parallel
+        if integer <= 0 or integer != exact:
+            raise ValueError
+    except (ValueError, TypeError, OverflowError, ArithmeticError):
+        raise LLMError(
+            "llm.max_parallel must be a finite positive integer",
+            code="bad_max_parallel",
+            retryable=False,
+        ) from None
+    return _AdmissionControls(normalized_rate or None, integer)
+
+
+def _validate_admission_controls(properties: dict[str, Any]) -> None:
+    _normalize_admission_controls(properties)
+
+
+def _admission_refusal() -> LLMError:
+    return LLMError(
+        "local LLM admission wait exceeded; pace requests and retry",
+        code="local_rate_limit",
+        retryable=True,
+    )
+
+
+class _AdmissionBudget:
+    def __init__(self) -> None:
+        self.deadline = time.monotonic() + MAX_ADMISSION_WAIT
+
+    def remaining(self) -> float:
+        _scope.check()
+        remaining = self.deadline - time.monotonic()
+        if remaining < -_ADMISSION_TOLERANCE:
+            raise _admission_refusal()
+        return max(0.0, remaining)
+
+    def delay(self, required: float) -> float:
+        remaining = self.remaining()
+        # Allow scheduling jitter at the minimum rate, without reserving future slots.
+        if required > remaining + _ADMISSION_TOLERANCE:
+            raise _admission_refusal()
+        return required
+
+    def poll(self) -> float:
+        remaining = self.remaining()
+        if remaining <= 0:
+            raise _admission_refusal()
+        scope_remaining = _scope.remaining()
+        return min(
+            _scope.POLL_INTERVAL,
+            remaining,
+            remaining if scope_remaining is None else scope_remaining,
+        )
+
+
 def validate_llm_caller_controls(
     properties: dict[str, Any] | None, *, service_prefix: str = "openai"
 ) -> None:
     """Check original operator-call controls without resolving clients or providers."""
+    _validate_admission_controls(properties or {})
     for key in properties or {}:
         if key in RESERVED_OPERATOR_LLM_CONTROLS:
             raise LLMError(_RESERVED_CONTROL_MESSAGE, code="reserved_field", retryable=False)
@@ -690,9 +793,11 @@ class LLMClient:
         self.ledger = UsageLedger()
         self.last_usage: UsageRecord | None = None
         self._caches: dict[str, Any] = {}  # cache_dir -> diskcache.Cache
-        self._semaphores: dict[int, asyncio.Semaphore] = {}
+        self._semaphores: WeakKeyDictionary[
+            asyncio.AbstractEventLoop, dict[int, asyncio.Semaphore]
+        ] = WeakKeyDictionary()
         self._rate_lock = threading.Lock()
-        self._last_call_at = 0.0
+        self._last_call_at: float | None = None
 
     # ------------------------------------------------------------------ sync --
     def execute_api_call(
@@ -733,16 +838,21 @@ class LLMClient:
                 key in properties for key in ("llm.temperature", f"{prefix}.temperature")
             )
         merged = {**self.properties, **(properties or {})}
+        controls = _normalize_admission_controls(merged)
+        _scope.check()
+        provider_controls: dict[str, Any] = (
+            {"controls": controls} if controls.rate is not None else {}
+        )
         message = build_message(input, merged, additional_data, self.name.lower())
         kwargs = self._build_call_kwargs(message, merged)
 
         cache, cache_key = self._cache_lookup(merged, kwargs)
         original_key = cache_key
-        alias_key = "operator-temperature-fallback:" + cache_key if cache_key is not None else None
+        alias_key = self._cache_key(kwargs, alias=True) if cache_key is not None else None
         if inherited and cache is not None and alias_key in cache:
             effective = dict(kwargs)
             effective.pop("temperature", None)
-            effective_key = json.dumps(effective, sort_keys=True, default=str)
+            effective_key = self._cache_key(effective)
             if cache[alias_key] == effective_key and effective_key in cache:
                 kwargs = effective
                 cache_key = effective_key
@@ -754,26 +864,28 @@ class LLMClient:
             self._reject_truncated(payload)
             return extract_output(payload, merged)
 
-        self._apply_rate_limit(merged)
         try:
             if observation is None:
-                payload, cost = self._call_provider(kwargs)
+                payload, cost = self._call_provider(kwargs, **provider_controls)
             else:
-                payload, cost = self._call_provider_observed(kwargs, observation)
+                payload, cost = self._call_provider_observed(
+                    kwargs, observation, **provider_controls
+                )
         except LLMError as error:
             if not self._drop_rejected_temperature(error, kwargs, inherited):
                 raise
             if observation is not None and self._local_temperature_refusal(error.provider_error):
                 observation.local_refusals += 1
-            self._apply_rate_limit(merged)
             if observation is None:
-                payload, cost = self._call_provider(kwargs)
+                payload, cost = self._call_provider(kwargs, **provider_controls)
             else:
-                payload, cost = self._call_provider_observed(kwargs, observation)
+                payload, cost = self._call_provider_observed(
+                    kwargs, observation, **provider_controls
+                )
         self._record(kwargs, payload, started, cache_hit=False, cost=cost)
         self._reject_truncated(payload)
         if cache is not None and cache_key is not None:
-            cache_key = json.dumps(kwargs, sort_keys=True, default=str)
+            cache_key = self._cache_key(kwargs)
             cache[cache_key] = payload
             if inherited and alias_key is not None and original_key != cache_key:
                 cache[alias_key] = cache_key
@@ -800,16 +912,18 @@ class LLMClient:
                 key in properties for key in ("llm.temperature", f"{prefix}.temperature")
             )
         merged = {**self.properties, **(properties or {})}
+        controls = _normalize_admission_controls(merged)
+        _scope.check()
         message = build_message(input, merged, additional_data, self.name.lower())
         kwargs = self._build_call_kwargs(message, merged)
 
         cache, cache_key = self._cache_lookup(merged, kwargs)
         original_key = cache_key
-        alias_key = "operator-temperature-fallback:" + cache_key if cache_key is not None else None
+        alias_key = self._cache_key(kwargs, alias=True) if cache_key is not None else None
         if inherited and cache is not None and alias_key in cache:
             effective = dict(kwargs)
             effective.pop("temperature", None)
-            effective_key = json.dumps(effective, sort_keys=True, default=str)
+            effective_key = self._cache_key(effective)
             if cache[alias_key] == effective_key and effective_key in cache:
                 kwargs = effective
                 cache_key = effective_key
@@ -819,20 +933,16 @@ class LLMClient:
             self._reject_truncated(payload)
             return extract_output(payload, merged)
 
-        semaphore = self._resolve_semaphore(merged)
-        async with semaphore:
-            self._apply_rate_limit(merged)
-            try:
-                payload, cost = await self._acall_provider(kwargs)
-            except LLMError as error:
-                if not self._drop_rejected_temperature(error, kwargs, inherited):
-                    raise
-                self._apply_rate_limit(merged)
-                payload, cost = await self._acall_provider(kwargs)
+        try:
+            payload, cost = await self._acall_provider(kwargs, controls=controls)
+        except LLMError as error:
+            if not self._drop_rejected_temperature(error, kwargs, inherited):
+                raise
+            payload, cost = await self._acall_provider(kwargs, controls=controls)
         self._record(kwargs, payload, started, cache_hit=False, cost=cost)
         self._reject_truncated(payload)
         if cache is not None and cache_key is not None:
-            cache_key = json.dumps(kwargs, sort_keys=True, default=str)
+            cache_key = self._cache_key(kwargs)
             cache[cache_key] = payload
             if inherited and alias_key is not None and original_key != cache_key:
                 cache[alias_key] = cache_key
@@ -1007,48 +1117,150 @@ class LLMClient:
             kwargs["allowed_openai_params"] = ["reasoning_effort"]
         return kwargs
 
+    @staticmethod
+    def _cache_key(kwargs: dict[str, Any], *, alias: bool = False) -> str:
+        kind = "temperature-alias" if alias else "response"
+        return f"blue-data-ops:llm:v1:{kind}:" + json.dumps(kwargs, sort_keys=True, default=str)
+
     def _cache_lookup(
         self, properties: dict[str, Any], kwargs: dict[str, Any]
     ) -> tuple[Any | None, str | None]:
         if not properties.get("llm.cache"):
             return None, None
-        # Caches are bound per directory so a per-call llm.cache_dir override selects
-        # its own isolated cache instead of silently reusing the first one opened.
-        cache_dir = str(properties.get("llm.cache_dir", ".llm_cache"))
+        try:
+            import diskcache  # pyright: ignore[reportMissingTypeStubs]
+        except ImportError as e:
+            raise LLMError(
+                "llm.cache requested but diskcache is not installed "
+                "(pip install 'blue-data-ops[llm]')",
+                code="cache_unavailable",
+            ) from e
+        raw_path = os.path.expandvars(
+            os.path.expanduser(str(properties.get("llm.cache_dir", ".blue-data-ops-cache")))
+        )
+        try:
+            cache_dir = os.path.realpath(os.path.abspath(raw_path))
+            if os.path.expandvars(os.path.expanduser(cache_dir)) != cache_dir:
+                raise ValueError("unstable cache path")
+            os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+            info = os.stat(cache_dir)
+            if not stat.S_ISDIR(info.st_mode) or (
+                os.name == "posix"
+                and (info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077)
+            ):
+                raise ValueError("unsafe cache directory")
+        except (OSError, ValueError):
+            raise LLMError(
+                _CACHE_DIR_MESSAGE,
+                code="bad_cache_dir",
+                retryable=False,
+            ) from None
         cache = self._caches.get(cache_dir)
         if cache is None:
             try:
-                import diskcache  # pyright: ignore[reportMissingTypeStubs]
-            except ImportError as e:
-                raise LLMError(
-                    "llm.cache requested but diskcache is not installed "
-                    "(pip install 'blue-data-ops[llm]')",
-                    code="cache_unavailable",
-                ) from e
-            cache = diskcache.Cache(cache_dir)
+                cache = diskcache.Cache(cache_dir)
+            except (OSError, ValueError):
+                raise LLMError(_CACHE_DIR_MESSAGE, code="bad_cache_dir", retryable=False) from None
             self._caches[cache_dir] = cache
-        return cache, json.dumps(kwargs, sort_keys=True, default=str)
+        return cache, self._cache_key(kwargs)
 
-    def _resolve_semaphore(self, properties: dict[str, Any]) -> asyncio.Semaphore:
-        max_parallel = int(properties.get("llm.max_parallel", 8))
-        loop_id = id(asyncio.get_running_loop())
-        key = hash((loop_id, max_parallel))
-        semaphore = self._semaphores.get(key)
+    def _resolve_semaphore(self, controls: _AdmissionControls) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        for previous in list(self._semaphores):
+            if previous.is_closed():
+                del self._semaphores[previous]
+        semaphores = self._semaphores.setdefault(loop, {})
+        semaphore = semaphores.get(controls.max_parallel)
         if semaphore is None:
-            semaphore = asyncio.Semaphore(max_parallel)
-            self._semaphores[key] = semaphore
+            semaphore = asyncio.Semaphore(controls.max_parallel)
+            semaphores[controls.max_parallel] = semaphore
         return semaphore
 
-    def _apply_rate_limit(self, properties: dict[str, Any]) -> None:
-        rate = properties.get("llm.rate_limit")
-        if not rate:
+    def _rate_delay(self, controls: _AdmissionControls) -> float:
+        now = time.monotonic()
+        required = (
+            0.0
+            if self._last_call_at is None or controls.rate is None
+            else max(0.0, self._last_call_at + 1 / controls.rate - now)
+        )
+        if required == 0:
+            self._last_call_at = now
+        return required
+
+    def _apply_rate_limit(self, controls: _AdmissionControls) -> None:
+        budget = _AdmissionBudget()
+        if controls.rate is None:
+            _scope.check()
             return
-        min_interval = 1.0 / float(rate)  # calls per second
-        with self._rate_lock:
-            wait_for = self._last_call_at + min_interval - time.monotonic()
-            if wait_for > 0:
-                time.sleep(wait_for)
-            self._last_call_at = time.monotonic()
+        while True:
+            _scope.check()
+            if not self._rate_lock.acquire(blocking=False):
+                _scope.wait_sync(budget.poll())
+                continue
+            try:
+                required = self._rate_delay(controls)
+            finally:
+                self._rate_lock.release()
+            if required == 0:
+                _scope.check()
+                return
+            _scope.wait_sync(budget.delay(required))
+
+    async def _admit_async(self, controls: _AdmissionControls, budget: _AdmissionBudget) -> None:
+        if controls.rate is None:
+            _scope.check()
+            return
+        while True:
+            _scope.check()
+            if not self._rate_lock.acquire(blocking=False):
+                await _scope.wait_async(budget.poll())
+                continue
+            try:
+                required = self._rate_delay(controls)
+            finally:
+                self._rate_lock.release()
+            if required == 0:
+                _scope.check()
+                return
+            await _scope.wait_async(budget.delay(required))
+
+    async def _acquire_semaphore(
+        self, semaphore: asyncio.Semaphore, budget: _AdmissionBudget | None
+    ) -> None:
+        _scope.check()
+        acquire = asyncio.create_task(semaphore.acquire())
+        acquired = False
+        try:
+            while True:
+                _scope.check()
+                scope_remaining = _scope.remaining()
+                poll = (
+                    budget.poll()
+                    if budget is not None
+                    else min(
+                        _scope.POLL_INTERVAL,
+                        _scope.POLL_INTERVAL if scope_remaining is None else scope_remaining,
+                    )
+                )
+                done, _ = await asyncio.wait((acquire,), timeout=poll)
+                if acquire in done:
+                    acquire.result()
+                    if budget is not None:
+                        budget.remaining()
+                    _scope.check()
+                    acquired = True
+                    return
+        finally:
+            if not acquired:
+                if not acquire.done():
+                    acquire.cancel()
+                try:
+                    granted = await acquire
+                except asyncio.CancelledError:
+                    pass
+                else:
+                    if granted:
+                        semaphore.release()
 
     def _record(
         self,
@@ -1077,12 +1289,16 @@ class LLMClient:
         retry=retry_if_exception(_retryable_llm_error),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.1, max=2),
+        sleep=_scope.wait_sync,
         reraise=True,
     )
-    def _call_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    def _call_provider(
+        self, kwargs: dict[str, Any], *, controls: _AdmissionControls | None = None
+    ) -> tuple[dict[str, Any], float]:
         import litellm  # lazy: the llm extra is optional; tests stub this module
 
         setattr(litellm, "suppress_debug_info", True)
+        self._apply_rate_limit(controls or _AdmissionControls())
 
         try:
             response: Any = litellm.completion(**kwargs)
@@ -1098,14 +1314,20 @@ class LLMClient:
         retry=retry_if_exception(_retryable_llm_error),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.1, max=2),
+        sleep=_scope.wait_sync,
         reraise=True,
     )
     def _call_provider_observed(
-        self, kwargs: dict[str, Any], observation: _InvocationCostObservation
+        self,
+        kwargs: dict[str, Any],
+        observation: _InvocationCostObservation,
+        *,
+        controls: _AdmissionControls | None = None,
     ) -> tuple[dict[str, Any], float]:
         import litellm
 
         setattr(litellm, "suppress_debug_info", True)
+        self._apply_rate_limit(controls or _AdmissionControls())
 
         observation.provider_attempts += 1
         try:
@@ -1122,22 +1344,33 @@ class LLMClient:
         retry=retry_if_exception(_retryable_llm_error),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=0.1, max=2),
+        sleep=_scope.wait_async,
         reraise=True,
     )
-    async def _acall_provider(self, kwargs: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    async def _acall_provider(
+        self, kwargs: dict[str, Any], *, controls: _AdmissionControls | None = None
+    ) -> tuple[dict[str, Any], float]:
         import litellm  # lazy — same boundary as the sync path
 
         setattr(litellm, "suppress_debug_info", True)
-
+        controls = controls or _AdmissionControls()
+        budget = _AdmissionBudget()
+        semaphore = self._resolve_semaphore(controls)
+        await self._acquire_semaphore(semaphore, budget if controls.rate is not None else None)
         try:
-            response: Any = await litellm.acompletion(**kwargs)
-        except Exception as e:
-            raise _provider_error(
-                e,
-                litellm.UnsupportedParamsError,
-                litellm.BadRequestError,
-            ) from e
-        return self._materialize(response)
+            await self._admit_async(controls, budget)
+            _scope.check()
+            try:
+                response: Any = await litellm.acompletion(**kwargs)
+            except Exception as e:
+                raise _provider_error(
+                    e,
+                    litellm.UnsupportedParamsError,
+                    litellm.BadRequestError,
+                ) from e
+            return self._materialize(response)
+        finally:
+            semaphore.release()
 
     def _materialize(self, response: Any) -> tuple[dict[str, Any], float]:
         payload = self._materialize_payload(response)

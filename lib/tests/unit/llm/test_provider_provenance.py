@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,9 +32,11 @@ MARKER = "SYNTHETIC_PRIVATE_PROVIDER_PROVENANCE"
         "http-parse-value",
     ],
 )
-def test_provider_provenance(case: str) -> None:
+def test_provider_provenance(case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BLUE_DATA_OPS_HOME", str(tmp_path / "profiles"))
     result = subprocess.run(
-        [sys.executable, "-B", __file__, case],
+        [sys.executable, *(["-S"] if sys.flags.no_site else []), "-B", __file__, case],
+        env={**os.environ, "BLUE_DATA_OPS_HOME": str(tmp_path / "profiles")},
         capture_output=True,
         text=True,
         timeout=90,

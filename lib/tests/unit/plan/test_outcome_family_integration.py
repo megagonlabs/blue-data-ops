@@ -71,7 +71,7 @@ def test_combined_registry_has_the_exact_outcome_inventory() -> None:
     cards = registry.list_cards()
     observed = tuple(card.operator_id for card in cards if card.version == "3.0.0")
 
-    assert len(cards) == 87
+    assert len(cards) == 88
     assert observed == OUTCOME_IDS
     assert all(
         type(registry.resolve(operator_id)).__module__
@@ -109,5 +109,7 @@ def test_new_outcome_is_visible_through_public_discovery(operator_id: str) -> No
     card = registry.get_card(operator_id)
 
     assert card is not None
-    assert registry.find_latest(name) == card
+    assert registry.find_latest(name) == (
+        registry.get_card("nl2sql@4.0.0") if name == "nl2sql" else card
+    )
     assert card in registry.find(name)

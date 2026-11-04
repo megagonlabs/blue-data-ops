@@ -108,6 +108,23 @@ def test_registry_fence_mutations_fail(old: str, new: str) -> None:
         _execute(mutated)
 
 
+def test_api_reference_property_preparation_example() -> None:
+    text = (PROJECT_ROOT / "docs/api-reference.md").read_text(encoding="utf-8")
+    examples = [
+        source
+        for source in re.findall(r"```python\n(.*?)```", text, re.DOTALL)
+        if 'defaults = {"openai.model"' in source
+    ]
+    assert len(examples) == 1
+    namespace = _execute(examples[0])
+    assert namespace["merged"] == {
+        "openai.model": "gpt-6-luna",
+        "openai.temperature": 0,
+        "openai.max_tokens": 512,
+        "openai.max_completion_tokens": 256,
+    }
+
+
 def test_readme_select_example() -> None:
     operator = SelectOperator()
     data = [[{"name": "a", "score": 3}, {"name": "b", "score": 9}]]
@@ -285,11 +302,11 @@ def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
     )
     operator_ids = tuple(index["packages"])
 
-    assert len(operator_ids) == 54
+    assert len(operator_ids) == 55
     assert operator_ids == expected_skill_package_ids(versioned_registry())
     assert {card.operator_id for card in active_registry().list_cards()} <= set(operator_ids)
-    assert "54 exact-version packages" in readme
-    assert "All 54 packages declare levels 2 and 3" in readme
+    assert "55 exact-version packages" in readme
+    assert "All 55 packages declare levels 2 and 3" in readme
     assert "`load()` defaults to level 2" in readme
     assert "`describe().declared_levels` reports the levels available" in readme
     assert "No package in 3.0 includes level-4 `history.md`" in readme
@@ -304,7 +321,7 @@ def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
 
 def test_readme_documents_available_skill_levels() -> None:
     readme = (LIB_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "All 54 packages declare levels 2 and 3" in readme
+    assert "All 55 packages declare levels 2 and 3" in readme
     assert "`load()` defaults to level 2" in readme
     assert "`describe().declared_levels` reports the levels available" in readme
     assert "No package in 3.0 includes level-4 `history.md`" in readme
@@ -412,7 +429,7 @@ print(len(versioned_registry().list_cards()))
         check=True,
         env=env,
     )
-    assert result.stdout.strip() == "87"
+    assert result.stdout.strip() == "88"
 
 
 def test_sklearn_operator_contains_missing_optional_dependency() -> None:

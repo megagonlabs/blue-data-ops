@@ -234,7 +234,7 @@ def _get_cache_key(
         "right": json.dumps(right_filtered, sort_keys=True),
         "predicate": join_predicate,
     }
-    return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
 
 class _JoinResponseFormatError(ValueError):

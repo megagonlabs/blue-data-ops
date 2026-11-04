@@ -59,10 +59,10 @@ def test_direct_execution_of_a_caller_deprecated_card_is_not_blanket_banned() ->
     assert not any(item.category is BlueDataOpsDeprecationWarning for item in caught)
 
 
-def test_package_registries_emit_no_d58_lifecycle_warning() -> None:
+def test_versioned_registry_emits_no_deprecation_warning() -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         history = versioned_registry()
 
-    assert len(history.list_cards()) == 87
+    assert len(history.list_cards()) == 88
     assert not any(item.category is BlueDataOpsDeprecationWarning for item in caught)

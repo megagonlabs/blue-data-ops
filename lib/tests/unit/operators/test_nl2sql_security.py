@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any, Never, Protocol, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.json.memory_json_source import MemoryJSONSource
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.json.memory_json_source import MemoryJSONSource  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 
 import blue_data_ops.llm.sql_execution as sql_execution
 from blue_data_ops.llm import LLMError
@@ -67,7 +67,7 @@ def execute(executor: ReadOnlySQLExecutor, query: Any, version: str | None = Non
     return op.apply([[]], ATTRS, {"execute_query": True, "llm_client": client})
 
 
-@pytest.mark.parametrize("version", [None, "1.0.0", "2.0.0", "3.0.0"])
+@pytest.mark.parametrize("version", [None, "1.0.0", "2.0.0", "3.0.0", "4.0.0"])
 def test_real_configured_select(host: Host, version: str | None):
     assert execute(host[2], "SELECT id, value FROM records", version) == [
         [{"id": 1, "value": "synthetic"}]
@@ -258,7 +258,7 @@ def test_real_sqlite_guard_itself_blocks_effects(host: Host, tmp_path: Path, que
     query = query.replace('"escape.db"', "'" + str(tmp_path / "escape.db") + "'")
     with pytest.raises(LLMError) as raised:
         host[2].execute(query, TARGET)
-    assert raised.value.code == "sql_execution_failed"
+    assert raised.value.code == "sql_query_rejected"
     assert snapshot(tmp_path) == before
 
 
@@ -312,7 +312,7 @@ def test_pipeline_uses_the_same_host_instance(host: Host):
     result = PipelineExecutor(registry).execute(pipeline, [[]], props)
     assert result.succeeded and result.output_data == [[{"id": 1}]]
     assert registry.resolve("nl2sql@3.0.0") is op
-    for version in ("1.0.0", "2.0.0", "3.0.0"):
+    for version in ("1.0.0", "2.0.0", "3.0.0", "4.0.0"):
         alias = versioned_registry().resolve("nl2sql@" + version)
         with pytest.raises(LLMError) as raised:
             cast(Any, alias)._preflight_execution(ATTRS, {"execute_query": True})
@@ -459,7 +459,7 @@ def test_missing_source_and_unknown_subclass_are_refused(host: Host):
 
 
 def test_noop_guard_and_replaced_execution_are_refused(host: Host, monkeypatch: pytest.MonkeyPatch):
-    from blue_data.source.sql.sql_source import SQLSource
+    from blue_data.source.sql.sql_source import SQLSource  # pyright: ignore[reportMissingTypeStubs]
 
     with monkeypatch.context() as patch:
         cast(_Patch, patch).setattr(

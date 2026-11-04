@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,11 +7,13 @@ name = "blue-data-ops-mcp"
 version = "1.0.0"
 description = "MCP adapter for Blue Data Operators"
 readme = "README.md"
+license = "LicenseRef-BlueData"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12,<3.14"
 # The core pin is exact and names the core release this adapter was verified against.
 dependencies = [
     "blue-data-ops==1.0.0",
-    "blue-data[server]>=1.0.0",
+    "blue-data[server]>=1.0.0,<2",
     "mcp>=1.28.1,<2",
     "pydantic>=2.11,<3",
 ]
@@ -19,11 +21,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "build",
-    "pyright",
+    "pyright==1.1.414",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "ruff",
+    "ruff==0.17.3",
     "twine",
 ]
 

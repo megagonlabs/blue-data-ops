@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "blue-data-ops-cli"
 version = "1.0.0"
 description = "Command line interface for Blue Data Operators"
 readme = "README.md"
+license = "LicenseRef-BlueData"
+license-files = ["LICENSE", "NOTICE"]
 # The core floor, not the family's. Lowering it is a verification obligation on an
 # interpreter this repository does not test; see design/05-software-stack.md.
 requires-python = ">=3.12,<3.14"
@@ -26,11 +28,11 @@ dependencies = [
 openai = ["blue-data-ops[openai]==1.0.0"]
 dev = [
     "build",
-    "pyright",
+    "pyright==1.1.414",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "ruff",
+    "ruff==0.17.3",
     "twine",
 ]
 

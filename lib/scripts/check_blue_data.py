@@ -1,4 +1,4 @@
-"""Check the selected source before invoking pip; pip enforces the version floor."""
+"""Check the selected source before invoking pip; pip later resolves pyproject dependencies."""
 
 from __future__ import annotations
 
@@ -20,10 +20,13 @@ def main() -> None:
         ):
             raise ValueError("selected source lacks the server extra or blue_data.server helper")
     except (OSError, KeyError, ValueError) as exc:
-        print(f"blue-data 1.0+ source required: {exc}", file=sys.stderr)
+        print(f"BLUE_DATA_PATH does not point to a blue-data lib directory: {exc}", file=sys.stderr)
         print("Set BLUE_DATA_PATH to its compatible lib directory.", file=sys.stderr)
         raise SystemExit(1) from None
-    print(f"Selected blue-data {project['version']}; pip must satisfy blue-data>=1.0.0.")
+    print(
+        f"Selected blue-data {project['version']}; "
+        "pip will resolve the requirements declared by each pyproject.toml."
+    )
 
 
 if __name__ == "__main__":

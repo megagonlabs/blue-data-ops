@@ -507,7 +507,7 @@ def test_insert_late_batch_failure_keeps_first_commit_observable() -> None:
     assert "second batch detail" not in result[2].errors[0].message
     assert connection.commits == 1
     assert cursor.executed == [('INSERT INTO "t" ("a") VALUES (?)', [(1,)])]
-    assert source.disconnects == 1
+    assert source.disconnects == 2
 
 
 def test_insert_outer_failure_keeps_raw_input_but_run_reports_failure() -> None:

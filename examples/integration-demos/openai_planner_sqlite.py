@@ -217,7 +217,7 @@ def main() -> None:
         "elapsed_ms": round(elapsed_ms, 1),
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
-    if "nl2sql@3.0.0" not in selected_operator_ids or not run.execution.succeeded:
+    if "nl2sql@4.0.0" not in selected_operator_ids or not run.execution.succeeded:
         raise SystemExit("The planner did not produce a successful NL2SQL plan for this question.")
 
 

@@ -23,3 +23,11 @@ The first input group controls the empty guard. If it is empty, the whole call r
 On success, raw and structured calls return the original input object. A missing registry or an outer operation error makes `apply()` pass the input through. A failed connection or batch write makes it return `[[]]`. `run()` reports either failure class as `[[]]` with `EXECUTION_FAILED`; a guarded empty first group is a successful empty result with no error. These output shapes do not prove that rows were persisted, so callers that need confirmation must inspect `ExecMeta` and the database.
 
 `output_attributes` is `{}`; there is no inserted-row count. `collection` appears in the log and SQLite probe only. The disclosed boundary contains the source, database, table, generated insert statement, and row values. Earlier batches remain committed if a later batch fails. `explain()` reports the input row count, not the actual inserted count.
+
+Insertion selects the dialect from the resolved source. SQLite and unknown sources
+use qmark/double-quote SQL; PostgreSQL uses %s/double quotes with driver percent
+escaping; MySQL uses %s with its normal batch API and backticks. Only identifiers
+containing literal %s use the native prepared path. Values stay bound.
+A failed batch rolls back and closes its cursor/statement and connection while
+preserving the original failure. Earlier committed batches remain committed.
+Collection is not a SQL table qualifier; PostgreSQL uses the connection search path.

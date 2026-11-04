@@ -69,7 +69,13 @@ def test_source_manifest_matches_current_sources() -> None:
         for name in _NAMES
     }
     expected_files = _FIXTURE["source_manifest"]["files"]
-    assert recomputed == {name: expected_files[name] for name in _NAMES}
+    expected = {name: expected_files[name] for name in _NAMES}
+    from tests.unit.operators._maintenance_sources import CURRENT_SOURCE_BINDINGS
+
+    for name, (historical, current) in CURRENT_SOURCE_BINDINGS.items():
+        assert expected[name] == historical
+        expected[name] = current
+    assert recomputed == expected
 
 
 def test_exactly_32_retained_names_and_64_legacy_cards() -> None:
@@ -106,7 +112,7 @@ def _synthetic_catalog() -> list[OperatorCard]:
     for operator_id in ADDED_OPERATOR_IDS:
         name = operator_id.split("@")[0]
         cards[operator_id] = OperatorCard(operator_id, name, "3.0.0", "")
-    for operator_id in SUPPLEMENTAL_OPERATOR_IDS:
+    for operator_id in (*SUPPLEMENTAL_OPERATOR_IDS, "nl2sql@4.0.0"):
         name, version = operator_id.split("@")
         cards[operator_id] = OperatorCard(operator_id, name, version, "")
     return [cards[operator_id] for operator_id in FULL_OPERATOR_IDS]
@@ -131,7 +137,7 @@ def test_catalog_comparator_rejects_missing_or_duplicate_cards(mutation: str) ->
         cards.append(cards[0])
     else:
         cards = [card for card in cards if card.operator_id != "avg@3.0.0"]
-    with pytest.raises(AssertionError, match="87 distinct"):
+    with pytest.raises(AssertionError, match="88 distinct"):
         _assert_catalog(cards)
     if mutation != "missing-added":
         with pytest.raises(AssertionError, match="legacy inventory/order"):
@@ -149,7 +155,7 @@ def test_catalog_comparator_rejects_unexpected_ids(operator_id: str, replace_add
         cards[index] = unexpected
     else:
         cards.append(unexpected)
-    with pytest.raises(AssertionError, match="inventory|87 distinct"):
+    with pytest.raises(AssertionError, match="inventory|88 distinct"):
         _assert_catalog(cards)
     with pytest.raises(AssertionError, match="unexpected operator IDs"):
         assert_legacy_cards(cards)
@@ -417,7 +423,7 @@ def test_multi_valued_axes_are_published() -> None:
     assert "capability-embedding-filter" in join
 
 
-def test_retained_v2_selection_is_33_ids_inside_the_87_card_catalog() -> None:
+def test_retained_v2_selection_is_33_ids_inside_the_88_card_catalog() -> None:
     cards = versioned_registry().list_cards()
     v2_ids = sorted(c.operator_id for c in cards if c.version == "2.0.0")
     assert v2_ids == sorted((*[f"{name}@2.0.0" for name in _NAMES], "sklearn_estimator@2.0.0"))

@@ -53,7 +53,7 @@ The CLI parses inputs, uses the core library APIs, and renders results.
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │ operator_skills/       reviewed Markdown keyed to an exact id     │  │
-│  │   OperatorSkillLoader  54 packages: 33 at @2.0.0, 21 at @3.0.0    │  │
+│  │   OperatorSkillLoader  55 packages: 33 @2, 21 @3, 1 @4            │  │
 │  │                                                                   │  │
 │  │ tools/  Tool           the Blue function wrapper Operator extends │  │
 │  │ utils/                 Blue type, signature, JSON and id helpers  │  │
@@ -168,7 +168,7 @@ The wrapper itself never retries.
 Resolution requires a pinned ID; discovery accepts looser queries and returns pinned cards.
 
 ```text
-registry = active_registry()          # 33 cards: 12 at @2.0.0, 21 at @3.0.0
+registry = active_registry()          # 33 cards: 12 at @2.0.0, 20 at @3.0.0, nl2sql@4.0.0
 
 registry.find("filter", tags=["domain-relational"])   # loose  → ranked cards
     exact AND tag filter, then text scoring:
@@ -187,12 +187,12 @@ Three registry views exist because three questions are different.
 
 | View | Contains | Answers |
 |---|---|---|
-| `active_registry()` | 33 reviewed cards, twelve at `@2.0.0` and twenty-one at `@3.0.0` | What should I use now? |
-| `versioned_registry()` | 87 retained historical cards | What did this ID mean before? |
+| `active_registry()` | 33 reviewed cards: twelve at `@2.0.0`, twenty at `@3.0.0`, and `nl2sql@4.0.0` | What should I use now? |
+| `versioned_registry()` | 88 retained historical cards | What did this ID mean before? |
 | `default_registry()` | 33 raw cards at `1.0.0`, with per-name overrides | What did the 1.x compatibility surface look like? |
 
 Raw cards carry empty `tags` and `when_to_invoke` and grant no planning authority, even when their ID text matches a supported one.
-The 21 operators active at `@3.0.0` are outcome operators: same contract, plus shallow shape and elapsed-time measurements in `ExecMeta.traces`.
+The 20 operators active at `@3.0.0` and `nl2sql@4.0.0` are outcome operators: same contract, plus shallow shape and elapsed-time measurements in `ExecMeta.traces`.
 
 ---
 

@@ -4,10 +4,11 @@ import re
 import uuid
 from typing import Any, TypeVar, cast
 
+from blue_data_ops.plan.errors import PipelineError
 from blue_data_ops.plan.types import EntityType, NodeType, PlanRecord, Status, SyncBackend
 
 _BaseT = TypeVar("_BaseT", bound="Base")
-_PINNED_OPERATOR_ID = re.compile(r"^[^@/]+@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+_PINNED_OPERATOR_ID = re.compile(r"^[^@/]+@(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _SHARED_OPERATOR_ATTRIBUTES: dict[str, Any] = {}
 
 
@@ -88,7 +89,7 @@ class Base:
     ) -> None:
         raw_values = self.get_data(key)
         if not isinstance(raw_values, list):
-            raise Exception("Data is not a list")
+            raise PipelineError("Data is not a list")
         values = cast(list[Any], raw_values)
         if unique and value in values:
             return
@@ -136,7 +137,7 @@ class Base:
     ) -> _BaseT:
         validated = cls._validate_record(data)
         if validated is None:
-            raise Exception("Failed validation")
+            raise PipelineError("Failed validation")
         instance = cls(
             id=cast(str, validated["id"]),
             path=path,
@@ -281,7 +282,7 @@ class DAG(Base):
         sync: bool | None = None,
     ) -> Node:
         if not self._verify_node(label=label, type=type, properties=properties):
-            raise Exception("Cannot create node due to failed varification")
+            raise PipelineError("Cannot create node due to failed verification")
         node = Node(
             id=id,
             label=label,
@@ -305,10 +306,10 @@ class DAG(Base):
     ) -> None:
         from_node = f if isinstance(f, Node) else self.get_node(f)
         if from_node is None:
-            raise Exception("Undefined from node")
+            raise PipelineError("Undefined from node")
         to_node = t if isinstance(t, Node) else self.get_node(t)
         if to_node is None:
-            raise Exception("Undefined to node")
+            raise PipelineError("Undefined to node")
         from_node.connect_to(to_node, sync=sync)
 
     def get_nodes(self) -> dict[str, PlanRecord]:
@@ -438,7 +439,7 @@ class EntityDAG(DAG):
         sync: bool | None = None,
     ) -> Entity:
         if not self.verify_entity(label=label, type=type, properties=properties):
-            raise Exception("Cannot create entity due to failed varification")
+            raise PipelineError("Cannot create entity due to failed verification")
         if not self.has_entity_type(type):
             self.add_entity_type(type, sync=sync)
         entity = Entity(
@@ -557,7 +558,7 @@ class EntityDAG(DAG):
     ) -> None:
         node = self.get_node(n)
         if node is None:
-            raise Exception("Entity for non-existing node cannot be set")
+            raise PipelineError("Entity for non-existing node cannot be set")
         if e is None:
             node.set_data(field if field is not None else "Entity", None, sync=sync)
             return
@@ -577,7 +578,7 @@ class EntityDAG(DAG):
     ) -> Entity | None:
         node = self.get_node(n)
         if node is None:
-            raise Exception("Entity for non-existing node cannot be get")
+            raise PipelineError("Entity for non-existing node cannot be retrieved")
         link_field = field if field is not None else type
         if link_field is None:
             link_field = "Entity"
@@ -851,7 +852,7 @@ class DataPipeline(Plan):
         sync: bool | None = None,
     ) -> Node:
         if cast(str | None, name) is None:
-            raise Exception("Name is not specified")
+            raise PipelineError("Name is not specified")
         _require_pinned_operator_id(name)
         node = self.create_node(
             label=label,

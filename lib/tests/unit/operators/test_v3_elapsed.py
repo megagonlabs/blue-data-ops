@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
+from copy import deepcopy
 from threading import Event
 from typing import Any, NoReturn, ParamSpec, TypeVar, cast
 
 import pytest
 
+from blue_data_ops import _execution_scope as scope
 from blue_data_ops.operators import _outcomes
 from blue_data_ops.operators import operator as runtime
 from blue_data_ops.operators.registry import versioned_registry
@@ -181,21 +183,29 @@ def test_timeout_metadata_survives_late_worker_completion_and_another_call(
         Callable[[DataBundle, Attributes, Properties | None], FunctionResult],
         getattr(operator, "_execute"),
     )
-    entered, release = Event(), Event()
+    entered, release, body_completed = Event(), Event(), Event()
+    body_calls = 0
     futures: list[Future[tuple[DataBundle, Attributes, ExecMeta]]] = []
 
     def delayed(
         data: DataBundle, attributes: Attributes, properties: Properties | None
     ) -> FunctionResult:
+        nonlocal body_calls
+        body_calls += 1
         entered.set()
         assert release.wait(5), "test did not release the worker"
-        return original(data, attributes, properties)
+        result = original(data, attributes, properties)
+        assert result.output_data == [[{"avg": 9}]]
+        assert result.output_attributes == {"num_values_used": 1}
+        body_completed.set()
+        return result
 
     class TimeoutFuture:
         def __init__(self, future: Future[tuple[DataBundle, Attributes, ExecMeta]]) -> None:
             self.future = future
 
         def result(self, timeout: float | None) -> NoReturn:
+            # Deliver timeout only after the real body has entered and blocked.
             assert entered.wait(5), "worker did not start"
             raise TimeoutError
 
@@ -218,7 +228,6 @@ def test_timeout_metadata_survives_late_worker_completion_and_another_call(
     monkeypatch.setattr(operator, "_execute", delayed)
     clock = iter([2.0, 2.25, 8.0, 8.5])
     monkeypatch.setattr(_outcomes, "monotonic", lambda: next(clock))
-    late: tuple[DataBundle, Attributes, ExecMeta] | None = None
     timed_out: tuple[DataBundle, Attributes, ExecMeta] | None = None
     completed: tuple[DataBundle, Attributes, ExecMeta] | None = None
     try:
@@ -226,15 +235,17 @@ def test_timeout_metadata_survives_late_worker_completion_and_another_call(
             [[{"x": 9}]],
             {"avg_key": "x"},
             {
-                "execution.timeout_seconds": 1,
+                "execution.timeout_seconds": 30,
             },
         )
+        assert entered.is_set() and body_calls == 1
         assert timed_out[0:2] == ([[]], {})
         assert timed_out[2].errors[0].code.value == "OPERATOR_TIMEOUT"
         assert timed_out[2].traces == {
             "elapsed_ms": 250.0,
             "input_shape": {"groups": 1, "rows_per_group": [1]},
         }
+        timeout_before = deepcopy(timed_out[2])
         monkeypatch.setattr(operator, "_execute", original)
         completed = operator.run([[{"x": 20}]], {"avg_key": "x"})
         assert completed[2].traces == {
@@ -242,20 +253,28 @@ def test_timeout_metadata_survives_late_worker_completion_and_another_call(
             "input_shape": {"groups": 1, "rows_per_group": [1]},
             "output_shape": {"groups": 1, "rows_per_group": [1]},
         }
+        completed_before = deepcopy(completed[2])
     finally:
         release.set()
         for future in futures:
-            late = future.result(timeout=5)
-    assert late is not None
+            with pytest.raises(scope.ScopeExpired):
+                future.result(timeout=5)
+    assert body_completed.is_set() and body_calls == 1 and len(futures) == 1
     assert timed_out is not None
     assert completed is not None
-    assert late[0] == [[{"avg": 9}]] and late[1] == {"num_values_used": 1}
-    assert late[2].traces == {}
+    assert timed_out[2] == timeout_before
+    assert completed[2] == completed_before
     assert timed_out[1] == {} and timed_out[2].traces == {
         "elapsed_ms": 250.0,
         "input_shape": {"groups": 1, "rows_per_group": [1]},
     }
-    assert completed[1] == {"num_values_used": 1}
+    assert completed[0] == [[{"avg": 20}]] and completed[1] == {"num_values_used": 1}
+    assert completed[2].errors == []
+    assert completed[2].traces == {
+        "elapsed_ms": 500.0,
+        "input_shape": {"groups": 1, "rows_per_group": [1]},
+        "output_shape": {"groups": 1, "rows_per_group": [1]},
+    }
 
 
 @pytest.mark.parametrize(

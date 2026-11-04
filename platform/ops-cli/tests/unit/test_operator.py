@@ -35,7 +35,7 @@ from blue_data_ops_cli import config
 from blue_data_ops_cli.commands import cli
 
 ACTIVE_CARDS = 33
-HISTORY_CARDS = 87
+HISTORY_CARDS = 88
 ORDERS: DataBundle = [[{"total": 120.0}, {"total": 215.0}, {"total": 50.0}]]
 
 

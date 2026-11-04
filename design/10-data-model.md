@@ -60,7 +60,7 @@ The convention is `[[]]`, and the `accepts-none` discovery tag records that the 
 ### 1.2 Structural validation
 
 `run()` accepts any bundle and lets the operator judge the contents.
-The 21 `@3.0.0` operators add one structural check ahead of their own validation: input that is not a list of lists of dictionaries is rejected with `INVALID_INPUT` and the suggestion `supply a list of record groups`.
+The 21 retained `@3.0.0` operators and `nl2sql@4.0.0` add one structural check ahead of their own validation: input that is not a list of lists of dictionaries is rejected with `INVALID_INPUT` and the suggestion `supply a list of record groups`.
 The `@2.0.0` implementations do not perform that check, so a malformed bundle reaches the transform and is contained as `EXECUTION_FAILED`.
 
 ---
@@ -251,20 +251,23 @@ Nine codes:
 | `INVALID_INPUT` | `RECOVERABLE` | `VALIDATE` | validation rejected the call, or the timeout setting is unusable |
 | `VALIDATION_FAILED` | `FAILED` | `VALIDATE` | the validator itself raised, or the attribute projection could not be rebuilt |
 | `VALIDATION_RESULT_INVALID` | `FAILED` | `VALIDATE` | the validator returned something that is not a usable `ValidationResult` |
-| `EXECUTION_FAILED` | `FAILED` or `RECOVERABLE` | `EXECUTE` | the transform raised, or returned `None`. A missing LLM extra is the recoverable case. |
+| `EXECUTION_FAILED` | `FAILED` or `RECOVERABLE` | `EXECUTE` | the transform raised, or returned `None`. A missing LLM extra or a host-bound SQL schema mistake is recoverable. |
 | `EXECUTION_RESULT_INVALID` | `FAILED` | `NORMALIZE` | the transform returned something that is not a usable `FunctionResult` |
 | `REFINEMENT_FAILED` | — | `REFINE` | retained for decoding; unused in 3.0 |
 | `REFINEMENT_RESULT_INVALID` | — | `REFINE` | retained for decoding; unused in 3.0 |
 | `OPERATOR_TIMEOUT` | `TIMEOUT` | `EXECUTE` | the per-call deadline expired |
 
 `EXECUTION_FAILED` is the one code that appears under two categories.
-A `ModuleNotFoundError` naming `litellm`, `diskcache`, or `jinja2` is reported as `RECOVERABLE` with an install suggestion, because installing the extra fixes it.
-Everything else at that stage is `FAILED`.
+A `ModuleNotFoundError` naming `litellm` or `diskcache` is reported as `RECOVERABLE` with an install suggestion, because installing the extra fixes it.
+A host-bound SQL query that fails against the approved schema is also `RECOVERABLE`,
+so a planner can repair its parameters. Its fixed diagnostic contains no raw driver
+text, and `retryable=False` still forbids automatically repeating the identical call.
+Other failures at that stage are `FAILED`.
 
 ### 3.4 Traces
 
 `traces` is an open mapping.
-The 21 `@3.0.0` operators may add three keys:
+The 21 retained `@3.0.0` operators and `nl2sql@4.0.0` may add three keys:
 
 | Key | Shape | When |
 |---|---|---|
@@ -329,14 +332,14 @@ Each factory returns a fresh `OperatorRegistry` holding separate operator instan
 | Factory | Cards | Metadata on the cards | Use |
 |---|---|---|---|
 | `default_registry(**versions)` | 33, all at `@1.0.0` unless overridden per name | empty `tags`, empty `when_to_invoke` | the raw compatibility view |
-| `active_registry()` | 33, one exact version per operator: 12 at `@2.0.0` and 21 at `@3.0.0` | validated discovery metadata | ordinary discovery and execution |
-| `versioned_registry()` | 87: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0` | validated discovery metadata | migration code that needs retained history |
+| `active_registry()` | 33, one exact version per operator: 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0` | validated discovery metadata | ordinary discovery and execution |
+| `versioned_registry()` | 88: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0` | validated discovery metadata | migration code that needs retained history |
 
 A `default_registry` keyword override pins one name to another version after semver validation; an unknown name is ignored.
-For the 21 names that have an outcome implementation, only an exact `"3.0.0"` override selects it.
+For the 21 names that have an outcome implementation, an exact `"3.0.0"` override selects it; `nl2sql` also accepts its declared `"4.0.0"` contract.
 
 The 12 operators whose active version is `@2.0.0` are `argmax`, `argmin`, `create_database`, `create_table`, `data_discover`, `delete`, `normalize_text`, `segment_text`, `select`, `sklearn_estimator`, `sum`, and `union`.
-The other 21 are active at `@3.0.0`.
+Twenty operators are active at `@3.0.0`; `nl2sql` is active at `@4.0.0`.
 
 ### 4.3 The discovery tag vocabulary
 
@@ -364,7 +367,7 @@ The full value list and each active card's tags are in [`../lib/OPERATORS.md`](.
 ## 5. Resource Packages
 
 Per-operator guidance ships as Markdown package data keyed by exact operator ID.
-There are 54 packages: 33 at `@2.0.0` and 21 at `@3.0.0`.
+There are 55 packages: 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0`.
 
 ### 5.1 Layout
 
@@ -761,7 +764,7 @@ Nothing in this package owns storage.
 | Plan state propagation | an optional injected `sync_backend` callback taking `(path, key, value)`. The default is no callback and no propagation. |
 | `OperatorRegistry` | in process only, for the lifetime of the object. Nothing is written or cached to disk. |
 | Resource packages | read-only package data inside the distribution. No cache, so consecutive calls reread the index. |
-| LLM responses | optional on-disk cache under `llm.cache_dir`, enabled by `llm.cache`, default `.llm_cache`. |
+| LLM responses | optional on-disk cache under `llm.cache_dir`, enabled by `llm.cache`, default `.blue-data-ops-cache`. |
 | Fitted ML models | not persisted. `sklearn_estimator` trains one in-memory estimator per call and discards it. |
 
 `to_dict()` returns the live record rather than a copy, so a caller that needs an independent snapshot round-trips it through `from_dict()`.

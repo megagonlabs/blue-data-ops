@@ -181,7 +181,7 @@ class _PlannerEndpoint:
                     "steps": [
                         {
                             "step_id": "query",
-                            "operator_id": "nl2sql@3.0.0",
+                            "operator_id": "nl2sql@4.0.0",
                             "attributes_json": "{}",
                             "depends_on": [],
                             "label": None,
@@ -242,9 +242,9 @@ def test_openai_planner_example_discovers_plans_and_executes(
     active_ids = tuple(card.operator_id for card in active_registry().list_cards())
     assert run.planning.request.allowed_operator_ids == active_ids
     assert set(run.planning.discovery.operator_ids) == set(active_ids)
-    assert result.tag_operator_ids == ("nl2bn@3.0.0", "nl2llm@3.0.0", "nl2sql@3.0.0")
+    assert result.tag_operator_ids == ("nl2bn@3.0.0", "nl2llm@3.0.0", "nl2sql@4.0.0")
     assert set(result.embedding_operator_ids) == set(active_ids)
-    assert [step.operator_id for step in run.planning.selected.steps] == ["nl2sql@3.0.0"]
+    assert [step.operator_id for step in run.planning.selected.steps] == ["nl2sql@4.0.0"]
     assert run.execution.output_data == [[{"sql": "SELECT COUNT(*) AS order_count FROM orders"}]]
     assert run.execution.succeeded
     assert result.embedding_provider_calls == 2
@@ -252,7 +252,7 @@ def test_openai_planner_example_discovers_plans_and_executes(
     request = json.loads(client.responses.requests[0]["input"][0]["content"])
     model_ids = [card["operator_id"] for card in request["operators"]]
     assert model_ids == list(result.model_candidate_operator_ids)
-    assert "nl2sql@3.0.0" in model_ids
+    assert "nl2sql@4.0.0" in model_ids
     side_effect_ids = {
         "create_database@2.0.0",
         "create_table@2.0.0",
@@ -299,7 +299,7 @@ def test_ordinary_examples_use_the_active_registry_and_exact_active_ids() -> Non
         named = _source_operator_ids(EXAMPLES / name, cards, class_ids)
         if name == "feature-demos/nl2sql_sqlite.py":
             assert "ReadOnlySQLExecutor" in source and "OperatorRegistry" in source, name
-            expected = {"nl2sql@3.0.0"}
+            expected = {"nl2sql@4.0.0"}
             assert named == expected, name
         else:
             assert "active_registry" in source, name

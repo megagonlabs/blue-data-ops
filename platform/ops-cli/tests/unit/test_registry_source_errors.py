@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.operators import OperatorRegistry, active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
@@ -49,7 +49,7 @@ async def test_missing_source_is_contained_before_client_on_all_surfaces(
     registry = DataRegistry(rebuild=False)
     seam = RegistrySeam(registry)
     catalog = active_registry()
-    operator = catalog.resolve(name + "@3.0.0")
+    operator = catalog.resolve(name + ("@4.0.0" if name == "nl2sql" else "@3.0.0"))
     target = attrs(name)
     properties = {"data_registry": seam}
     error = operator.run([[]], target, properties)[2].errors[0]._asdict()

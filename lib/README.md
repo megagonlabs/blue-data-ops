@@ -2,14 +2,14 @@
 
 `blue-data-ops 1.0.0` is a standalone Python package for Blue data operators. It includes record transforms, registry-backed database operations, pinned operator discovery, structured execution results, and a local pipeline planner. Operator input and output use `list[list[dict]]`, a list of record groups.
 
-Its eight active families cover filtering and shaping, joins and set operations, aggregation, text processing, machine learning, vector operations, LLM and semantic operations, and registry-backed discovery and database operations. The active registry has 33 cards; the versioned registry retains 87 cards for callers that need older behavior.
+Its eight active families cover filtering and shaping, joins and set operations, aggregation, text processing, machine learning, vector operations, LLM and semantic operations, and registry-backed discovery and database operations. The active registry has 33 cards; the versioned registry retains 88 cards for callers that need older behavior.
 
-Every active operator has a reference package. The library ships 54 exact-version packages in all. Callers load their guides and examples explicitly. Reference text is not added to a model prompt automatically. The separate CLI and MCP packages expose these operations through `blue-ops` and 33 `ops_`-prefixed MCP tools.
+Every active operator has a reference package. The library ships 55 exact-version packages in all. Callers load their guides and examples explicitly. Reference text is not added to a model prompt automatically. The separate CLI and MCP packages expose these operations through `blue-ops` and 33 `ops_`-prefixed MCP tools.
 
 ## Requirements
 
 - Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`)
-- `blue-data` 1.0.0 or later. This is an eager dependency and must be importable with `blue_data_ops`.
+- `blue-data>=1.0.0,<2`. This is an eager dependency and must be importable with `blue_data_ops`.
 
 ## Installation
 
@@ -32,8 +32,8 @@ If Conda reports that activation is unavailable, run `conda init zsh` once (repl
 With either environment active, run:
 
 ```bash
-python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
-python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]" "blue-data-ops==1.0.0"
+python -m pip install -e ./blue-data/lib
+python -m pip install -e "./blue-data-ops/lib[ml,vector,llm]"
 ```
 
 Installation, runtime use, and pytest work in either environment. The repository's Pyright configuration still looks for `lib/.venv`, so use the standard virtual-environment path when running the documented Pyright gate.
@@ -41,7 +41,7 @@ Installation, runtime use, and pytest work in either environment. The repository
 Install the `dev` extra when working on this package:
 
 ```bash
-python -m pip install -e "./blue-data-ops/lib[dev]" "blue-data-ops==1.0.0"
+python -m pip install -e "./blue-data-ops/lib[dev]"
 ```
 
 If your artifact index is configured separately, install the released artifact instead:
@@ -51,12 +51,12 @@ python -m pip install --index-url "$PIP_INDEX_URL" \
   "blue-data-ops[ml,vector,llm]==1.0.0"
 ```
 
-The artifact index must also provide `blue-data>=1.0.0`. The sibling-checkout commands are the direct path for a contributor.
+The artifact index must also provide `blue-data>=1.0.0,<2`. The sibling-checkout commands are the direct path for a contributor.
 
 The optional extras are `ml` for `classify`, `cluster`, and `sklearn_estimator`, `vector` for the three vector operators, `llm` for `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators, and `openai` for `OpenAIPlanGenerator`.
 
 ```bash
-python -m pip install -e "./blue-data-ops/lib[openai]" "blue-data-ops==1.0.0"
+python -m pip install -e "./blue-data-ops/lib[openai]"
 ```
 
 The `openai` extra pins `openai>=2.54,<3`. The SDK is imported only when an `OpenAIPlanGenerator` needs to create its own client. An LLM-backed `run()` call that cannot import its extra returns an `EXECUTION_FAILED` error in `ExecMeta`.
@@ -90,9 +90,7 @@ orders = [[{"total": 42.0}, {"total": 125.0}, {"total": 215.0}]]
 selected, _, select_meta = registry.resolve("select@2.0.0").run(
     orders, {"operand_key": "total", "operand": ">", "operand_val": 100}
 )
-average, _, avg_meta = registry.resolve("avg@3.0.0").run(
-    selected, {"avg_key": "total"}
-)
+average, _, avg_meta = registry.resolve("avg@3.0.0").run(selected, {"avg_key": "total"})
 assert not select_meta.errors and not avg_meta.errors
 assert average == [[{"avg": 170.0}]]
 print(average)
@@ -102,7 +100,7 @@ Examples are available only in the source checkout. The generated `OPERATORS.md`
 
 ### Registry roles
 
-Use `default_registry()` for the raw compatibility view, `active_registry()` for ordinary 3.0 discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 33 exact cards: 12 at `@2.0.0` and 21 at `@3.0.0`. The history factory has 87 cards.
+Use `default_registry()` for the raw compatibility view, `active_registry()` for ordinary 3.0 discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 33 exact cards: 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0`. The history factory has 88 cards.
 
 <!-- blue-data-ops-test: registry-roles -->
 ```python
@@ -119,12 +117,12 @@ assert ordinary.resolve("avg@3.0.0").operator_id == "avg@3.0.0"
 assert history.resolve("avg@2.0.0").operator_id == "avg@2.0.0"
 assert len(raw.list_cards()) == 33
 assert len(ordinary.list_cards()) == 33
-assert len(history.list_cards()) == 87
+assert len(history.list_cards()) == 88
 ```
 
-`default_registry(**versions)` preserves the legacy per-name override for the 33 retained names. An override becomes that card's version after semver validation. For the 21 outcome-enabled names, only an exact `"3.0.0"` override selects the outcome implementation; other versions use the raw implementation. Unknown names are ignored. These cards are raw: their `tags` and `when_to_invoke` fields are empty.
+`default_registry(**versions)` preserves the legacy per-name override for the 33 retained names. An override becomes that card's version after semver validation. For the 21 outcome-enabled names, an exact `"3.0.0"` override selects the outcome implementation; `nl2sql` also accepts its declared `"4.0.0"` contract. Other versions use the raw implementation. Unknown names are ignored. These cards are raw: their `tags` and `when_to_invoke` fields are empty.
 
-Registry construction does not grant planning authority. A raw override card is not automatically planning-authorized: the planner rejects every card from `default_registry()` as planning authority, even when its ID text matches a supported v2/v3 ID. Use `active_registry()` for the ordinary reviewed selection, or use `versioned_registry()` with an exact allowlist when a rule-based plan deliberately needs a supported retained v2/v3 built-in. Caller-created v2 cards require a caller-owned registry and rule or generator. `OpenAIPlanGenerator` accepts only supported package built-ins from an enriched package registry.
+Registry construction does not grant planning authority. A raw override card is not automatically planning-authorized: the planner rejects every card from `default_registry()` as planning authority, even when its ID text matches a supported built-in ID. Use `active_registry()` for the ordinary reviewed selection, or use `versioned_registry()` with an exact allowlist when a rule-based plan deliberately needs a supported retained built-in. Caller-created v2 cards require a caller-owned registry and rule or generator. `OpenAIPlanGenerator` accepts only supported package built-ins from an enriched package registry.
 
 The private in-memory tables that distinguish reviewed built-ins from raw cards are integrity controls for ordinary planner admission. They are not a tamper-proof isolation boundary against arbitrary same-process code that mutates private registry state.
 
@@ -320,7 +318,7 @@ operator = catalog.resolve(cards[0].operator_id) if cards else None
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` ships 54 exact-version packages: 33 retained `@2.0.0` packages and 21 outcome packages at `@3.0.0`. Every active exact ID has a package. All 54 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in 3.0 includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
+`blue_data_ops.operator_skills` ships 55 exact-version packages: 33 retained `@2.0.0` packages, 21 outcome packages at `@3.0.0`, and `nl2sql@4.0.0`. Every active exact ID has a package. All 55 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in 3.0 includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader
@@ -328,9 +326,9 @@ from blue_data_ops.operators import active_registry
 
 registry = active_registry()
 loader = OperatorSkillLoader(registry)
-skill = loader.load("nl2sql@3.0.0", level=3)
+skill = loader.load("nl2sql@4.0.0", level=3)
 
-assert skill.card is registry.get_card("nl2sql@3.0.0")
+assert skill.card is registry.get_card("nl2sql@4.0.0")
 assert skill.io.attributes["question"].required
 ```
 
@@ -353,7 +351,7 @@ assert skipped.operator_id == "avg@1.0.0"
 
 ## Outcome operators
 
-The 21 exact `@3.0.0` outcome operators may add shallow `input_shape`, successful `output_shape`, and monotonic `elapsed_ms` measurements to `ExecMeta.traces`. `input_shape` is captured before validation for a structurally valid bundle. `output_shape` appears only after successful normalization. The counts do not alias later caller mutation. Missing measurements are unavailable, not zero.
+The 21 retained `@3.0.0` outcome operators and `nl2sql@4.0.0` may add shallow `input_shape`, successful `output_shape`, and monotonic `elapsed_ms` measurements to `ExecMeta.traces`. `input_shape` is captured before validation for a structurally valid bundle. `output_shape` appears only after successful normalization. The counts do not alias later caller mutation. Missing measurements are unavailable, not zero.
 
 The `nl2llm@3.0.0` built-in client may report a finite nonnegative `cost` in USD with `cost_basis="estimated"` after exactly one priced provider attempt. A proven local response-cache hit reports `cost=0.0`; provider prompt caching still counts as an attempt. Retries, failures, unknown prices, and injected clients omit those cost fields.
 
@@ -481,7 +479,7 @@ assert [step.operator_id for step in run.planning.selected.steps] == [
 
 Planning failures raise `PlanningError`, a `ValueError` subclass whose `record` contains category, code, stage, message, retryability, and suggestion. Planning stages are `VALIDATION`, `DISCOVERY`, `DATA_CONTEXT`, `GENERATION`, `SELECTION`, `COMPILATION`, and `PREFLIGHT`. Planning raises because no partial pipeline exists to carry the record.
 
-`PipelinePlanner` compiles admitted, supported exact operator IDs returned by its discovery snapshot. Without an allowlist, package built-ins are limited to the `active_registry()` selection. An exact allowlist may admit supported retained v2/v3 built-ins from `versioned_registry()`. A caller-owned registry and rule or generator may admit caller-created v2 cards; custom v1 and v3 cards are unsupported.
+`PipelinePlanner` compiles admitted, supported exact operator IDs returned by its discovery snapshot. Without an allowlist, package built-ins are limited to the `active_registry()` selection. An exact allowlist may admit supported retained built-ins from `versioned_registry()`. A caller-owned registry and rule or generator may admit caller-created v2 cards; custom v1 and v3 cards are unsupported.
 
 A generator that needs schema context receives `DataContextSnapshot`, never rows. `RegistryDataContextProvider` reads source properties, entity names, descriptions, and declared attribute types. Its default limits are 32 entities, 64 attributes per entity, 512 total attributes, 512 description characters, and 131072 serialized bytes. It reads no relations or rows and records `raw_rows: 0` in provenance. A request with `data_scope` requires a provider; a request without a scope does not touch the registry.
 

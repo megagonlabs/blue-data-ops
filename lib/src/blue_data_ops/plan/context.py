@@ -19,20 +19,12 @@ from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
 from types import MappingProxyType
-from typing import Any, NamedTuple, Protocol, TypeAlias, Union, cast
+from typing import Any, NamedTuple, Protocol, cast
 
 from blue_data_ops.data.registry_seam import RegistrySeam
 from blue_data_ops.operators.types import ErrorCategory
 
-JsonValue: TypeAlias = Union[
-    None,
-    bool,
-    int,
-    float,
-    str,
-    "list[JsonValue]",
-    "dict[str, JsonValue]",
-]
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
 
 DATA_CONTEXT_FORMAT = "blue-data-ops/data-context@1"
 

@@ -132,7 +132,7 @@ def _current_operator_id_parts(operator_id: str) -> tuple[str, str] | None:
         separator != "@"
         or not name
         or "@" in version
-        or version not in _SUPPORTED_OPERATOR_VERSIONS
+        or (version not in _SUPPORTED_OPERATOR_VERSIONS and operator_id != "nl2sql@4.0.0")
     ):
         return None
     return name, version
@@ -149,9 +149,7 @@ def _template_operator_id(request: PlanningRequest, operator_name: str) -> str |
     for operator_id in allowed:
         parts = _current_operator_id_parts(operator_id)
         if parts is None:
-            raise invalid_request(
-                "allowed_operator_ids must contain pinned built-in 2.0.0 or 3.0.0 ids"
-            )
+            raise invalid_request("allowed_operator_ids must contain supported pinned built-in ids")
         parsed.append((operator_id, *parts))
 
     matches = tuple(operator_id for operator_id, name, _ in parsed if name == operator_name)
@@ -894,9 +892,7 @@ class PipelinePlanner:
         for operator_id in identifiers:
             parts = _current_operator_id_parts(operator_id)
             if parts is None:
-                raise invalid_request(
-                    "allowed_operator_ids must contain supported pinned 2.0.0 or 3.0.0 ids"
-                )
+                raise invalid_request("allowed_operator_ids must contain supported pinned ids")
             name, version = parts
             try:
                 card = self._registry.get_card(operator_id)
@@ -905,7 +901,7 @@ class PipelinePlanner:
                 reviewed_builtin = is_reviewed_builtin_card(self._registry, card)
             except Exception:
                 raise invalid_request(
-                    "allowed_operator_ids must contain supported pinned 2.0.0 or 3.0.0 ids"
+                    "allowed_operator_ids must contain supported pinned ids"
                 ) from None
             if (
                 card is None
@@ -914,11 +910,9 @@ class PipelinePlanner:
                 or card.version != version
                 or getattr(resolved, "operator_id", None) != operator_id
                 or (built_in and not reviewed_builtin)
-                or (version == "3.0.0" and not built_in)
+                or (version != "2.0.0" and not built_in)
             ):
-                raise invalid_request(
-                    "allowed_operator_ids must contain supported pinned 2.0.0 or 3.0.0 ids"
-                )
+                raise invalid_request("allowed_operator_ids must contain supported pinned ids")
 
     def _active_policy(self) -> frozenset[str] | None:
         """Validate the exact package policy when this registry contains built-ins."""
@@ -1376,9 +1370,7 @@ class PipelinePlanner:
             operator_id = raw_operator_id
             parts = _current_operator_id_parts(operator_id)
             if parts is None:
-                raise _invalid_compiled_plan(
-                    "planner requires supported pinned 2.0.0 or 3.0.0 operator ids"
-                )
+                raise _invalid_compiled_plan("planner requires supported pinned operator ids")
             if admitted.allowed_operator_ids and operator_id not in admitted.allowed_operator_ids:
                 raise _invalid_compiled_plan(
                     f"operator {operator_id!r} was not allowed by the planning request"
@@ -1410,7 +1402,7 @@ class PipelinePlanner:
                 or resolved is not item.operator
                 or getattr(resolved, "operator_id", None) != operator_id
                 or (built_in and not is_reviewed_builtin_card(self._registry, current_card))
-                or (version == "3.0.0" and not built_in)
+                or (version != "2.0.0" and not built_in)
             ):
                 raise _invalid_compiled_plan(f"operator {operator_id!r} was not admitted")
             if operator_id.split("@", 1)[0] == _ADDRESSED_OPERATOR_NAME:

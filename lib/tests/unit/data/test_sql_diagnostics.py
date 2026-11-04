@@ -116,7 +116,7 @@ def test_generation_negative_proof_no_effects(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run([[]], {**attrs(), field: MARKER}, {"data_registry": registry, "llm_client": client})
     )
     assert snapshot(tmp_path) == before
@@ -161,7 +161,7 @@ def test_stale_registry_new_live_name_control(
     before = snapshot(tmp_path)
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]],
             {**attrs(), "database": "fresh"},
@@ -267,6 +267,8 @@ def test_host_query_schema_distinction(host: tuple[Any, Any], query: str) -> Non
         executor.execute(query, ("local", "shop", "public"))
     record = Raising(captured.value).run([[]], {})[2].errors[0]
     assert record.message == "generated SQL failed against the approved schema"
+    assert record.category.value == "RECOVERABLE"
+    assert record.retryable is False
     assert record.suggestion and "schema" in record.suggestion
 
 
@@ -290,7 +292,7 @@ def test_unavailable_directory_is_inconclusive_without_creation(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]], {**attrs(), "database": MARKER}, {"data_registry": registry, "llm_client": client}
         )
@@ -314,7 +316,7 @@ def test_malformed_or_empty_metadata_not_absence(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]], {**attrs(), "database": MARKER}, {"data_registry": registry, "llm_client": client}
         )
@@ -337,7 +339,7 @@ def test_name_suffix_and_case_semantics(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]], {**attrs(), "database": target}, {"data_registry": registry, "llm_client": client}
         )
@@ -355,7 +357,7 @@ def test_no_result_query_and_empty_database_control(host: tuple[Any, Any], tmp_p
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]],
             {**attrs(), "database": "empty"},
@@ -414,7 +416,7 @@ def test_generation_never_enumerates_other_source_types(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]], {**attrs(), "database": MARKER}, {"data_registry": registry, "llm_client": client}
         )

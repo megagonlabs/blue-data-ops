@@ -152,16 +152,21 @@ def test_schema_fetched_and_provided_schema_ignored(
     }
     content = _prompt()
     assert "custom" not in content  # the attribute never reaches the prompt
-    assert json.dumps(seam.schema_result, indent=2) in content
+    assert (
+        json.dumps({"entities": [{"name": "jobs", "attributes": {}}], "relations": []}, indent=2)
+        in content
+    )
 
 
-def test_non_dict_schema_stringified(
+def test_non_dict_schema_is_rejected(
     op: NL2SQLOperator, seam: _RecordingSeam, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seam.schema_result = "entity jobs(role text)"
     _content_provider(monkeypatch, SQL_RESPONSE)
-    op.apply(INPUT, dict(ATTRS), _props(seam))
-    assert "entity jobs(role text)" in _prompt()
+    with pytest.raises(LLMError) as error:
+        op.apply(INPUT, dict(ATTRS), _props(seam))
+    assert error.value.code == "sql_execution_failed"
+    assert litellm.calls == []
 
 
 # --- prompt construction ------------------------------------------------------------
@@ -227,7 +232,9 @@ def test_rendered_prompt_full_equality(
     frozen = json.loads(
         (Path(__file__).parents[2] / "fixtures/llm_benign_prompts.json").read_text()
     )
-    expected = frozen["nl2sql"]["prompt"]
+    expected = frozen["nl2sql"]["prompt"].replace(
+        '"name": "jobs"', '"name": "jobs",\n      "attributes": {}'
+    )
     assert _prompt() == expected
     assert not expected.endswith("\n")
 
@@ -479,5 +486,5 @@ def test_interface(op: NL2SQLOperator) -> None:
         assert spec.required is required
         assert spec.default == default
     assert op.attributes["schema"].description == (
-        "JSON string of database schema (optional - will be fetched automatically if not provided)"
+        "Compatibility input; schema is projected from registered columns and types"
     )

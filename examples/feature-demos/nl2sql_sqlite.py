@@ -30,16 +30,12 @@ def main() -> None:
             else None
         )
         operators = OperatorRegistry()
-        operators.register(HostSQL(read_only_executor=executor), version="3.0.0")
-        operator = operators.resolve("nl2sql@3.0.0")
+        operators.register(HostSQL(read_only_executor=executor), version="4.0.0")
+        operator = operators.resolve("nl2sql@4.0.0")
         output, _, meta = operator.run(
             [[]],
             {
                 "question": "Which region has the highest total order value?",
-                "context": (
-                    "SQLite table orders(id INTEGER PRIMARY KEY, region TEXT, total REAL). "
-                    "The order value is in total; sum total by region."
-                ),
                 "source": "demo_sqlite",
                 "protocol": "sqlite",
                 "database": "shop",
@@ -54,7 +50,7 @@ def main() -> None:
         )
         if meta.errors:
             raise RuntimeError(meta.errors[0].message)
-        assert operator.operator_id == "nl2sql@3.0.0"
+        assert operator.operator_id == "nl2sql@4.0.0"
         print(output)
 
 

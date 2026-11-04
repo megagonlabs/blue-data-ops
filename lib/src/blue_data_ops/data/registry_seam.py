@@ -105,8 +105,8 @@ class RegistrySeam:
     def get_source_properties(self, source: str) -> Any:
         return self._delegate.get_source_properties(source)
 
-    # The two record listings below read registered metadata only; they neither connect
-    # to the source nor execute a query. Planning context uses them instead of
+    # The record listings below read registered metadata only; they neither connect
+    # to the source nor execute a query. Planning context and SQL prompts use them instead of
     # build_schema_for_nl() so it can tell an absent declared type from a real one.
 
     def list_collection_entities(self, source: str, database: str, collection: str) -> Any:
@@ -120,6 +120,9 @@ class RegistrySeam:
         entity: str,
     ) -> Any:
         return self._delegate.list_entity_attributes(source, database, collection, entity)
+
+    def list_collection_relations(self, source: str, database: str, collection: str) -> Any:
+        return self._delegate.list_collection_relations(source, database, collection)
 
     def connect_source(self, source: str) -> Any:
         return self._delegate.connect_source(source)

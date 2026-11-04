@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import litellm  # the tests/stubs deterministic fake (conftest inserts the stub path)
@@ -703,8 +704,11 @@ def test_cache_roundtrip(tmp_path: Any) -> None:
 
 def test_cache_requested_without_diskcache_is_deterministic(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     import builtins
+
+    monkeypatch.chdir(tmp_path)
 
     real_import = builtins.__import__
 
@@ -717,6 +721,7 @@ def test_cache_requested_without_diskcache_is_deterministic(
     client = LLMClient("test", {**OP_PROPS, "llm.cache": True})
     with pytest.raises(LLMError, match="diskcache is not installed"):
         client.execute_api_call({}, additional_data={})
+    assert not (tmp_path / ".blue-data-ops-cache").exists()
 
 
 # --- what a call property may set on the provider request ----------------------------

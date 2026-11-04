@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 
 from blue_data_ops.data import RegistrySeam, registry_seam, resolve_registry
 from blue_data_ops.data.errors import RegistryFailure, RegistryReason
@@ -544,7 +544,7 @@ def test_missing_source_write_preserves_persisted_registry_and_sqlite(
     import hashlib
     import sqlite3
 
-    from blue_data.source.json.file_json_source import FileJSONSource
+    from blue_data.source.json.file_json_source import FileJSONSource  # pyright: ignore[reportMissingTypeStubs]
 
     directory = tmp_path / "databases"
     directory.mkdir()

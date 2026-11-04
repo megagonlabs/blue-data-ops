@@ -6,6 +6,7 @@ This example uses local registry and LLM implementations. An explicit Python che
 generated SQL is returned without being executed.
 
 ```python
+import json
 from typing import Any
 
 from blue_data_ops.data import RegistrySeam
@@ -54,7 +55,10 @@ output, output_attributes, meta = operator.run(
 assert skill.card.operator_id == "nl2sql@2.0.0"
 assert output == [[{"sql": "SELECT role FROM jobs LIMIT 1"}]]
 assert data_registry.schema_requests == [("local", "demo", "jobs")]
-assert "jobs" in client.requests[0]["schema"]
+assert json.loads(client.requests[0]["schema"]) == {
+    "entities": [{"name": "jobs", "attributes": {"role": {}}}],
+    "relations": [],
+}
 assert output_attributes == {}
 assert meta.errors == []
 ```

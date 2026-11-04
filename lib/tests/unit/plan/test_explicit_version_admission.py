@@ -673,7 +673,7 @@ def _assert_sanitized_registry_error(
         ErrorCategory.RECOVERABLE,
         PlanningErrorCode.DISCOVERY_RESULT_INVALID,
         PlanningStage.DISCOVERY,
-        "OpenAI plan generator requires supported built-in 2.0.0 or 3.0.0 operator cards",
+        "OpenAI plan generator requires supported built-in operator cards",
         False,
         "Pass one shared, unmodified active_registry() or versioned_registry() instance "
         "to the generator and planner, or use a different plan generator.",

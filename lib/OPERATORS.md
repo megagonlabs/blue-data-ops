@@ -592,13 +592,13 @@ assert type(operator).__name__ == "NL2LLMOutcomeOperator"
 | Invalid | A blank required query is INVALID_INPUT before provider work. |
 | Failure | A provider object where an array is required is EXECUTION_RESULT_INVALID at NORMALIZE. |
 
-## `nl2sql@3.0.0`
+## `nl2sql@4.0.0`
 
 When to invoke: Use when a natural-language question must be translated into SQL, with optional execution.
 
 Tags: `domain-query-compound`, `flow-head`, `accepts-none`, `produces-data`, `produces-query`, `capability-query-execution`, `capability-query-generation`, `capability-sql`, `requires-data-registry`, `requires-llm`, `requires-query-backend`
 
-Guide: [`nl2sql@3.0.0`](src/blue_data_ops/operator_skills/nl2sql/3.0.0/Operator.md)
+Guide: [`nl2sql@4.0.0`](src/blue_data_ops/operator_skills/nl2sql/4.0.0/Operator.md)
 
 | Attribute | Type | Required | Default | Description |
 |---|---|---:|---|---|
@@ -610,13 +610,13 @@ Guide: [`nl2sql@3.0.0`](src/blue_data_ops/operator_skills/nl2sql/3.0.0/Operator.
 | `case_insensitive` | `bool` | no | `true` | Case insensitive string matching |
 | `additional_requirements` | `str` | no | `""` | Additional requirements for SQL generation |
 | `context` | `str` | no | `""` | Optional context for domain knowledge |
-| `schema` | `str` | no | `""` | JSON string of database schema (optional - will be fetched automatically if not provided) |
+| `schema` | `str` | no | `""` | Compatibility input; schema is projected from registered columns and types |
 | `attr_names` | `list[str]` | no | `[]` | Optional list of target field names for the output objects |
 
 Exact resolution:
 
 ```python
-operator = registry.resolve("nl2sql@3.0.0")
+operator = registry.resolve("nl2sql@4.0.0")
 assert type(operator).__module__ == "blue_data_ops.operators._nl2sql_outcome"
 assert type(operator).__name__ == "NL2SQLOutcomeOperator"
 ```

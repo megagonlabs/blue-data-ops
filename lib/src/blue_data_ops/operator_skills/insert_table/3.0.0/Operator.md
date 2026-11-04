@@ -43,3 +43,11 @@ is later mutated. Invalid bundle structure omits this key.
 After successful normalization, `output_shape` uses the same fields. Failures and timeouts omit it.
 An all-empty successful output is normalized to `[[]]`, while a mixed multi-group output retains a
 zero count for each empty group. Both shape keys are optional.
+
+Insertion selects the dialect from the resolved source. SQLite and unknown sources
+use qmark/double-quote SQL; PostgreSQL uses %s/double quotes with driver percent
+escaping; MySQL uses %s with its normal batch API and backticks. Only identifiers
+containing literal %s use the native prepared path. Values stay bound.
+A failed batch rolls back and closes its cursor/statement and connection while
+preserving the original failure. Earlier committed batches remain committed.
+Collection is not a SQL table qualifier; PostgreSQL uses the connection search path.

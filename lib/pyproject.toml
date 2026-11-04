@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "blue-data-ops"
 version = "1.0.0"
 description = "Blue Data Operators — self-contained operator library"
 readme = "README.md"
+license = "LicenseRef-BlueData"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12,<3.14"
 # Pydantic provides lax attribute-type validation. blue-data provides the registry
 # integration behind blue_data_ops/data/, the package's only blue-data import boundary.
@@ -15,32 +17,31 @@ requires-python = ">=3.12,<3.14"
 # relied on transitively through blue-data.
 # llm.client imports tenacity at package import time, so it remains a core dependency.
 dependencies = [
-    "blue-data>=1.0.0",
+    "blue-data>=1.0.0,<2",
     "pydantic>=2",
     "jsonmerge==1.9.2",
-    "jsonpath-ng",
-    "tenacity",
+    "jsonpath-ng<2",
+    "tenacity<10",
 ]
 
 [project.optional-dependencies]
 ml = ["numpy", "scikit-learn"]
 vector = ["numpy", "sentence-transformers"]
-llm = ["litellm>=1.98,<2", "tenacity", "diskcache", "jinja2"]
+llm = ["litellm>=1.98,<2", "tenacity<10", "diskcache<6"]
 # Planner-only OpenAI SDK seam, bounded to the supported 2.x Responses API surface.
 openai = ["openai>=2.54,<3"]
 dev = [
     "numpy",
     "scikit-learn",
-    "tenacity",
-    "diskcache",
-    "jinja2",
+    "tenacity<10",
+    "diskcache<6",
     "openai>=2.54,<3",
     "pytest",
     "pytest-asyncio",
     "pytest-recording",
     "pytest-cov",
-    "ruff",
-    "pyright",
+    "ruff==0.17.3",
+    "pyright==1.1.414",
     "build",
     "twine",
 ]

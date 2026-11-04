@@ -20,7 +20,7 @@ from blue_data_ops_cli.catalog import TAG_AXES
 from blue_data_ops_cli.commands import cli
 
 ACTIVE_CARDS = 33
-HISTORY_CARDS = 87
+HISTORY_CARDS = 88
 
 
 def payload(result_output: str) -> dict[str, Any]:
@@ -78,7 +78,7 @@ def test_inspect_reports_the_version_spread(runner: CliRunner) -> None:
     result = runner.invoke(cli, ["catalog", "inspect", "history", "--format", "json"])
     versions = payload(result.stdout)["catalog"]["versions"]
     assert sum(versions.values()) == HISTORY_CARDS
-    assert "1.0.0" in versions
+    assert versions == {"1.0.0": 33, "2.0.0": 33, "3.0.0": 21, "4.0.0": 1}
 
 
 # ----------------------------------------------------------------- select --

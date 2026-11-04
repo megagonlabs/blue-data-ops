@@ -93,14 +93,14 @@ from blue_data_ops import Operator
 
 An abstract, flat, single-output, type-aware data operator.
 Input and output are both a `DataBundle`: a list of record groups, where a group is a list of JSON-like record dicts.
-Subclasses declare three class variables and implement one method — see [extending.md](extending.md).
+Subclasses declare three required class variables, optionally set `PROPERTIES`, and implement one method. See [extending.md](extending.md).
 
 | Class variable | Type | Role |
 |---|---|---|
 | `name` | `str` | The logical operator name; the registry pins it to `name@version` |
 | `description` | `str` | One-sentence description, copied onto the operator card |
 | `attributes` | `dict[str, AttributeSpec]` | The declared call attributes |
-| `PROPERTIES` | `dict[str, Any]` | Per-class property defaults merged over the base defaults at construction |
+| `PROPERTIES` | `dict[str, Any]` | Optional per-class property defaults merged over the base defaults at construction |
 
 ### Calling an operator
 
@@ -154,7 +154,7 @@ from blue_data_ops import ErrorRecord, ExecMeta, FunctionResult, ValidationResul
 `ErrorCode` values: `DEFAULTS_FAILED`, `INVALID_INPUT`, `VALIDATION_FAILED`, `VALIDATION_RESULT_INVALID`, `EXECUTION_FAILED`, `EXECUTION_RESULT_INVALID`, `REFINEMENT_FAILED`, `REFINEMENT_RESULT_INVALID`, `OPERATOR_TIMEOUT`.
 The two `REFINEMENT_*` codes and the `REFINE` stage are retained vocabulary: no 3.0 code path produces them, and old serialized records still decode.
 
-The 21 operators active at `@3.0.0` may add `input_shape`, `output_shape`, and `elapsed_ms` measurements to `ExecMeta.traces`.
+The 20 operators active at `@3.0.0` and `nl2sql@4.0.0` may add `input_shape`, `output_shape`, and `elapsed_ms` measurements to `ExecMeta.traces`.
 A missing measurement means unavailable, not zero.
 
 Transient provider records may set `retryable=True`; this is advice for another call, not an
@@ -174,8 +174,8 @@ from blue_data_ops.operators import OperatorCard, OperatorRegistry, active_regis
 
 | Factory | Cards | Use it for |
 |---|---|---|
-| `active_registry()` | 33, twelve at `@2.0.0` and twenty-one at `@3.0.0` | Ordinary 3.0 discovery and execution |
-| `versioned_registry()` | 87 retained historical cards | Migration code that deliberately resolves 1.x or 2.x behavior |
+| `active_registry()` | 33: twelve at `@2.0.0`, twenty at `@3.0.0`, and `nl2sql@4.0.0` | Current discovery and execution |
+| `versioned_registry()` | 88 retained historical cards | Migration code that deliberately resolves 1.x or 2.x behavior |
 | `default_registry(**versions)` | 33 raw cards at `1.0.0`, with per-name overrides | The raw v1 compatibility view. These cards carry empty `tags` and `when_to_invoke` and grant no planning authority |
 
 ### `OperatorRegistry`
@@ -244,7 +244,7 @@ A registry mutated after the index was built raises `EmbeddingDiscoveryError("ST
 from blue_data_ops.operator_skills import OperatorSkillLoader
 ```
 
-Reviewed Markdown resources attached to exact operator IDs: 54 packages, 33 at `@2.0.0` and 21 at `@3.0.0`.
+Reviewed Markdown resources attached to exact operator IDs: 55 packages, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0`.
 Loading a resource does not invoke the operator and does not add its text to planner or provider input.
 
 | Export | Kind | What it is |
@@ -268,7 +268,7 @@ Loading a resource does not invoke the operator and does not add its text to pla
 | `read(operator_id, kind)` | `OperatorResource` | One resource with its verified digest |
 | `load(operator_id, level=2)` | `OperatorSkillView` | Level 2 is the card, the live attribute schema, and `Operator.md`; level 3 adds `examples.md`; level 4 adds `history.md` |
 
-All 54 packages declare levels 2 and 3.
+All 55 packages declare levels 2 and 3.
 No package ships level-4 `history.md` in 3.0, so requesting level 4 raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
 The loader holds no cache, so each call rereads the index; a package that changes between two calls fails the second one rather than serving a mixed view.
 Custom registrations are not eligible.
@@ -372,7 +372,7 @@ from blue_data_ops import BlueDataRegistryProvider, DataRegistryProvider, Regist
 | `create_source_database_collection_entity(source, database, collection, entity, ...)` | Declare an entity |
 | `set_source_database_description(...)` / `set_source_database_collection_entity_description(...)` | Attach descriptions used by discovery |
 | `register_source(source)` / `connect_source(source)` / `get_source_properties(source)` | Source lifecycle |
-| `list_collection_entities(...)` / `list_entity_attributes(...)` | Read registered metadata only, without connecting or querying |
+| `list_collection_entities(...)` / `list_entity_attributes(...)` / `list_collection_relations(...)` | Read registered metadata only, without connecting or querying |
 | `execute_query(query, source, database=None, collection=None, optional_properties={})` | Run a query through the registry |
 | `get_data_source_schema(source, database, collection, protocol=None, format="dict")` | Read a source schema |
 | `set_record_data(...)` / `get_record(...)` | Registry record storage |
@@ -417,10 +417,14 @@ supplied = {"openai.max_completion_tokens": 256}
 merged = {**defaults, **supplied}
 
 prepared = prepare_llm_operator_properties(merged, defaults, supplied)
-assert prepared == {"openai.model": "gpt-6-luna", "openai.max_completion_tokens": 256}
+assert prepared == {
+    "openai.model": "gpt-6-luna",
+    "openai.max_completion_tokens": 256,
+    "output_template": None,
+}
 ```
 
-The inherited temperature is omitted for this model, and the explicit completion-token cap replaces the inherited `max_tokens`. `merged` is unchanged. An explicitly supplied sampling field remains in `prepared` for client validation.
+The inherited temperature is omitted for this model, and the explicit completion-token cap replaces the inherited `max_tokens`. The helper pins `output_template` to the operator default, including `None` when no default is set. `merged` is unchanged. An explicitly supplied sampling field remains in `prepared` for client validation.
 
 The default lifetime is one client per invocation rather than a module-level singleton.
 Built-in operators call `resolve_llm_client` without a provider, so inside an operator call the reachable seam is `properties["llm_client"]`.

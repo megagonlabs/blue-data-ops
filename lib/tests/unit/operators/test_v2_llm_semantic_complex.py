@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Sequence
 from copy import deepcopy
-from threading import Event
 from typing import Any
 from unittest.mock import patch
 
@@ -30,6 +28,7 @@ from blue_data_ops.operators import (
 )
 from blue_data_ops.operators import semantic_join_operator as join_module
 from blue_data_ops.operators import semantic_transform_operator as transform_module
+from tests.unit.operators._timeout_sync import blocked_worker
 
 TRANSFORM_INPUT: DataBundle = [[{"city": "NY", "score": 1}]]
 TRANSFORM_ATTRIBUTES: Attributes = {"output_desc": {"label": {"description": "Score label"}}}
@@ -513,35 +512,36 @@ def test_timeout_calls_body_once_and_discards_late_result(
     operator: Operator,
     input_data: DataBundle,
     attributes: Attributes,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    finished = Event()
+    with blocked_worker(monkeypatch) as block:
 
-    def slow_execute(
-        call_input: DataBundle,
-        call_attributes: Attributes,
-        properties: Properties | None = None,
-    ) -> FunctionResult:
-        del call_attributes, properties
-        time.sleep(0.04)
-        finished.set()
-        return FunctionResult(call_input, {"late": True})
+        def slow_execute(
+            call_input: DataBundle,
+            call_attributes: Attributes,
+            properties: Properties | None = None,
+        ) -> FunctionResult:
+            del call_attributes, properties
+            block()
+            return FunctionResult(call_input, {"late": True})
 
-    with patch.object(operator, "_execute", side_effect=slow_execute) as execute:
-        output_data, output_attributes, meta = operator.run(
-            input_data,
-            attributes,
-            {"execution.timeout_seconds": 0.005},
-        )
-
+        with patch.object(operator, "_execute", side_effect=slow_execute) as execute:
+            output_data, output_attributes, meta = operator.run(
+                input_data,
+                attributes,
+                {"execution.timeout_seconds": 0.005},
+            )
+            assert output_data == [[]]
+            assert output_attributes == {}
+            assert meta.is_empty is False
+            assert len(meta.errors) == 1
+            assert meta.errors[0].category is ErrorCategory.TIMEOUT
+            assert meta.errors[0].code is ErrorCode.OPERATOR_TIMEOUT
+            assert meta.errors[0].stage is ErrorStage.EXECUTE
+            assert execute.call_count == 1
     assert output_data == [[]]
     assert output_attributes == {}
-    assert meta.is_empty is False
-    assert len(meta.errors) == 1
-    assert meta.errors[0].category is ErrorCategory.TIMEOUT
     assert meta.errors[0].code is ErrorCode.OPERATOR_TIMEOUT
-    assert meta.errors[0].stage is ErrorStage.EXECUTE
-    assert execute.call_count == 1
-    assert finished.wait(timeout=0.2)
 
 
 def test_transform_raw_mutation_and_canonical_isolation() -> None:

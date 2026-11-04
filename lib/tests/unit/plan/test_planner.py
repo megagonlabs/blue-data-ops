@@ -833,7 +833,7 @@ def test_rejects_an_unsupported_operator_version() -> None:
         discovery_queries=(DiscoveryQuery("select"),),
     )
 
-    with pytest.raises(PlanningError, match="requires supported pinned 2.0.0 or 3.0.0"):
+    with pytest.raises(PlanningError, match="requires supported pinned operator ids"):
         planner.plan(request)
 
 
@@ -1031,7 +1031,7 @@ def test_compilation_rejection_has_a_stable_record() -> None:
 
     with pytest.raises(
         PlanningError,
-        match="requires supported pinned 2.0.0 or 3.0.0",
+        match="requires supported pinned operator ids",
     ) as caught:
         planner.plan(
             PlanningRequest(
@@ -1044,7 +1044,7 @@ def test_compilation_rejection_has_a_stable_record() -> None:
         ErrorCategory.RECOVERABLE,
         PlanningErrorCode.PLAN_INVALID,
         PlanningStage.COMPILATION,
-        "planner requires supported pinned 2.0.0 or 3.0.0 operator ids",
+        "planner requires supported pinned operator ids",
         False,
         "Use discovered supported pinned operators in a valid bounded plan.",
     )
@@ -1213,7 +1213,7 @@ def test_a_request_restricted_to_retired_cards_is_invalid() -> None:
 
     assert planner.discover(request).operator_ids == ()
 
-    with pytest.raises(PlanningError, match="supported pinned 2.0.0 or 3.0.0") as caught:
+    with pytest.raises(PlanningError, match="supported pinned ids") as caught:
         planner.plan(request)
 
     assert caught.value.record.code is PlanningErrorCode.INVALID_REQUEST

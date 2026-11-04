@@ -76,7 +76,7 @@ def test_generation_preserves_disk_store_and_complete_tree(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run([[]], target, {"data_registry": registry, "llm_client": client})
     )
     assert snapshot(tmp_path) == before

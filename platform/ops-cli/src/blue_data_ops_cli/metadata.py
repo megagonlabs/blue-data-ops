@@ -25,7 +25,7 @@ DATA_DISTRIBUTION = "blue-data"
 EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "ml": ("numpy", "sklearn"),
     "vector": ("numpy", "sentence_transformers"),
-    "llm": ("litellm", "tenacity", "diskcache", "jinja2"),
+    "llm": ("litellm", "tenacity", "diskcache"),
     "openai": ("openai",),
 }
 """What each declared extra puts on the path, by import name rather than by package name."""

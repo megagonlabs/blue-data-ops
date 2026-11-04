@@ -8,7 +8,7 @@ Core 3.0 removes the four plan-producing operator names, all eight of their v1/v
 
 `BlueDataOpsDeprecationWarning` remains importable as a compatibility category. Package 3.0 no longer emits it because the package-owned deprecated surfaces that used it have been removed.
 
-The registry now contains 87 historical cards: 33 at `@1.0.0`, 33 at `@2.0.0`, and 21 at `@3.0.0`. `active_registry()` selects the 33 ordinary exact IDs for current discovery and execution. The generated reference and MCP default use that same selection. Operator-skill resources contain 54 packages: 33 retained v2 packages and 21 v3 packages.
+The registry now contains 88 historical cards: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0`. `active_registry()` selects the 33 ordinary exact IDs for current discovery and execution. The generated reference and MCP default use that same selection. Operator-skill resources contain 55 packages: 33 retained v2 packages, 21 v3 packages, and the nl2sql v4 package.
 
 Exact resolution of `multipart_query`, `nl2query_router`, `plan_discover`, or `query_breakdown` at versions 1 or 2 through a package registry raises `ResolveError`. A stored `DataPipeline` containing one of those IDs still parses through `from_dict()`, then fails executor preflight at exact resolution.
 
@@ -108,7 +108,7 @@ must differ from the pipeline-wide value. The neutral `llm.*` keys and the names
 
 Two boundaries are deliberate and should survive upgrades.
 
-The planner compiles only admitted, supported exact operator IDs that its own discovery returned, so a generator cannot introduce an operator excluded by the caller's filters. Admission may include the active built-in set, explicitly allowed retained v2/v3 built-ins, or caller-created v2 cards used with a caller-owned rule or generator. The compiler additionally requires an `nl2sql` step to address the source, database, and collection named by the request. This is an address-consistency check, not table authorization: generated SQL may still read tables outside `DataScope.entities`.
+The planner compiles only admitted, supported exact operator IDs that its own discovery returned, so a generator cannot introduce an operator excluded by the caller's filters. Admission may include the active built-in set, explicitly allowed retained v2/v3 built-ins and exactly nl2sql@4.0.0, or caller-created v2 cards used with a caller-owned rule or generator. The compiler additionally requires an `nl2sql` step to address the source, database, and collection named by the request. This is an address-consistency check, not table authorization: generated SQL may still read tables outside `DataScope.entities`.
 
 Planning raises `PlanningError` where operator execution returns errors inside `ExecMeta`. This is the one place the package reports a recoverable outcome by raising, and it is deliberate: planning either produces a compiled pipeline or produces nothing, so there is no partial result to carry a record. `PlanningError` subclasses `ValueError` and exposes `record`. It carries the same fields as the operator `ErrorRecord` apart from `operator_id`, which planning has no value for, and its `stage` is a `PlanningStage` rather than an `ErrorStage`.
 
@@ -200,13 +200,10 @@ Operator callers cannot override prompt, extraction, or transport controls. Defi
 custom prompts in trusted operator defaults. An injected client's stored prompt
 and `output_template` cannot replace another operator's defaults.
 
-NL2SQL generates SQL by default across retained versions. Execution requires a
-host-bound `ReadOnlySQLExecutor`, an exact approved target, and boolean
-`execute_query=True`. Caller registry selectors cannot grant or redirect execution.
-See [SQL execution](../docs/llm-settings.md#sql-execution) for Python migration and
-connection limits. Stock CLI/MCP instances have no executor. The OpenAI planner
-example generates SQL only because its generator requires built-in card provenance;
-custom rule planning can share a host-configured instance with its executor.
+NL2SQL generates SQL by default. Execution requires a host-bound
+`ReadOnlySQLExecutor`, an approved target, and `execute_query=True`. Caller registry
+selectors cannot grant access. Stock CLI/MCP instances have no executor; see the
+[SQL execution guide](../docs/llm-settings.md#sql-execution) for host setup and limits.
 
 
 ## Execution diagnostics
@@ -232,3 +229,45 @@ cancellation and worker admission keep their existing behavior.
 Custom authors may explicitly publish fixed constants with `OperatorExecutionError`; see
 [the authoring contract](../docs/extending.md#intentional-public-execution-diagnostics). This is a
 trusted-author channel, not a redaction mechanism. It cannot detect deliberate dynamic text.
+
+## SQL execution and dialects
+
+`nl2sql@4.0.0` is active; @1/@2/@3 resolve through `versioned_registry()` or CLI
+`--catalog history` with current host-only restrictions. @3 and @4 share the same
+implementation. Adapters must resolve exactly @4 and bind host-approved targets
+through the public host constructor. Card IDs are independent of distribution
+versions. Caller registry selectors grant no authority.
+Install the current `blue-data-ops` 1.0.0 source;
+a package version range alone cannot distinguish builds with the same label.
+
+Schema generation uses registered entity and attribute names and declared types,
+plus relation names and source/target endpoints (`source`, `target`, `source_entity`,
+`target_entity`). The optional `foreign_keys_source_columns` and
+`foreign_keys_target_columns` fields are copied only as validated string lists;
+other shapes fail closed. Missing types are omitted. Row samples,
+connection properties and arbitrary metadata are excluded. Registered schema may
+be stale; run `sync_source` before generation because an unsynced source can return
+an empty schema. Lookup failures are errors rather than an empty-schema fallback.
+
+The public executor admits one exact-string SELECT and rejects unquoted INTO tokens
+and ambiguous syntax before driver execution. It may refuse valid dialect syntax;
+generation alone does not grant execution. Numeric-looking identifiers may need
+quoting because dialects tokenize them differently. See the execution guide for the syntax
+boundary and supported-source details.
+
+Use a least-privilege principal without FILE or equivalent file/network privileges.
+SELECT functions such as LOAD_FILE, SLEEP, lo_export and pg_read_file remain subject
+to database grants and resource controls; this executor is not a general SQL sandbox.
+Target collections constrain routing, not which tables generated SQL can read.
+
+Both insert cards use the resolved backend: SQLite/unknown sources retain qmark
+parameters and double quotes; PostgreSQL uses %s and escaped double quotes; MySQL
+uses %s and escaped backticks. MySQL uses its normal batch API for ordinary names
+and a separate prepared statement when an identifier contains %s. Percent-containing
+identifiers are preserved through each driver's binding rules. A failed batch rolls back and closes
+resources while earlier committed batches remain committed. Unknown counts remain
+omitted at @3. Collection does not qualify a table identifier; PostgreSQL uses the
+connection search path.
+
+
+SQL execution accepts DataRegistry instances and subclasses through `isinstance`; proxy or wrapped registries are refused. Sources must be the supported concrete SQLiteDBSource, PostgresDBSource or MySQLDBSource classes; source subclasses and wrappers are refused.

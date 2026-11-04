@@ -2,10 +2,12 @@
 
 This inventory covers the three pyprojects' direct dependencies and optional extras, the
 blue-data server extra's FastAPI helper, optional SDK backend diagnostics interfaces, and separate
-dev/build tooling. Versions below are those installed under Python 3.11 and 3.12. The license labels come from
+dev/build tooling. The table records a historical inventory under Python 3.11 and 3.12.
+This release supports Python 3.12 and 3.13. These historical versions do not certify the
+current environment. The license labels come from
 the installed artifact's METADATA and top-level LICENSE/COPYING text, except blue-data, whose
-license is from its 1.0.0 source at `ab2f3bc`. The build backend is setuptools 84.2.1;
-the declared `setuptools>=68` floor permits other resolutions, which require their own checks.
+license is from its 1.0.0 source at `ab2f3bc`. That inventory used setuptools 84.2.1;
+the declared `setuptools>=77.0.3` floor permits other resolutions, which require their own checks.
 
 The inherited Blue implementation in `lib/src/blue_data_ops/` remains under this repository's
 [LICENSE](../LICENSE), BSD 3-Clause with Attribution / NOTICE Requirement, and [NOTICE](../NOTICE).
@@ -13,14 +15,14 @@ The [family reference](https://github.com/megagon-internal/blue) supplies the co
 structure. Distribution names, operator versions and schema versions are separate identities;
 the CLI and MCP adapters both pin core 1.0.0.
 
-| Direct component | Scope / extra | Installed version (3.11 / 3.12) | Artifact license | Upstream |
+| Direct component | Scope / extra | Historical installed version (3.11 / 3.12) | Artifact license | Upstream |
 |---|---|---|---|---|
 | `blue-data` | core:runtime, ops-mcp:runtime | 1.0.0 | BSD 3-Clause with Attribution / NOTICE Requirement (source LICENSE) | [upstream](https://github.com/megagon-internal/blue-data) |
 | `build` | core:dev, ops-cli:dev, ops-mcp:dev | 1.6.1 | MIT | [upstream](https://github.com/pypa/build) |
 | `click` | ops-cli:runtime | 8.5.0 | BSD-3-Clause | [upstream](https://github.com/pallets/click/) |
 | `diskcache` | core:llm, core:dev | 5.6.3 | Apache-2.0 | [upstream](https://github.com/grantjenks/python-diskcache) |
 | `fastapi` | blue-data[server] (MCP helper extra) | 0.162.0 | MIT | [upstream](https://github.com/fastapi/fastapi) |
-| `jinja2` | core:llm, core:dev | 3.1.6 | BSD-3-Clause | [upstream](https://github.com/pallets/jinja/) |
+| `jinja2` | transitive through LiteLLM | 3.1.6 | BSD-3-Clause | [upstream](https://github.com/pallets/jinja/) |
 | `jsonmerge` | core:runtime | 1.9.2 | MIT | [upstream](https://github.com/avian2/jsonmerge) |
 | `jsonpath-ng` | core:runtime | 1.14.0 | Apache-2.0 | [upstream](https://github.com/jsonpath-ng/jsonpath-ng) |
 | `litellm` | core:llm | 1.106.5 | MIT | [upstream](https://github.com/BerriAI/litellm) |

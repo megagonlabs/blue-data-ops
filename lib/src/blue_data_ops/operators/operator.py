@@ -8,8 +8,9 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextvars import ContextVar
 from copy import deepcopy
 from math import isfinite
-from typing import Any, ClassVar, Literal, ParamSpec, TypeVar, cast
+from typing import Any, ClassVar, Literal, cast
 
+from blue_data_ops import _execution_scope as _scope
 from blue_data_ops.data.errors import REGISTRY_DIAGNOSTICS, owned_reason
 from blue_data_ops.llm.errors import LLMError, is_reply_failure, is_sql_schema_failure
 from blue_data_ops.operators._metadata import (
@@ -49,26 +50,24 @@ _UNSUPPORTED_LLM_SETTING_SUGGESTION = (
 )
 _TRUNCATED_LLM_SUGGESTION = "Increase llm.max_tokens; reasoning tokens use the same limit."
 _CONFLICTING_LLM_LIMITS_SUGGESTION = "Set only one of max_tokens and max_completion_tokens."
-_LLM_EXTRA_MODULES = frozenset({"diskcache", "jinja2", "litellm"})
+_LLM_EXTRA_MODULES = frozenset({"diskcache", "litellm"})
 _OPERATOR_ID_OVERRIDE: ContextVar[tuple[int, str] | None] = ContextVar(
     "blue_data_ops_operator_id_override",
     default=None,
 )
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
 
 
 class _InvalidTimeout(ValueError):
     pass
 
 
-def _call_with_operator_id(
+def _call_with_operator_id[**P, R](
     operator: Operator,
     operator_id: str,
-    hook: Callable[_P, _R],
-    *args: _P.args,
-    **kwargs: _P.kwargs,
-) -> _R:
+    hook: Callable[P, R],
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> R:
     reset_handle = _OPERATOR_ID_OVERRIDE.set((id(operator), operator_id))
     try:
         return hook(*args, **kwargs)
@@ -202,6 +201,14 @@ def _invalid_timeout_error(operator_id: str) -> ErrorRecord:
 
 
 def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
+    if isinstance(exception, _scope.ScopeExpired):
+        return _error(
+            operator_id,
+            ErrorCategory.TIMEOUT,
+            ErrorCode.OPERATOR_TIMEOUT,
+            ErrorStage.EXECUTE,
+            "operator timed out",
+        )
     custom = execution_diagnostic(exception)
     if custom is not None:
         message, suggestion, retryable = custom
@@ -217,7 +224,7 @@ def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
     if is_sql_schema_failure(exception):
         return _error(
             operator_id,
-            ErrorCategory.FAILED,
+            ErrorCategory.RECOVERABLE,
             ErrorCode.EXECUTION_FAILED,
             ErrorStage.EXECUTE,
             "generated SQL failed against the approved schema",
@@ -361,6 +368,22 @@ def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
                 "no LLM model is configured",
                 "Set llm.model or the operator's provider model setting.",
             ),
+            "local_rate_limit": (
+                "local LLM rate limit reached",
+                "Pace requests on this client and retry.",
+            ),
+            "bad_rate_limit": (
+                "invalid llm.rate_limit",
+                "Set llm.rate_limit to 0, None, or a finite number at least 0.1 calls/s.",
+            ),
+            "bad_max_parallel": (
+                "invalid llm.max_parallel",
+                "Set llm.max_parallel to a finite positive integer.",
+            ),
+            "bad_cache_dir": (
+                "invalid llm.cache_dir",
+                "Use an owned, private directory (mode 0700) with a stable expanded path.",
+            ),
             "bad_override": (
                 "LLM setting is not supported",
                 "Use a documented llm.* or provider generation setting.",
@@ -393,6 +416,7 @@ def _execution_error(operator_id: str, exception: BaseException) -> ErrorRecord:
             suggestion=suggestion,
             retryable=exception.code
             in {
+                "local_rate_limit",
                 "provider_rate_limit",
                 "provider_timeout",
                 "provider_connection",
@@ -657,18 +681,27 @@ class Operator(Tool, ABC):
             timeout = _timeout_seconds(properties)
         except _InvalidTimeout:
             return [[]], {}, _meta(error=_invalid_timeout_error(self.operator_id))
+        scope = _scope.create(timeout)
+        operator_id = self.operator_id
+
+        def scoped_run() -> tuple[DataBundle, Attributes, ExecMeta]:
+            with _scope.activate(scope):
+                result = _call_with_operator_id(
+                    self, operator_id, self._run_once, input_data, attributes, properties
+                )
+                _scope.check()
+                return result
+
         if timeout is None:
-            return self._run_once(input_data, attributes, properties)
+            try:
+                return scoped_run()
+            except _scope.ScopeExpired as exception:
+                return [[]], {}, _meta(error=_execution_error(operator_id, exception))
 
         executor: ThreadPoolExecutor | None = None
         try:
             executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="blue-data-ops")
-            future = executor.submit(
-                self._run_once,
-                input_data,
-                attributes,
-                properties,
-            )
+            future = executor.submit(scoped_run)
         except Exception:
             _shutdown_executor(executor)
             error = _error(
@@ -680,8 +713,9 @@ class Operator(Tool, ABC):
             )
             return [[]], {}, _meta(error=error)
         try:
-            return future.result(timeout=timeout)
+            return future.result(timeout=scope.remaining())
         except FutureTimeoutError:
+            scope.stop.set()
             try:
                 future.cancel()
             except Exception:

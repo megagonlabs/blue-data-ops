@@ -114,7 +114,7 @@ def test_unreadable_or_malformed_listing_is_inconclusive(
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]],
             {**attrs(), "database": "absent"},
@@ -134,7 +134,7 @@ def test_directory_with_sqlite_suffix_is_only_a_name_proof(tmp_path: Path) -> No
     client = Reply()
     result = (
         active_registry()
-        .resolve("nl2sql@3.0.0")
+        .resolve("nl2sql@4.0.0")
         .run(
             [[]],
             {**attrs(), "database": "later"},

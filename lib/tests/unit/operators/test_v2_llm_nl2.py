@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Sequence
 from copy import deepcopy
 from typing import Any, cast
@@ -18,7 +17,7 @@ from blue_data_ops import (
     ValidationResult,
 )
 from blue_data_ops.data import RegistrySeam
-from blue_data_ops.llm import LLMClient
+from blue_data_ops.llm import LLMClient, LLMError
 from blue_data_ops.llm.errors import is_reply_failure
 from blue_data_ops.operators import (
     Attributes,
@@ -32,6 +31,7 @@ from blue_data_ops.operators import (
     default_registry,
 )
 from tests.doubles.data import RegistrySeamDouble
+from tests.unit.operators._timeout_sync import blocked_worker
 
 INPUT: DataBundle = [[]]
 GRAPH: dict[str, Any] = {
@@ -152,6 +152,8 @@ def test_common_native_hooks_and_public_adapters_keep_exact_types(
     attributes: Attributes,
     properties: Properties,
 ) -> None:
+    if isinstance(operator, NL2SQLOperator):
+        cast(RecordingSeam, properties["data_registry"]).schema_result = {"jobs": {"role": "text"}}
     assert "_execute" in type(operator).__dict__
     assert "_validate_input" in type(operator).__dict__
     native = operator._execute(INPUT, attributes, properties)  # pyright: ignore[reportPrivateUsage]
@@ -279,28 +281,34 @@ def test_common_body_exception_is_contained_without_payload(operator: Operator) 
 def test_common_timeout_calls_body_once_and_discards_late_result(
     operator: Operator,
     attributes: Attributes,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def slow_body(*args: Any, **kwargs: Any) -> FunctionResult:
-        del args, kwargs
-        time.sleep(0.03)
-        return FunctionResult([[{"late": True}]], {})
+    with blocked_worker(monkeypatch) as block:
 
-    with patch.object(operator, "_execute", side_effect=slow_body) as execute:
-        output, output_attributes, meta = operator.run(
-            INPUT,
-            attributes,
-            {"execution.timeout_seconds": 0.001},
-        )
-    assert execute.call_count == 1
+        def slow_body(*args: Any, **kwargs: Any) -> FunctionResult:
+            del args, kwargs
+            block()
+            return FunctionResult([[{"late": True}]], {})
+
+        with patch.object(operator, "_execute", side_effect=slow_body) as execute:
+            output, output_attributes, meta = operator.run(
+                INPUT,
+                attributes,
+                {"execution.timeout_seconds": 0.001},
+            )
+            assert execute.call_count == 1
+            assert output == [[]]
+            assert output_attributes == {}
+            _assert_error(
+                meta,
+                ErrorCategory.TIMEOUT,
+                ErrorCode.OPERATOR_TIMEOUT,
+                ErrorStage.EXECUTE,
+                f"{operator.name}@2.0.0",
+            )
     assert output == [[]]
     assert output_attributes == {}
-    _assert_error(
-        meta,
-        ErrorCategory.TIMEOUT,
-        ErrorCode.OPERATOR_TIMEOUT,
-        ErrorStage.EXECUTE,
-        f"{operator.name}@2.0.0",
-    )
+    assert meta.errors[0].code is ErrorCode.OPERATOR_TIMEOUT
 
 
 @pytest.mark.parametrize(
@@ -688,6 +696,7 @@ def test_nl2sql_absent_source_is_invalid_but_explicit_empty_reaches_body() -> No
     absent = dict(SQL_ATTRIBUTES)
     del absent["source"]
     seam = _seam()
+    seam.schema_result = {"jobs": {"role": "text"}}
     client = ScriptedClient([SQL_RESPONSE])
     _, _, absent_meta = NL2SQLOperator().run(INPUT, absent, _properties(client, seam))
     assert absent_meta.errors[0].code is ErrorCode.INVALID_INPUT
@@ -714,6 +723,7 @@ def test_nl2sql_missing_registry_is_raw_empty_but_canonical_failure() -> None:
 def test_nl2sql_execute_path_matches_raw_with_exact_calls() -> None:
     operator = NL2SQLOperator()
     seam = _seam()
+    seam.schema_result = {"jobs": {"role": "text"}}
     client = ScriptedClient([SQL_RESPONSE, SQL_RESPONSE])
     properties = _properties(client, seam)
     native = operator._execute(  # pyright: ignore[reportPrivateUsage]
@@ -732,6 +742,7 @@ def test_nl2sql_execute_path_matches_raw_with_exact_calls() -> None:
 
 def test_nl2sql_sql_only_path_skips_registry_execution() -> None:
     seam = _seam()
+    seam.schema_result = {"jobs": {"role": "text"}}
     client = ScriptedClient([SQL_RESPONSE])
     output, _, meta = NL2SQLOperator().run(
         INPUT,
@@ -746,6 +757,7 @@ def test_nl2sql_sql_only_path_skips_registry_execution() -> None:
 
 def test_nl2sql_supplied_schema_is_ignored_and_registry_schema_is_used() -> None:
     seam = _seam()
+    seam.schema_result = {"jobs": {"role": "text"}}
     client = ScriptedClient([SQL_RESPONSE])
     NL2SQLOperator().run(
         INPUT,
@@ -754,7 +766,10 @@ def test_nl2sql_supplied_schema_is_ignored_and_registry_schema_is_used() -> None
     )
     assert len(seam.calls_to("get_data_source_schema")) == 1
     assert client.calls[0][2] is not None
-    assert "ignored" not in client.calls[0][2]["schema"]
+    assert json.loads(client.calls[0][2]["schema"]) == {
+        "entities": [{"name": "jobs", "attributes": {"role": {"type": "text"}}}],
+        "relations": [],
+    }
 
 
 @pytest.mark.parametrize(
@@ -769,6 +784,7 @@ def test_nl2sql_supplied_schema_is_ignored_and_registry_schema_is_used() -> None
 )
 def test_nl2sql_provider_and_parser_failures_are_contained(response: Any) -> None:
     seam = _seam()
+    seam.schema_result = {"jobs": {"role": "text"}}
     _, _, meta = NL2SQLOperator().run(
         INPUT,
         SQL_ATTRIBUTES,
@@ -853,6 +869,7 @@ def test_nl2sql_blank_required_value_is_execution_failure(field: str) -> None:
 
 def test_nl2sql_protocol_check_occurs_after_schema_lookup() -> None:
     seam = _seam()
+    seam.schema_result = {"jobs": {"role": "text"}}
     client = ScriptedClient([])
     _, _, meta = NL2SQLOperator().run(
         INPUT,
@@ -865,7 +882,7 @@ def test_nl2sql_protocol_check_occurs_after_schema_lookup() -> None:
     assert client.calls == []
 
 
-def test_nl2sql_registry_exception_propagates_raw_and_is_contained() -> None:
+def test_nl2sql_registry_exception_is_fixed_and_contained() -> None:
     class FailingSeam(RecordingSeam):
         def get_data_source_schema(self, *args: Any, **kwargs: Any) -> Any:
             del args, kwargs
@@ -873,7 +890,7 @@ def test_nl2sql_registry_exception_propagates_raw_and_is_contained() -> None:
 
     operator = NL2SQLOperator()
     seam = FailingSeam()
-    with pytest.raises(RuntimeError, match="opaque-schema-detail"):
+    with pytest.raises(LLMError, match="read-only SQL execution failed"):
         operator.apply(
             INPUT,
             SQL_ATTRIBUTES,

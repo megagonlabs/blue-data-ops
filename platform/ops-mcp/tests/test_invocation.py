@@ -95,7 +95,7 @@ async def test_data_discover_tool_returns_only_catalog_fields(
         return LocalSearch()
 
     monkeypatch.setattr(discover_module, "resolve_registry", local_registry)
-    from blue_data.registry.data_registry import DataRegistry
+    from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
 
     server = create_server(
         registry=versioned_registry(),

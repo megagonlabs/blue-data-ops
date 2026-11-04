@@ -7,7 +7,7 @@ prompt-cache accounting, or LiteLLM's price table.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from copy import deepcopy
 from decimal import Decimal
 from fractions import Fraction
@@ -17,10 +17,12 @@ from typing import Any, cast
 import litellm
 import pytest
 
+from blue_data_ops import _execution_scope as scope
 from blue_data_ops.llm import LLMClient
 from blue_data_ops.operators import ErrorCode, ErrorStage
 from blue_data_ops.operators import _nl2llm_outcome as outcome_module
 from blue_data_ops.operators import _outcomes as outcomes_module
+from blue_data_ops.operators import operator as runtime
 from blue_data_ops.operators.nl2llm_operator import NL2LLMOperator
 from blue_data_ops.operators.registry import versioned_registry
 from blue_data_ops.operators.types import DataBundle, ExecMeta
@@ -377,6 +379,31 @@ def test_timeout_trace_cannot_gain_late_cost(
     entered, release, completed = Event(), Event(), Event()
     original_run_once = operator._run_once
     prices: list[float] = []
+    futures: list[Future[Any]] = []
+
+    class TimeoutFuture:
+        def __init__(self, future: Future[Any]) -> None:
+            self.future = future
+
+        def result(self, timeout: float | None) -> Any:
+            # Deliver timeout only after the real body has entered and blocked.
+            assert entered.wait(5), "provider did not enter before timeout"
+            raise TimeoutError
+
+        def cancel(self) -> bool:
+            return self.future.cancel()
+
+    class ControlledExecutor:
+        def __init__(self, **kwargs: Any) -> None:
+            self.executor = ThreadPoolExecutor(**kwargs)
+
+        def submit(self, *args: Any) -> TimeoutFuture:
+            future = self.executor.submit(*args)
+            futures.append(future)
+            return TimeoutFuture(future)
+
+        def shutdown(self, **kwargs: Any) -> None:
+            self.executor.shutdown(**kwargs)
 
     def delayed(**kwargs: Any) -> _Response:
         litellm.calls.append(kwargs)
@@ -398,25 +425,38 @@ def test_timeout_trace_cannot_gain_late_cost(
     monkeypatch.setattr(litellm, "completion_cost", completion_cost)
     monkeypatch.setattr(operator, "_run_once", completed_run)
 
-    timed_out = operator.run(
-        INPUT,
-        {"query": "slow"},
-        {"execution.timeout_seconds": 0.01},
-    )
-    assert entered.wait(1)
-    assert timed_out[2].errors[0].code is ErrorCode.OPERATOR_TIMEOUT
-    before = dict(timed_out[2].traces)
-    _assert_no_cost(timed_out[2])
+    monkeypatch.setattr(runtime, "ThreadPoolExecutor", ControlledExecutor)
+    try:
+        timed_out = operator.run(
+            INPUT,
+            {"query": "slow"},
+            {"execution.timeout_seconds": 30},
+        )
+        assert entered.is_set() and len(litellm.calls) == 1
+        assert timed_out[0:2] == ([[]], {})
+        assert timed_out[2].errors[0].code is ErrorCode.OPERATOR_TIMEOUT
+        before = deepcopy(timed_out[2])
+        _assert_no_cost(timed_out[2])
 
-    release.set()
-    assert completed.wait(2)
-    assert prices == [0.7]
-    assert timed_out[2].traces == before
-    _assert_no_cost(timed_out[2])
+        def fast(**kwargs: Any) -> _Response:
+            litellm.calls.append(kwargs)
+            return _Response("[]", 0.2)
 
-    _install_provider(monkeypatch, "[]", 0.2)
-    later = operator.run(INPUT, {"query": "fast"})
-    assert later[2].traces["cost"] == 0.2
+        monkeypatch.setattr(litellm, "completion", fast)
+        later = operator.run(INPUT, {"query": "fast"})
+        assert later[2].errors == [] and later[2].traces["cost"] == 0.2
+        later_before = deepcopy(later[2])
+    finally:
+        release.set()
+        for future in futures:
+            with pytest.raises(scope.ScopeExpired):
+                future.result(timeout=5)
+
+    assert completed.is_set() and len(futures) == 1
+    assert len(litellm.calls) == 2 and prices == [0.2, 0.7]
+    assert timed_out[2] == before
+    _assert_no_cost(timed_out[2])
+    assert later[2] == later_before
 
 
 def test_injected_subclass_stays_on_the_public_path(operator: Any) -> None:

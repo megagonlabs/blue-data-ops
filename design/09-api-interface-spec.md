@@ -98,7 +98,7 @@ Thirty-three names, grouped as [`../lib/OPERATORS.md`](../lib/OPERATORS.md) grou
 | `VectorSearchOperator` | `vector_search` | `vector_search@3.0.0` | `vector` |
 | `VectorSimilarityOperator` | `vector_similarity` | `vector_similarity@3.0.0` | `vector` |
 | `NL2LLMOperator` | `nl2llm` | `nl2llm@3.0.0` | `llm` |
-| `NL2SQLOperator` | `nl2sql` | `nl2sql@3.0.0` | `llm` |
+| `NL2SQLOperator` | `nl2sql` | `nl2sql@4.0.0` | `llm` |
 | `NL2BNOperator` | `nl2bn` | `nl2bn@3.0.0` | `llm` |
 | `SemanticExtractOperator` | `semantic_extract` | `semantic_extract@3.0.0` | `llm` |
 | `SemanticFilterOperator` | `semantic_filter` | `semantic_filter@3.0.0` | `llm` |
@@ -259,8 +259,8 @@ def upgrade_legacy_operator_id(reference: str, registry: OperatorRegistry, *, ta
 
 | Factory | Cards | Use |
 |---|---|---|
-| `active_registry()` | 33 exact IDs, 12 at `@2.0.0` and 21 at `@3.0.0` | ordinary discovery and execution |
-| `versioned_registry()` | 87 cards: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0` | migration code that needs retained behavior |
+| `active_registry()` | 33 exact IDs, 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0` | ordinary discovery and execution |
+| `versioned_registry()` | 88 cards: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0` | migration code that needs retained behavior |
 | `default_registry(**versions)` | 33 raw cards at `@1.0.0`, overridable per name | the raw compatibility view |
 
 Each call returns a fresh registry holding its own operator instances, so two registries never share state.
@@ -453,7 +453,7 @@ RESOURCE_BYTE_LIMIT = 16_384
 JSON_DEPTH_LIMIT = 4
 ```
 
-Fifty-four packages ship, 33 at `@2.0.0` and 21 at `@3.0.0`, one per active exact ID plus the retained `@2.0.0` set.
+Fifty-five packages ship, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0`, covering every active exact ID, the retained `@2.0.0` set and `nl2sql@3.0.0`.
 Every package declares levels 2 and 3; none declares level 4.
 
 | Level | Loads |
@@ -500,7 +500,7 @@ def resolve_llm_client(properties: dict[str, Any] | None, provider: LLMClientPro
 The client builds a templated request, sends it through LiteLLM, and extracts the response through a configured output path.
 It records one `UsageRecord` per call — model, prompt and completion tokens, cost, latency, and cache-hit flag — on a `UsageLedger` exposing `total_cost` and `total_tokens`; accounting never raises, and an unconvertible token count is zero.
 
-Controls are properties: `llm.cache`, `llm.cache_dir` (default `.llm_cache`), `llm.max_parallel` (default 8), and `llm.rate_limit`.
+Controls are properties: `llm.cache`, `llm.cache_dir` (default `.blue-data-ops-cache`), `llm.max_parallel` (default 8), and `llm.rate_limit`.
 A caller may inject a configured client through `properties["llm_client"]` to reuse one across calls; without one, the default lifetime is construct-per-call with nothing shared.
 
 `LLMError` wraps transport and provider failures and rejected adapter configuration, carrying
@@ -721,7 +721,7 @@ The selection is validated before a single tool is registered, and each of these
 
 - a repeated ID in the selection, or two versions of one logical name;
 - a card the registry does not hold, or one whose identity disagrees with the ID requested;
-- a version other than `2.0.0` or `3.0.0`;
+- a version other than `2.0.0` or `3.0.0`, except the exact built-in `nl2sql@4.0.0` card;
 - a package-owned ID whose provenance or resolved implementation class does not match a reference build;
 - a caller-created card that shadows a supported built-in logical name, or a caller-created card at any version other than `2.0.0`.
 
@@ -731,7 +731,7 @@ Acceptance for execution grants no planning authority and authorizes no write; t
 
 ### 2.7 Version pairing
 
-The adapter pins the core exactly, `blue-data-ops==1.0.0`, alongside `blue-data[server]>=1.0.0`, `mcp>=1.28.1,<2` and `pydantic>=2.11,<3`.
+The adapter pins the core exactly, `blue-data-ops==1.0.0`, alongside `blue-data[server]>=1.0.0,<2`, `mcp>=1.28.1,<2` and `pydantic>=2.11,<3`.
 One environment therefore holds one verified pair, and the core and the adapter are updated together.
 The MCP initialization response's `serverInfo.version` is this package's own version, `1.0.0`, set on the server after `FastMCP` builds it because `FastMCP` takes no version argument and otherwise reports the SDK's.
 The same string is `blue_data_ops_mcp.__version__` and what package metadata returns, and each tool's operator version is in its `_meta`, moving independently of it.

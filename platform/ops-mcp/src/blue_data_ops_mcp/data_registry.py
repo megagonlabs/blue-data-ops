@@ -9,6 +9,7 @@ from typing import Any, cast
 from blue_data.registry.data_registry import (  # pyright: ignore[reportMissingTypeStubs]
     DataRegistry,
 )
+from blue_data_ops import _execution_scope as _scope
 from blue_data_ops.data.config import build_environment_registry
 from blue_data_ops.data.errors import RegistryFailure, RegistryReason
 from blue_data_ops.data.registry_seam import RegistrySeam
@@ -172,9 +173,20 @@ class DeploymentRegistry:
                 # This lane owns a valid deadline, so core must not start a second worker.
                 call_properties.pop(_DEADLINE, None)
 
-            result = await in_worker(
-                lambda: run_body(operator, input_data, attributes, call_properties), timeout
-            )
+            scope = _scope.create(timeout)
+
+            def run_scoped() -> Any:
+                try:
+                    with _scope.activate(scope):
+                        return run_body(operator, input_data, attributes, call_properties)
+                except _scope.ScopeExpired:
+                    return timeout_result(operator)
+
+            try:
+                result = await in_worker(run_scoped, timeout)
+            finally:
+                if handed_off:
+                    scope.stop.set()
             return timeout_result(operator) if handed_off else result
         finally:
             if not handed_off:

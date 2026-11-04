@@ -43,7 +43,7 @@ def test_distribution_metadata_and_public_surface() -> None:
     assert project["requires-python"] == ">=3.12,<3.14"
     assert set(project["dependencies"]) == {
         "blue-data-ops==1.0.0",
-        "blue-data[server]>=1.0.0",
+        "blue-data[server]>=1.0.0,<2",
         "mcp>=1.28.1,<2",
         "pydantic>=2.11,<3",
     }

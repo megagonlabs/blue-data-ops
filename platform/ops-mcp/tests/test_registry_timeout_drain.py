@@ -19,9 +19,9 @@ from types import SimpleNamespace
 from typing import Any, Literal, NoReturn, cast
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
-from blue_data.source.json.memory_json_source import MemoryJSONSource
-from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.json.memory_json_source import MemoryJSONSource  # pyright: ignore[reportMissingTypeStubs]
+from blue_data.source.sql.sqlite.sqlite_sql_source import SQLiteDBSource  # pyright: ignore[reportMissingTypeStubs]
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.llm import LLMClient
 from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor

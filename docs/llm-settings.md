@@ -181,7 +181,7 @@ to `ops_nl2llm`:
 ```
 
 `ops_semantic_filter` accepts the same properties. See the
-[MCP guide](../platform/ops-mcp/README.md#list-and-call-tools) for its full request. The MCP
+[MCP Tool contract](mcp.md#tool-contract) for its request and response. The MCP
 adapter exposes individual operator tools; it has no pipeline-run tool or stored-pipeline
 settings layer.
 
@@ -226,6 +226,39 @@ temperature of zero is an explicit client setting and is rejected for GPT-6 Sol
 before the provider call. Set `llm.temperature` to `None` on the call to clear it. The
 client ledger remains available after the call. A live call needs the
 deployment's provider credential.
+
+## Rate admission and response cache
+
+`llm.rate_limit` paces provider attempts per client. Use `None` or `0` for unlimited
+admission; finite positive rates must be at least `0.1` requests per second. Calls
+wait for a slot. With a positive rate, semaphore, lock, and rate waits share a
+cumulative budget of at most 10 seconds per provider attempt, capped by the remaining
+`execution.timeout_seconds` deadline. Each retry and temperature fallback gets its
+own attempt budget. If admission stays full, the call returns retryable
+`local_rate_limit`, which the client does not automatically retry. With unlimited
+pacing, a concurrency-slot wait obeys cancellation and the operator deadline,
+without an additional 10-second limit. Set `execution.timeout_seconds` for calls
+from untrusted callers: without a deadline, a valid low-rate call can hold a worker
+for roughly ten seconds per provider attempt. This is not a whole-operation limit.
+A deadline cannot interrupt provider I/O that has already started. The 0.1 floor
+also applies to host-configured rates; slower tiers need host-enforced pacing
+outside this client with its rate set to `0` or `None`.
+
+`llm.max_parallel` must resolve to a positive integer. Integral numeric strings and
+values are accepted; booleans, nonfinite values, and nonpositive or fractional
+values are refused. Separate clients do not share admission state.
+
+Set `llm.cache=true` to cache responses with `diskcache`; the default directory is
+`.blue-data-ops-cache` in the working directory. Set `llm.cache_dir` to choose a
+different path. On POSIX, the directory must belong to the current user and have no
+group or other access; new directories are created with mode `0700`, and unsafe
+existing directories are refused without permission changes. The canonical path
+must remain stable when `diskcache` expands it a second time. A literal `$` is valid
+when the path remains private and stable. Cache hits return the stored response
+without waiting for rate or concurrency admission. Use a separate private cache
+directory per deployment; cache keys do not distinguish endpoint, project, or
+region. See the [MCP Tool contract](mcp.md#tool-contract) for the property names
+and caller mapping.
 
 Omit `llm.reasoning_effort` for a model without that option. At an operator node, use
 `None` in Python or `null` in pipeline JSON to clear an inherited effort. This
@@ -347,7 +380,7 @@ Provider transport and routing controls remain reserved. Rejection precedes regi
 schema, client, cache, and provider work, including empty-input paths.
 
 Prompts use one dollar-placeholder pass. Unknown names stay literal and `$$` escapes
-a dollar. Jinja remains a compatibility dependency; rendering never uses it.
+a dollar. Rendering uses only the standard library; ops declares no direct Jinja2 dependency.
 Jinja syntax and dollar tokens inside records, questions, schemas, context,
 and model output remain data. The public `utils.safe_substitute` helper now uses
 this same one-pass rule and preserves line endings. LLM message formatting normalizes
@@ -365,18 +398,39 @@ CLI/MCP bound-executor path requires an exact built-in `NL2SQLOperator` or
 ## SQL execution
 
 `nl2sql` generates `[[{"sql": "..."}]]` by default, using registry metadata for the
-schema. This security change applies to retained operator versions too; their IDs
-and result schemas stay the same. `execute_query` must be an actual boolean.
+schema. `nl2sql@4.0.0` is active; earlier IDs resolve through `versioned_registry()`
+or CLI `--catalog history` with current host-only restrictions. @3 and @4 share
+one implementation. Retained IDs and result schemas do not restore caller-driven
+execution. `execute_query` must be an actual boolean.
 `validate_query_prefixes`, if supplied, must be an actual one-item list containing
 ASCII `SELECT`, ignoring case without trimming. It cannot enable WITH, DDL, or writes.
 The generated query must be a nonempty string starting with the SELECT token.
+
+Schema generation uses registered entity and attribute names and declared types,
+plus relation names and source/target endpoints (`source`, `target`, `source_entity`,
+`target_entity`). The optional `foreign_keys_source_columns` and
+`foreign_keys_target_columns` fields are copied only as validated string lists;
+other shapes fail closed. Missing types are omitted. Row samples,
+connection properties and arbitrary metadata are excluded. Registered schema may
+be stale; run `sync_source` before generation because an unsynced source can return
+an empty schema. Lookup failures are errors rather than an empty-schema fallback.
+
+The public executor admits an exact `str` containing one SELECT statement and
+rejects every unquoted INTO token before driver execution, including OUTFILE,
+DUMPFILE, variables, subqueries and UNION branches. It conservatively rejects
+executable or nested comments, MySQL `--` without following whitespace, `#`,
+unquoted dollar/bracket syntax, backslash quoting, malformed quotes and NUL/VT/FF.
+Ordinary quoted literals, doubled quotes/backticks and plain comments are supported.
+Bare-CR line comments are refused for every protocol. This can refuse otherwise
+valid dialect syntax. The underlying source may also refuse semicolons inside
+literals. Numeric-looking identifiers may need quoting because dialects tokenize
+them differently. Generation alone does not grant execution.
 
 Execution requires a capability configured in trusted Python host code:
 
 ```python
 from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor
 from blue_data_ops.operators import NL2SQLOperator, OperatorRegistry
-from blue_data_ops.plan import PipelineExecutor
 
 # data_registry already contains a supported SQL source for a pre-existing target.
 executor = ReadOnlySQLExecutor(
@@ -385,7 +439,6 @@ executor = ReadOnlySQLExecutor(
 operator = NL2SQLOperator(read_only_executor=executor)
 operators = OperatorRegistry()
 operators.register(operator, version="2.0.0")
-pipeline_executor = PipelineExecutor(operators)
 output, _, meta = operator.run(
     [[]],
     {"question": "Count orders", "source": "approved", "protocol": "sqlite",
@@ -394,12 +447,12 @@ output, _, meta = operator.run(
 )
 ```
 
-Use that same operator registry for planning and pipeline execution. Rule planning
+Use `PipelineExecutor(operators)` for direct pipeline execution with that registry. Rule planning
 admits custom operators at retained `@2.0.0`. `OpenAIPlanGenerator` currently
 requires a registry returned by the package's registry factories and that registry's
 original built-in cards. It cannot plan this custom instance.
-Direct pipeline execution can resolve a host-configured instance at either retained
-version. The OpenAI planner demo therefore generates SQL only. Ordinary
+Direct pipeline execution can resolve a host-configured instance at any retained
+version, including @4. The OpenAI planner demo therefore generates SQL only. Ordinary
 `active_registry()` instances have no executor. Stock CLI/MCP requests cannot install
 one. The CLI/MCP bound-executor path supports exact built-in `NL2SQLOperator`
 and `NL2SQLOutcomeOperator` instances, including registered version/name aliases,
@@ -408,19 +461,40 @@ denied; `data_registry`, `platform.name`, and `data_registry.name` are denied wh
 execution is requested, even if null or equal to the host configuration.
 
 The adapter binds exact source/database/collection tuples and existing concrete
-SQLite, PostgreSQL, or MySQL source objects. Source replacement or an unsupported
-guard is denied before schema or generation. It supports the inspected blue-data
-read-only hooks; older dependencies without those hooks can still generate SQL.
+SQLiteDBSource, PostgresDBSource or MySQLDBSource objects; source subclasses and wrappers
+are refused. DataRegistry subclasses are accepted through `isinstance`, while proxy or
+wrapped registries are refused. Source replacement or an unsupported
+guard is denied before schema or generation. It requires read-only support in the current blue-data SQL sources. Older dependencies without it can still generate SQL, but execution is refused.
 Execution calls the captured source with `commit=False` and has no ordinary-registry
-fallback. The prefix check is a quality check; the database guard enforces read-only
-access and refuses multiple statements. Errors use fixed diagnostics.
+fallback. The shared query guard runs before the driver; the database guard adds read-only
+access. Error messages exclude SQL and driver text.
 
 Connections and cursors open before the guard is installed. SQLite path resolution
 may create a directory; non-create connections refuse a missing database file.
 Use constrained principals and pre-existing approved targets. Read-only SELECT is
 not a sandbox for stored functions, privileged file/network access, or resource use.
-The SQLite checks cover synthetic local effects; PostgreSQL/MySQL checks use offline
-driver-order doubles and make no live-server claim.
+Use a least-privilege principal without FILE or equivalent file/network privileges.
+SELECT functions such as LOAD_FILE, SLEEP, lo_export and pg_read_file remain subject
+to database grants and resource controls; this executor is not a general SQL sandbox.
+Target collections constrain routing, not which tables generated SQL can read.
 
 `nl2bn` continues to run Bayesian inference. Its legacy `execute_query` property is
 ignored and does not provide an SQL execution control.
+
+Consumers migrating to `nl2sql@4.0.0` must bind a `ReadOnlySQLExecutor`
+in trusted host code and pass it to the public `NL2SQLOutcomeOperator` constructor.
+Use the concrete registry and approved targets shown above. Caller registry
+selectors and request or model scan addresses do not authorize execution.
+Downstream adapters must adopt this construction in their own integration;
+selecting a new card does not migrate an existing caller automatically.
+For the @4 card, using the executor and registry above:
+
+```python
+from blue_data_ops.operators import NL2SQLOutcomeOperator
+
+operator = NL2SQLOutcomeOperator(read_only_executor=executor)
+operators.register(operator, version="4.0.0")
+```
+
+Reinstall any earlier 1.0.0 build of this package before selecting @4;
+a package version range cannot distinguish builds with the same label.

@@ -27,12 +27,12 @@ scripts/install.sh
 ```
 
 That installs the sibling `blue-data` checkout, the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
-`blue-data` is a core dependency of the library and is not on a public index, so it has to be resolvable first; [`docs/installation.md`](../../docs/installation.md) is the source of truth for the paths that put it there.
+`blue-data` is a core dependency of the library, so the selected source must be installed first; [`docs/installation.md`](../../docs/installation.md) is the source of truth for the paths that put it there.
 
 Add the provider-backed planner's dependency with the `openai` extra:
 
 ```bash
-python -m pip install -e ".[dev,openai]" "blue-data-ops-cli==1.0.0" "blue-data-ops==1.0.0"
+python -m pip install -e ".[dev,openai]"
 ```
 
 Installation, runtime use, and pytest work in either environment. This package's Pyright configuration still looks for `.venv` in `platform/ops-cli`, so use the standard virtual-environment path when running the documented Pyright gate.
@@ -302,7 +302,7 @@ A catalog is a view of the operator registry, and `--catalog` says which one a c
 | View | Cards | What it holds |
 |---|---|---|
 | `active` | 33 | the reviewed built-ins, one version per operator name |
-| `history` | 87 | every retained version, including the reviewed ones |
+| `history` | 88 | every retained version, including the reviewed ones |
 
 The selection follows the same four tiers as everything else, with the profile's own file under the parameter that the environment can reach: `--catalog` > `BLUE_DATA_OPS_CATALOG` > `~/.blue-ops/<profile>/.selected.catalog` > `active`.
 
@@ -318,7 +318,7 @@ blue-ops catalog list
 ┃ Catalog ┃ Selected ┃ Cards ┃ Operators ┃ Planning     ┃
 ┡━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
 │ active  │ *        │ 33    │ 33        │ yes          │
-│ history │          │ 87    │ 33        │ by allowlist │
+│ history │          │ 88    │ 33        │ by allowlist │
 └─────────┴──────────┴───────┴───────────┴──────────────┘
 ```
 
@@ -487,7 +487,7 @@ through Python and MCP, plus an offline precedence example.
 
 ## Operator resources
 
-Most operators ship a reviewed package: a guide at level 2, and worked examples at level 3.
+Every active operator ships a reviewed package: a guide at level 2, and worked examples at level 3. In the history catalog, 55 of the 88 exact operator IDs have a package.
 
 ```bash
 blue-ops operator resource list
@@ -750,7 +750,6 @@ blue-ops profile list --format nl
 `json` is one object on standard output and nothing else.
 
 There is no `csv`.
-A record bundle in this library is `list[list[dict]]` — groups of records — and CSV has no representation for the group boundary, so flattening one would silently merge groups into a single table.
 
 Every JSON result is one object with a payload key named for the resource:
 

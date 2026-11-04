@@ -241,7 +241,7 @@ if "OPENAI_API_KEY" not in os.environ:
     raise SystemExit("Set OPENAI_API_KEY before running this live-provider example.")
 
 # `seam` is the RegistrySeam built in Scenario 2, over the same `shop` database.
-operator = active_registry().resolve("nl2sql@3.0.0")
+operator = active_registry().resolve("nl2sql@4.0.0")
 output, _, meta = operator.run(
     [[]],
     {

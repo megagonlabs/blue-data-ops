@@ -31,6 +31,7 @@
     "nl2llm@3.0.0": "nl2llm/3.0.0/manifest.json",
     "nl2sql@2.0.0": "nl2sql/2.0.0/manifest.json",
     "nl2sql@3.0.0": "nl2sql/3.0.0/manifest.json",
+    "nl2sql@4.0.0": "nl2sql/4.0.0/manifest.json",
     "normalize_text@2.0.0": "normalize_text/2.0.0/manifest.json",
     "project@2.0.0": "project/2.0.0/manifest.json",
     "project@3.0.0": "project/3.0.0/manifest.json",

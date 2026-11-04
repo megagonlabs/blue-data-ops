@@ -203,12 +203,12 @@ Built-in origin is a set on the registry rather than a field on the card, so not
 | Function | Signature | Result |
 |---|---|---|
 | `default_registry` | `(**versions) -> OperatorRegistry` | 33 raw cards at `1.0.0`, with per-name semver overrides; unknown keys ignored |
-| `active_registry` | `() -> OperatorRegistry` | the 33 reviewed active cards — 12 at `@2.0.0`, 21 at `@3.0.0` |
-| `versioned_registry` | `() -> OperatorRegistry` | 87 cards: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0` |
+| `active_registry` | `() -> OperatorRegistry` | the 33 reviewed active cards — 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0` |
+| `versioned_registry` | `() -> OperatorRegistry` | 88 cards: 33 at `@1.0.0`, 33 at `@2.0.0`, 21 at `@3.0.0`, and `nl2sql@4.0.0` |
 
 All three validate every built-in's `DISCOVERY` record in a pre-pass before registering anything, so an invalid spec fails fast and no partial catalog exists.
 `default_registry()` registers raw cards with empty `tags` and `when_to_invoke`; only the other two attach the validated metadata and mark the registration reviewed.
-For the 21 outcome-enabled names, `default_registry()` selects the outcome implementation only for an exact `"3.0.0"` override.
+For the 21 outcome-enabled names, `default_registry()` selects the outcome implementation for an exact `"3.0.0"` override; `nl2sql` also accepts its declared `"4.0.0"` contract.
 
 ### Admission predicates and helpers
 
@@ -341,7 +341,7 @@ A typical module is short: the class declares `name`, `description`, and `attrib
 
 ### Outcome operators
 
-The 21 `@3.0.0` cards. Each subclasses `_OutcomeOperator` and its raw counterpart, in that order, so the measurement `run()` wraps the raw transform.
+The 21 retained `@3.0.0` cards and `nl2sql@4.0.0`. Each subclasses `_OutcomeOperator` and its raw counterpart, in that order, so the measurement `run()` wraps the raw transform.
 
 `_outcomes.py` holds `_OutcomeOperator`, which overrides two methods:
 
@@ -659,7 +659,7 @@ A `ModuleNotFoundError` naming exactly `openai` becomes `GENERATOR_DEPENDENCY_MI
 | create | `create_source_database`, `create_source_database_collection_entity` |
 | describe | `set_source_database_description`, `set_source_database_collection_entity_description` |
 | records | `set_record_data`, `get_record` |
-| introspect | `get_source_properties`, `list_collection_entities`, `list_entity_attributes`, `get_data_source_schema` |
+| introspect | `get_source_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `get_data_source_schema` |
 | connect | `connect_source`, `register_source` |
 | query | `execute_query` |
 | search | `search_records`, `search_records_hierarchical` |
@@ -729,7 +729,7 @@ A bare model name selects a provider too, so the check is on the outcome — wha
 A slash is not itself a provider prefix: an identifier such as `accounts/fireworks/models/llama-v3` names a model and is accepted, while `azure/my-deploy` is not, because the deployment names Azure and the property names the deployment.
 The two refusals share a code and carry different messages: one says the endpoint and the key come from the environment the deployment runs in, the other says a result carries what the provider answered rather than what the caller sent.
 Caching is off unless `llm.cache` is set, keyed per `cache_dir` so a per-call override selects its own isolated cache, with the canonically serialized call kwargs as the key.
-Rate limiting holds a minimum interval under a lock.
+Rate admission waits for a slot. Each attempt shares a cumulative budget capped at 10 seconds and the remaining operator deadline; if the wait expires, the caller receives a retryable local refusal. See [LLM settings](../docs/llm-settings.md#rate-admission-and-response-cache) for the user-facing limits and cache behavior.
 The provider call carries a `tenacity` retry for retryable `LLMError` instances: three attempts,
 exponential backoff, re-raising the last. LiteLLM's `UnsupportedParamsError`, and a provider
 `BadRequestError` whose structured body has code `unsupported_parameter`, become a non-retryable

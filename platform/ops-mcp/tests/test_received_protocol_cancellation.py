@@ -5,7 +5,7 @@ import threading
 from typing import Any, ClassVar
 
 import pytest
-from blue_data.registry.data_registry import DataRegistry
+from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[reportMissingTypeStubs]
 from blue_data_ops.operators import AttributeSpec, Operator, OperatorRegistry
 from mcp import types
 from mcp.shared.memory import create_connected_server_and_client_session

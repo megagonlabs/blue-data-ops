@@ -37,8 +37,8 @@ Both choices support this quick start and the pytest suite. The repository's Pyr
 The base install carries all 33 operators; the ML, vector, and LLM operators need the extras in [installation.md](installation.md).
 
 ```bash
-python -m pip install -e ./blue-data/lib "blue-data>=1.0.0"
-python -m pip install -e ./blue-data-ops/lib "blue-data-ops==1.0.0"
+python -m pip install -e ./blue-data/lib
+python -m pip install -e ./blue-data-ops/lib
 ```
 
 ## 4. Check the install

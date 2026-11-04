@@ -399,7 +399,7 @@ def test_operator_reference_check_cli_does_not_rewrite_subject(
     assert output.read_text(encoding="utf-8") == "stale\n"
 
 
-@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0"))
+@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0", "insert_table@3.0.0"))
 def test_current_rows_preserve_archived_evidence(operator_id: str) -> None:
     generator = _generator()
     before = generator.EVIDENCE_PATH.read_bytes()
@@ -411,7 +411,7 @@ def test_current_rows_preserve_archived_evidence(operator_id: str) -> None:
     assert generator.EVIDENCE_PATH.read_bytes() == before
 
 
-@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0"))
+@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0", "insert_table@3.0.0"))
 def test_wrong_archived_binding_is_rejected(
     operator_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -424,7 +424,7 @@ def test_wrong_archived_binding_is_rejected(
         generator._load_combined_rows()
 
 
-@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0"))
+@pytest.mark.parametrize("operator_id", ("nl2llm@3.0.0", "nl2bn@3.0.0", "insert_table@3.0.0"))
 def test_wrong_current_binding_is_rejected(operator_id: str) -> None:
     generator = _generator()
     rows = list(generator._load_combined_rows())
@@ -433,3 +433,15 @@ def test_wrong_current_binding_is_rejected(operator_id: str) -> None:
     rows[target]["implementation"]["sha256"] = "0" * 64
     with pytest.raises(ValueError, match="live implementation digest mismatch"):
         generator._validate_registry(active_registry(), tuple(rows))
+
+
+def test_current_sql_contract_preserves_historical_evidence_ids():
+    generator = _generator()
+    before = generator.EVIDENCE_PATH.read_bytes()
+    archived = {row["operator_id"]: row for row in generator._load_evidence()["rows"]}
+    current = {row["operator_id"]: row for row in generator._load_combined_rows()}
+    assert "nl2sql@3.0.0" in archived and "nl2sql@4.0.0" not in archived
+    assert "nl2sql@4.0.0" in current and "nl2sql@3.0.0" not in current
+    assert current["nl2sql@4.0.0"]["evidence"] == archived["nl2sql@3.0.0"]["evidence"]
+    assert current["nl2sql@4.0.0"]["implementation"] == archived["nl2sql@3.0.0"]["implementation"]
+    assert generator.EVIDENCE_PATH.read_bytes() == before

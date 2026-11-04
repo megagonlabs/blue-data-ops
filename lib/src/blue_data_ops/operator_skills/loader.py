@@ -18,7 +18,7 @@ from blue_data_ops.operators.types import AttributeSpec
 _INDEX_FORMAT = "blue-data-ops/operator-skill-index@1"
 _MANIFEST_FORMAT = "blue-data-ops/operator-skill@1"
 _PINNED_ID = re.compile(
-    r"^(?P<name>[^/@\\]+)@(?P<version>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$"
+    r"^(?P<name>[^/@\\]+)@(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$"
 )
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _INDEX_KEYS = frozenset({"format", "packages"})

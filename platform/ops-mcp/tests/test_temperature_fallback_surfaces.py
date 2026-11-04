@@ -12,7 +12,7 @@ from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
 from blue_data_ops_cli.commands import cli
 from click.testing import CliRunner
-from litellm.exceptions import UnsupportedParamsError
+from litellm.exceptions import BadRequestError, UnsupportedParamsError
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from blue_data_ops_mcp.server import create_server
@@ -34,7 +34,7 @@ def test_temperature_fallback_on_public_surfaces(
         calls.append(dict(kwargs))
         if "temperature" in kwargs:
             if rejection_kind == "provider":
-                raise litellm.BadRequestError(
+                raise BadRequestError(
                     message="synthetic provider rejection",
                     model="gpt-6.1-sol",
                     llm_provider="openai",

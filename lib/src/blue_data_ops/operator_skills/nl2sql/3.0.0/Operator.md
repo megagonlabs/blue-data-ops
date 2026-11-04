@@ -40,7 +40,7 @@
 | `protocol` | `attributes` | `yes` | `"postgres"` | attribute-spec:str; required; `postgres`, `mysql`, or `sqlite`. | `scalar` |
 | `question` | `attributes` | `yes` | `""` | attribute-spec:str; required; Nonblank question to translate. | `scalar` |
 | `read_only_executor` | `properties` | `no` | `none` | reserved; Reserved in caller properties; configure trusted operator defaults. | `presence` |
-| `schema` | `attributes` | `yes` | `""` | attribute-spec:str; optional; Declared compatibility input; the operator still fetches the live schema from the registry. | `scalar` |
+| `schema` | `attributes` | `yes` | `""` | attribute-spec:str; optional; Declared compatibility input; the operator still fetches registered column schema. | `scalar` |
 | `service_prefix` | `properties` | `no` | `"openai"` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
 | `source` | `attributes` | `yes` | `""` | attribute-spec:str; required; Nonblank data-source name. | `scalar` |
 | `template_syntax` | `properties` | `no` | `none` | reserved; Reserved in caller properties; configure trusted operator defaults. | `scalar` |
@@ -57,21 +57,15 @@ configured registry; the `schema` attribute remains a compatibility input. Calle
 controls and SQL policy are checked before schema, client, cache, or provider work,
 even on a blank-question raw path. Structured addressing validation still applies.
 
-Execution requires a constructor-bound `ReadOnlySQLExecutor` over exact existing
-source/database/collection targets and an actual boolean `execute_query=True`.
-Caller registry selectors and capabilities are denied. Stock CLI/MCP instances have
-no executor; an explicitly host-configured custom MCP instance may use its bound
-executor. A one-item ASCII SELECT prefix list is accepted without widening policy.
-The fixed SELECT token check is a quality check; the supported database read-only
-guard enforces execution with `commit=False`. There is no registry execution fallback.
-
-Only the inspected concrete SQLite/PostgreSQL/MySQL source guards are supported.
-Connections open before guard installation; SQLite path resolution may create a
-directory and refuses a missing database file in non-create mode. Use pre-existing
-approved targets and constrained principals. Read-only SELECT does not constrain
-stored functions, privileged file/network access, or resource use. Remote database
-checks are offline driver-order doubles. See the library's SQL execution guide for
-Python configuration and planner/executor migration.
+Execution requires a constructor-bound `ReadOnlySQLExecutor`, an exact existing
+target, and boolean `execute_query=True`. Caller registry selectors cannot grant
+access; stock CLI/MCP instances have no executor. The guard supports the inspected
+concrete SQLite, PostgreSQL, and MySQL source classes and calls them with
+`commit=False`. Connections open before guard installation. SQLite path resolution
+may create a directory, so use pre-existing approved targets. Read-only SELECT does
+not constrain stored functions, privileged file/network access, or resource use;
+use least-privilege principals. See the library SQL execution guide for the query
+syntax boundary and host setup.
 
 No rows is a successful empty result. Raw `apply()` returns `[[]]` for a blank
 question or missing generation registry; policy errors raise typed `LLMError`.
@@ -92,3 +86,8 @@ Caller prompt, extraction, and transport controls are reserved, including null o
 copied defaults. Dollar placeholders are substituted once; inserted data and Jinja
 syntax stay literal. Define custom prompts in trusted operator defaults. Injected
 clients retain generation settings, while operator prompt/extraction defaults win.
+
+Schema prompts use registered names and declared types, without row samples or
+connection properties. Registered schema may be stale; lookup failures are errors.
+The public executor accepts one SELECT and may refuse valid dialect syntax. Target
+collections constrain routing, not the tables SQL can read.

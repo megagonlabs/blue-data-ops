@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 
 import litellm  # the deterministic stub
@@ -63,14 +62,16 @@ def test_default_parallelism_exceeds_two() -> None:
 
 
 # --- rate limit ---
-def test_rate_limit_spaces_calls() -> None:
-    client = LLMClient("test", {**PROPS, "llm.rate_limit": 20})  # >= 50ms apart
-    started = time.monotonic()
-    client.execute_api_call({}, additional_data={})
-    client.execute_api_call({}, additional_data={})
-    client.execute_api_call({}, additional_data={})
-    elapsed = time.monotonic() - started
-    assert elapsed >= 0.1  # two enforced gaps of ~50ms
+def test_rate_limit_paces_early_calls() -> None:
+    import time
+
+    client = LLMClient("test", {**PROPS, "llm.rate_limit": 20})
+    starts: list[float] = []
+    for _ in range(3):
+        client.execute_api_call({}, additional_data={})
+        starts.append(time.monotonic())
+    assert all(b - a >= 0.045 for a, b in zip(starts, starts[1:]))
+    assert len(litellm.calls) == 3
 
 
 # --- ledger semantics (per API call, cache-aware, end-to-end latency) ---

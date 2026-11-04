@@ -48,7 +48,7 @@ EXPECTED_ACTIVE_OPERATOR_IDS = (
     "min@3.0.0",
     "nl2bn@3.0.0",
     "nl2llm@3.0.0",
-    "nl2sql@3.0.0",
+    "nl2sql@4.0.0",
     "normalize_text@2.0.0",
     "project@3.0.0",
     "segment_text@2.0.0",
@@ -161,7 +161,7 @@ def test_selection_constants_are_exact_name_unique_contracts() -> None:
     assert [value.partition("@")[0] for value in ACTIVE_OPERATOR_IDS] == sorted(
         value.partition("@")[0] for value in ACTIVE_OPERATOR_IDS
     )
-    assert sum(value.endswith("@3.0.0") for value in ACTIVE_OPERATOR_IDS) == 21
+    assert sum(value.endswith("@3.0.0") for value in ACTIVE_OPERATOR_IDS) == 20
     assert sum(value.endswith("@2.0.0") for value in ACTIVE_OPERATOR_IDS) == 12
 
 
@@ -327,7 +327,9 @@ def test_missing_retired_package_builtin_fails_resolution() -> None:
 
 
 def test_unsupported_package_builtin_and_custom_v3_fail() -> None:
-    with pytest.raises(ValueError, match="supports exact v2/v3 selections only"):
+    with pytest.raises(
+        ValueError, match="supports exact v2/v3 and built-in nl2sql@4.0.0 selections only"
+    ):
         freeze_deployment(versioned_registry(), ("avg@1.0.0",))
 
     registry = OperatorRegistry()
