@@ -193,21 +193,26 @@ def test_mysql_native_binding_does_not_rewrite_percent_identifiers(cext: bool):
     pytest.importorskip("mysql.connector")
     from mysql.connector.cursor import RE_SQL_FIND_PARAM
 
-    cext_param = getattr(
-        importlib.import_module("mysql.connector.cursor_cext"), "RE_SQL_FIND_PARAM"
-    )
+    formatter = RE_SQL_FIND_PARAM
+    if cext:
+        try:
+            formatter = getattr(
+                importlib.import_module("mysql.connector.cursor_cext"), "RE_SQL_FIND_PARAM"
+            )
+        except ImportError as error:
+            pytest.skip(f"optional MySQL C extension is unavailable: {error}")
 
     from blue_data_ops.data.sql_insert import insert_batch, insert_sql
 
     table, column = 'a%s"', "b%s`"
     query = insert_sql(table, [column], "mysql")
     expected = insert_sql(table, [column], "mysql", native=True)
-    # Both installed connector cursor formatters corrupt this valid identifier.
-    assert RE_SQL_FIND_PARAM.sub(b"?", query.encode()) != expected.encode()
-    assert cext_param.sub(b"?", query.encode()) != expected.encode()
+    # Each installed connector cursor formatter corrupts this valid identifier.
+    assert formatter.sub(b"?", query.encode()) != expected.encode()
     c = Connection(cext=cext)
     assert insert_batch(source_for("mysql", [c]), "db", table, [column], [(7,)]) == 1
     assert c.sql == [expected] and c.rows == [(7,)]
+    assert c.commits == 1
 
 
 def test_installed_postgres_mogrify_preserves_percent_identifiers():

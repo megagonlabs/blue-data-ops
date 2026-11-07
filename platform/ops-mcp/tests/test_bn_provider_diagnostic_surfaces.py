@@ -40,7 +40,11 @@ def test_real_provider_bn_diagnostics_across_four_surfaces(
     case: str,
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    profile_home = tmp_path / "profiles"
+    monkeypatch.setenv("BLUE_DATA_OPS_HOME", str(profile_home))
+    assert Path(config.cli_home()).resolve().is_relative_to(tmp_path.resolve())
     asyncio.run(check_surfaces(selector, case, tmp_path, caplog))
 
 

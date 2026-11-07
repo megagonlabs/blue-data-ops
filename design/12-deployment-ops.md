@@ -72,17 +72,17 @@ The core's optional extras:
 |---|---|---|
 | `ml` | `numpy`, `scikit-learn` | `classify`, `cluster`, `sklearn_estimator` |
 | `vector` | `numpy`, `sentence-transformers` | the three vector operators |
-| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6` | `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators |
+| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3` | `nl2llm`, `nl2sql`, `nl2bn`, and the `semantic_*` operators |
 | `openai` | `openai>=2.54,<3` | `OpenAIPlanGenerator` |
 | `dev` | `numpy`, `scikit-learn`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff==0.17.3`, `pyright==1.1.414`, `build`, `twine` | working on the package |
 
 `dev` is not the union of the other four.
 `sentence-transformers` is left out on purpose, so that a development environment cannot accidentally reach a real model download; the test suite substitutes a deterministic stub instead.
-Installing `dev` therefore gives a working `ml` and `llm` path but exercises the vector path through that stub.
+Installing `dev` gives a working `ml` path and deterministic LLM/vector test coverage. Tests using LiteLLM, SQL drivers or CLI/MCP packages need those packages installed.
 [11-testing-strategy.md](11-testing-strategy.md) covers how the substitution happens.
 
 The adapter declares one extra, `dev`, holding `build`, `pyright`, `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff`, and `twine`.
-The command declares the same `dev` extra plus `openai`, which pulls the core's `openai` extra for the provider-backed planner behind `blue-ops pipeline add --planner openai`.
+The command declares the same `dev` extra plus `openai`, which explicitly requests the core's planner extra. Its core `llm` dependency already requires `openai>=2.54,<3`.
 
 ---
 
@@ -144,7 +144,7 @@ requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 ```
 
-Build each from its own directory, with the `dev` extra installed for `build`.
+Build each from its own directory after `python -m pip install build`, or use an existing `dev` environment. All three builds need this frontend and their declared backend requirements.
 Each package's `scripts/build.sh` clears its own `build/` and `dist/` before running `python -m build` from the package root:
 
 ```bash
@@ -219,13 +219,13 @@ Steps 3 and 5 are specific to this repository and are not part of `pytest`.
 
 ## 6. Running the MCP Server
 
-The adapter installs one console command, which builds the server and runs it on the loopback defaults:
+The adapter installs one console command, which builds the server using environment-selected settings or the built-in loopback defaults:
 
 ```bash
 blue-data-ops-mcp
 ```
 
-`blue_data_ops_mcp.main` is the function behind it, and it is `serve()` with those defaults.
+`blue_data_ops_mcp.main` is the function behind it. It calls `serve()` without explicit bind arguments: `BLUE_DATA_OPS_MCP_HOST` and `BLUE_DATA_OPS_MCP_PORT` override the built-in defaults. Explicit Python arguments take precedence over those variables.
 Equivalently, when the server object is needed first:
 
 ```python

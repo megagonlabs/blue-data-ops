@@ -161,6 +161,8 @@ The cursor double reproduces one sqlite3 detail on purpose: `rowcount` reflects 
 `tests/stubs/litellm/` returns a deterministic completion derived from the prompt and never touches a network, and exposes a `fail_next` list that a test pushes an exception onto to simulate a provider failure.
 `tests/stubs/sentence_transformers/` returns an embedding derived from a SHA-256 digest of the input text, so similarity results are stable and no model is ever downloaded.
 
+The core `dev` extra runs deterministic operator tests with these stubs. It leaves out LiteLLM, SQL drivers, CLI/MCP packages and optional native extensions; tests requiring those packages skip individually when they are absent. Install the optional packages to run those integration tests. Neither run needs provider keys or model downloads. See [the install commands](../docs/installation.md#running-the-tests).
+
 The two stubs reach the test run by different routes.
 `lib/tests/conftest.py` imports the sentence-transformers stub and installs it into `sys.modules` before collection, so an operator's lazy `import_module("sentence_transformers")` finds it.
 `litellm` is found through the `tests/stubs` entry that the same `conftest.py` puts on `sys.path`.
@@ -193,7 +195,7 @@ Two are generator inputs whose SHA-256 digests are asserted by `test_operator_re
 The rest are recorded catalogs and outcome tables that the cross-version suites compare against.
 
 `numpy` and `scikit-learn` get no stub.
-Where a test needs them it declares that with `pytest.importorskip`, and where an operator needs them and cannot find them the expected result is an `EXECUTION_FAILED` record rather than a skip.
+Tests that exercise installed optional integrations check availability before running. Missing modules skip only the affected cases; broken or transitive imports fail. When an operator needs a missing extra, its expected result is an `EXECUTION_FAILED` record rather than a skip.
 
 ---
 
@@ -212,9 +214,12 @@ Skipping is narrow and explicit:
 |---|---|
 | `pytest.importorskip("blue_data")` at module scope | Suites that need a real `blue-data` registry: `unit/data/`, the registry-backed operators, `test_readme_usage.py` |
 | `pytest.importorskip("numpy")` inside a test | The few assertions that need a real array |
-| One `pytest.mark.skipif` | The `openai` extra, in `unit/plan/test_openai_generator.py`, guarded on whether the SDK imports |
+| Optional-package check | Real LiteLLM is found outside `tests/stubs`; other optional modules are imported normally and skip only when the requested module is absent. See `lib/tests/optional_integrations.py`. |
+| `pytest.importorskip` for SQL drivers | Driver-specific INSERT checks in `unit/operators/test_sql_insert_contract.py` |
+| Native-extension import guard | The optional MySQL C formatter; the pure Python formatter still runs |
+| `pytest.mark.skipif` | SDK availability in `unit/plan/test_openai_generator.py` and POSIX-specific cache permission checks |
 
-`parametrize` and the single `skipif` above are the only pytest markers the repository uses.
+`parametrize` and narrow optional-dependency skips select the applicable cases.
 There are no custom markers, no marker registry, and no `-m` selection to learn.
 
 ---

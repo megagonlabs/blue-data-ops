@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from tests.optional_integrations import require_optional
 from tests.unit.data.test_sql_diagnostics import MARKER, Raising
 
 
@@ -25,6 +26,7 @@ def query_schema_failure(error: BaseException) -> bool:
     ],
 )
 def test_additional_genuine_postgres(name: str, message: str) -> None:
+    require_optional("psycopg2")
     module = importlib.import_module("psycopg2" if name == "IntegrityError" else "psycopg2.errors")
     assert module.__file__ and "site-packages/psycopg2/" in module.__file__
     error = vars(module)[name](MARKER)
@@ -34,6 +36,7 @@ def test_additional_genuine_postgres(name: str, message: str) -> None:
 
 @pytest.mark.parametrize("code", ["23505", "unmapped", True, 1])
 def test_contradictory_or_malformed_pgcode_generic(code: Any) -> None:
+    require_optional("psycopg2")
     module = importlib.import_module("psycopg2.errors")
     base: Any = module.SyntaxError
 

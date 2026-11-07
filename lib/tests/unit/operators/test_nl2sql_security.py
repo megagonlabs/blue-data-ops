@@ -15,6 +15,7 @@ from blue_data_ops.llm import LLMError
 from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor
 from blue_data_ops.operators import NL2SQLOperator, OperatorRegistry, versioned_registry
 from blue_data_ops.operators.types import DataBundle, Properties
+from tests.optional_integrations import require_optional
 from tests.unit.operators.test_v2_llm_nl2 import ScriptedClient
 
 _GUARDED_METHODS = cast(frozenset[str], vars(sql_execution)["_GUARDED_METHODS"])
@@ -326,6 +327,7 @@ def test_remote_driver_order_double_only(
 ):
     import importlib
 
+    require_optional("psycopg2" if backend == "postgres" else "mysql.connector")
     module = importlib.import_module(
         "blue_data.source.sql." + backend + "." + backend + "_sql_source"
     )

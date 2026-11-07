@@ -14,6 +14,9 @@ import pytest
 @pytest.mark.parametrize("mode", ["sync", "async", "observed"])
 def test_installed_litellm_temperature_refusals(mode: str) -> None:
     if __name__ != "__main__":
+        from tests.optional_integrations import require_optional
+
+        require_optional("litellm")
         process = subprocess.run(
             [sys.executable, "-B", __file__, mode], capture_output=True, text=True, timeout=25
         )

@@ -10,8 +10,7 @@ from blue_data.source.source import (  # pyright: ignore[reportMissingTypeStubs]
 )
 
 from blue_data_ops.data.errors import RegistryFailure, RegistryReason
-from blue_data_ops.data.local_names import peer_names, sqlite_names
-from blue_data_ops.data.sql_errors import loaded_class
+from blue_data_ops.data.sql_targets import validate_sql_target
 
 
 class RegistrySeam:
@@ -299,28 +298,19 @@ def diagnose_generation_target(
         return
     state: Any = object.__getattribute__(seam, "__dict__")
     registry = cast(dict[str, Any], state).get("_registry")
-    if type(registry) is not DataRegistry:
-        return
-    storage: Any = object.__getattribute__(registry, "__dict__")
-    sources = cast(dict[str, Any], storage).get("sources") if type(storage) is dict else None
-    live = cast(dict[str, Any], sources).get(source) if type(sources) is dict else None
-    cls = loaded_class("blue_data.source.sql.sqlite.sqlite_sql_source", "SQLiteDBSource")
-    if cls is None or type(live) is not cls:
-        return
-    delegate: Any = registry
+    from blue_data_ops.data.sql_schema import has_schema_override
+    from blue_data_ops.llm.sql_execution import sql_error
+
     try:
-        databases = peer_names(delegate.list_source_databases(source))
-        collections = peer_names(delegate.list_database_collections(source, database))
+        validate_sql_target(
+            registry,
+            source,
+            database,
+            collection,
+            schema_override=has_schema_override(seam),
+            generation=True,
+        )
+    except RegistryFailure:
+        raise
     except Exception:
-        return
-    database_eligible = databases is not None and database not in databases
-    collection_eligible = collections is not None and collection not in collections
-    if not database_eligible and not collection_eligible:
-        return
-    names = sqlite_names(live)
-    if names is None:
-        return
-    if database_eligible and database not in names:
-        raise RegistryFailure(RegistryReason.DATABASE_ABSENT)
-    if database in names and collection_eligible and collection != "public":
-        raise RegistryFailure(RegistryReason.COLLECTION_ABSENT)
+        raise sql_error("sql_execution_failed") from None

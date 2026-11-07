@@ -10,6 +10,7 @@ import litellm
 import pytest
 from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
+from blue_data_ops_cli import config
 from blue_data_ops_cli.commands import cli
 from click.testing import CliRunner
 from litellm.exceptions import BadRequestError, UnsupportedParamsError
@@ -28,6 +29,8 @@ def test_temperature_fallback_on_public_surfaces(
     explicit: bool,
     rejection_kind: str,
 ) -> None:
+    monkeypatch.setenv("BLUE_DATA_OPS_HOME", str(tmp_path / "profiles"))
+    assert Path(config.cli_home()).resolve().is_relative_to(tmp_path.resolve())
     calls: list[dict[str, Any]] = []
 
     def completion(**kwargs: Any) -> dict[str, Any]:

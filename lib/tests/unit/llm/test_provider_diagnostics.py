@@ -60,6 +60,9 @@ def _attach_retry_evidence(error: Any, name: str) -> None:
 )
 def test_genuine_loaded_provider(name: str, message: str, retryable: bool) -> None:
     if __name__ != "__main__":
+        from tests.optional_integrations import require_optional
+
+        require_optional("litellm")
         result = subprocess.run(
             [sys.executable, "-B", __file__, "genuine", name, message, str(retryable)],
             capture_output=True,
@@ -83,6 +86,9 @@ def test_genuine_loaded_provider(name: str, message: str, retryable: bool) -> No
 @pytest.mark.parametrize("status", [400, 401, 404, 429, 500])
 def test_foreign_status_lookalike_generic(status: int) -> None:
     if __name__ != "__main__":
+        from tests.optional_integrations import require_optional
+
+        require_optional("litellm")
         result = subprocess.run(
             [sys.executable, "-B", __file__, "foreign", str(status)],
             capture_output=True,

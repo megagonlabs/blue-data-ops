@@ -1,0 +1,132 @@
+name: Bare lib dev
+
+on:
+  push:
+    branches: ['1.0']
+  pull_request:
+    branches: ['1.0']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: CPython ${{ matrix.python }} / lib[dev]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
+    steps:
+      - name: Check private dependency configuration
+        shell: bash
+        env:
+          BLUE_DATA_CI_REF: ${{ vars.BLUE_DATA_CI_REF }}
+          FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [[ "$FORK_PR" == true ]]; then
+            echo '::error::Private dependency CI requires a reviewed, trusted repository branch.'
+            exit 1
+          fi
+          if [[ ! "$BLUE_DATA_CI_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::Set BLUE_DATA_CI_REF to a reviewed, compatible blue-data commit SHA.'
+            exit 1
+          fi
+
+      - name: Check out blue-data-ops
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: blue-data-ops
+          persist-credentials: false
+
+      - name: Check out private blue-data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: megagon-internal/blue-data
+          ref: ${{ vars.BLUE_DATA_CI_REF }}
+          path: blue-data
+          token: ${{ secrets.BLUE_DATA_CI_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Set up CPython
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: x64
+
+      - name: Install bare lib dev and run all library unit tests
+        shell: python
+        run: |
+          import os
+          import platform
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          if platform.python_implementation() != "CPython" or sys.version_info[:2] not in {
+              (3, 12), (3, 13)
+          }:
+              raise SystemExit("Expected CPython 3.12 or 3.13")
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          core = workspace / "blue-data/lib"
+          library = workspace / "blue-data-ops/lib"
+          root = Path(tempfile.mkdtemp(prefix="lib-dev-", dir=os.environ["RUNNER_TEMP"]))
+          for name in ("home", "profiles", "cache", "config", "data", "tmp"):
+              (root / name).mkdir()
+          env = {
+              "PATH": os.environ["PATH"],
+              "LANG": "C.UTF-8",
+              "HOME": str(root / "home"),
+              "BLUE_DATA_OPS_HOME": str(root / "profiles"),
+              "XDG_CACHE_HOME": str(root / "cache"),
+              "XDG_CONFIG_HOME": str(root / "config"),
+              "XDG_DATA_HOME": str(root / "data"),
+              "TMPDIR": str(root / "tmp"),
+              "PYTHONNOUSERSITE": "1",
+              "PYTHONDONTWRITEBYTECODE": "1",
+              "PIP_CONFIG_FILE": os.devnull,
+              "PIP_NO_CACHE_DIR": "1",
+              "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+              "PIP_ONLY_BINARY": ":all:",
+              "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+              "HF_HUB_OFFLINE": "1",
+              "TRANSFORMERS_OFFLINE": "1",
+          }
+          subprocess.run(
+              [sys.executable, "-I", "-m", "venv", str(root / "venv")],
+              env=env, check=True,
+          )
+          python = root / "venv/bin/python"
+
+          def run(*args, cwd=workspace):
+              subprocess.run([str(python), *args], cwd=cwd, env=env, check=True)
+
+          # Resolve both local projects together so blue-data cannot come from PyPI.
+          run("-I", "-m", "pip", "install", "--only-binary=:all:",
+              "--index-url", "https://pypi.org/simple",
+              "-e", str(core), "-e", f"{library}[dev]")
+          run("-I", "-m", "pip", "check")
+          run("-I", "-c", '''
+          import sys
+          from importlib.util import find_spec
+
+          for module in (
+              "litellm", "psycopg2", "mysql.connector", "blue_data_ops_cli",
+              "blue_data_ops_mcp", "mcp", "sentence_transformers", "transformers", "torch",
+          ):
+              try:
+                  spec = find_spec(module)
+              except ModuleNotFoundError as error:
+                  if error.name is None or not (
+                      module == error.name or module.startswith(error.name + ".")
+                  ):
+                      raise
+                  spec = None
+              if spec is not None:
+                  raise SystemExit(f"Bare lib[dev] unexpectedly provides {module}")
+              print(f"Absent before pytest/stubs: {module}", flush=True)
+          ''')
+          run("-m", "pytest", "-rs", "tests/unit", cwd=library)

@@ -60,6 +60,8 @@ This is the first planned published release line. Earlier 3.x distribution numbe
 
 **Changed**
 
+- `run()` on `nl2sql@4.0.0` and the read-only SQL executor reject database or collection names missing from a nonempty registered catalog before generation or execution, including PostgreSQL and MySQL. Existing empty targets remain valid. Newly created databases must appear in the registry before these paths can use them. Targets omitted from those lists are also refused, including MySQL system databases and PostgreSQL system schemas such as `information_schema`. A SQLite catalog lookup failure now returns an error before calling the model.
+- The core `llm` extra now declares `openai>=2.54,<3`, matching the existing planner SDK range. LLM-only and CLI installations now receive the same bound.
 - Host SQL schema errors now use category `RECOVERABLE` instead of `FAILED`, with
   `retryable=False`. Repair the proposal before another call; an identical retry is
   not advised. This applies to every retained nl2sql version.

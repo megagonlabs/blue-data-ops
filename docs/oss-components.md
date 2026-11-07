@@ -30,7 +30,7 @@ the CLI and MCP adapters both pin core 1.0.0.
 | `psycopg2-binary` | blue-data[postgres] (optional backend diagnostics interface) | 2.9.13 | LGPL with exceptions | [upstream](https://psycopg.org/) |
 | `mcp` | ops-mcp:runtime | 1.30.0 | MIT | [upstream](https://github.com/modelcontextprotocol/python-sdk) |
 | `numpy` | core:ml, core:vector, core:dev | 2.4.6 / 2.5.4 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | [upstream](https://github.com/numpy/numpy) |
-| `openai` | core:openai, core:dev | 2.54.0 | Apache-2.0 | [upstream](https://github.com/openai/openai-python) |
+| `openai` | core:llm, core:openai, core:dev | 2.54.0 | Apache-2.0 | [upstream](https://github.com/openai/openai-python) |
 | `pydantic` | core:runtime, ops-mcp:runtime | 2.14.1 | MIT | [upstream](https://github.com/pydantic/pydantic) |
 | `pyright` | core:dev, ops-cli:dev, ops-mcp:dev | 1.1.414 | MIT | [upstream](https://github.com/RobertCraigie/pyright-python) |
 | `pytest` | core:dev, ops-cli:dev, ops-mcp:dev | 9.2.0 | MIT | [upstream](https://github.com/pytest-dev/pytest) |

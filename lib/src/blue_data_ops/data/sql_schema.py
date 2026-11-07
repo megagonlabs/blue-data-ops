@@ -14,7 +14,7 @@ def project_sql_schema(
 ) -> dict[str, Any]:
     """Project registered names, declared types, relation endpoints and join columns."""
     del protocol  # The registry derives the protocol from the registered source.
-    if _has_schema_override(registry):
+    if has_schema_override(registry):
         schema = registry.get_data_source_schema(source, database, collection)
         return _custom_schema_projection(schema)
     entities: list[dict[str, Any]] = []
@@ -45,13 +45,13 @@ def project_sql_schema(
     }
 
 
-def _has_schema_override(registry: Any) -> bool:
+def has_schema_override(registry: Any) -> bool:
     registry_class = cast(type[Any], type(registry))
     if isinstance(registry, RegistrySeam):
         return (
             "get_data_source_schema" in vars(registry)
             or type(registry).get_data_source_schema is not RegistrySeam.get_data_source_schema
-            or _has_schema_override(vars(registry).get("_delegate"))
+            or has_schema_override(vars(registry).get("_delegate"))
         )
     native = loaded_class("blue_data.registry.data_registry", "DataRegistry")
     return (

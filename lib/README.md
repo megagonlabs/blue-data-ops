@@ -59,7 +59,7 @@ The optional extras are `ml` for `classify`, `cluster`, and `sklearn_estimator`,
 python -m pip install -e "./blue-data-ops/lib[openai]"
 ```
 
-The `openai` extra pins `openai>=2.54,<3`. The SDK is imported only when an `OpenAIPlanGenerator` needs to create its own client. An LLM-backed `run()` call that cannot import its extra returns an `EXECUTION_FAILED` error in `ExecMeta`.
+The `openai` and `llm` extras both require `openai>=2.54,<3`; `openai` leaves out LiteLLM. The SDK is imported only when an `OpenAIPlanGenerator` needs to create its own client. An LLM-backed `run()` call that cannot import its extra returns an `EXECUTION_FAILED` error in `ExecMeta`.
 
 Read the distribution version separately from an operator-card version:
 

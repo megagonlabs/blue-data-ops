@@ -22,9 +22,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Only the provider-backed planner needs the OpenAI SDK, so it stays an extra. Without
-# it the library reports GENERATOR_DEPENDENCY_MISSING, which this CLI publishes as
-# ERROR: CONFIG naming the extra.
 openai = ["blue-data-ops[openai]==1.0.0"]
 dev = [
     "build",

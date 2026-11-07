@@ -384,7 +384,7 @@ Pass `scope` to narrow a search. The `source`, `database`, and `collection` fiel
 refine an explicit scope.
 
 `columns` is a list of `{"name": ..., "type": ...}` mappings; a bare type mapping fails validation.
-SQLite sources always resolve to the `public` collection, whatever you pass.
+SQLite and MySQL sources use collection `public`; the MySQL database name is not its collection. PostgreSQL uses the registered schema name. For SQL generation and execution, pass the exact database and collection names. See [SQL target checks and stale-catalog limits](llm-settings.md#sql-execution).
 The seam above is one of three ways to supply the registry.
 
 | What you pass in `properties` | What happens |

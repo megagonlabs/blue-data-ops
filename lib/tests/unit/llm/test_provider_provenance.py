@@ -33,6 +33,12 @@ MARKER = "SYNTHETIC_PRIVATE_PROVIDER_PROVENANCE"
     ],
 )
 def test_provider_provenance(case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.optional_integrations import require_optional
+
+    require_optional("litellm")
+    if case in {"surfaces-negative", "surfaces-positive"}:
+        for module in ("blue_data_ops_cli", "blue_data_ops_mcp", "mcp"):
+            require_optional(module)
     monkeypatch.setenv("BLUE_DATA_OPS_HOME", str(tmp_path / "profiles"))
     result = subprocess.run(
         [sys.executable, *(["-S"] if sys.flags.no_site else []), "-B", __file__, case],

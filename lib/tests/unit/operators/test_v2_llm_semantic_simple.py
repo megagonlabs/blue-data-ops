@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Sequence
 from threading import Event
 from typing import Any
@@ -26,6 +25,7 @@ from blue_data_ops.operators import (
     SemanticFilterOperator,
     SemanticProjectOperator,
 )
+from tests.unit.operators._timeout_sync import blocked_worker
 
 EXTRACT_INPUT: DataBundle = [[{"id": 1, "name": "Ada", "bio": "Ada uses Python"}]]
 EXTRACT_ATTRIBUTES: Attributes = {"entities": [{"name": "skill"}]}
@@ -395,6 +395,7 @@ def test_malformed_native_result_is_rejected_by_normalizer(
     ],
 )
 def test_timeout_calls_body_once_and_discards_late_result(
+    monkeypatch: pytest.MonkeyPatch,
     operator: Operator,
     input_data: DataBundle,
     attributes: Attributes,
@@ -407,16 +408,19 @@ def test_timeout_calls_body_once_and_discards_late_result(
         properties: Properties | None = None,
     ) -> FunctionResult:
         del call_attributes, properties
-        time.sleep(0.04)
+        body()
         finished.set()
         return FunctionResult(call_input, {"late": True})
 
-    with patch.object(operator, "_execute", side_effect=slow_execute) as execute:
-        output_data, output_attributes, meta = operator.run(
-            input_data,
-            attributes,
-            {"execution.timeout_seconds": 0.005},
-        )
+    with blocked_worker(monkeypatch) as body:
+        with patch.object(operator, "_execute", side_effect=slow_execute) as execute:
+            output_data, output_attributes, meta = operator.run(
+                input_data,
+                attributes,
+                {"execution.timeout_seconds": 0.005},
+            )
+        assert execute.call_count == 1
+        assert not finished.is_set()
 
     assert output_data == [[]]
     assert output_attributes == {}
@@ -425,7 +429,7 @@ def test_timeout_calls_body_once_and_discards_late_result(
     assert meta.errors[0].code is ErrorCode.OPERATOR_TIMEOUT
     assert meta.errors[0].stage is ErrorStage.EXECUTE
     assert execute.call_count == 1
-    assert finished.wait(timeout=0.2)
+    assert finished.is_set()
 
 
 @pytest.mark.parametrize(

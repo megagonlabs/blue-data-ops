@@ -145,10 +145,12 @@ def test_invalid_explicit_host(value: Any) -> None:
 
 
 @pytest.mark.parametrize("value", ["", "   "])
-def test_invalid_environment_host(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_blank_environment_host_uses_loopback_default(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv(f"{PREFIX}_HOST", value)
-    with pytest.raises(ValueError, match="HOST"):
-        create_server(operator_ids=())
+    settings = create_server(operator_ids=()).settings
+    assert (settings.host, settings.port) == ("127.0.0.1", 8010)
 
 
 @pytest.mark.parametrize("value", [0, -1, 65536, True, False, "8010", 8010.0])
@@ -157,7 +159,14 @@ def test_invalid_explicit_port(value: Any) -> None:
         create_server(operator_ids=(), port=value)
 
 
-@pytest.mark.parametrize("value", ["", "bad", "0", "-1", "65536", "1.2"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_environment_port_uses_default(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(f"{PREFIX}_PORT", value)
+    settings = create_server(operator_ids=()).settings
+    assert (settings.host, settings.port) == ("127.0.0.1", 8010)
+
+
+@pytest.mark.parametrize("value", ["bad", "0", "-1", "65536", "1.2"])
 def test_invalid_environment_port(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(f"{PREFIX}_PORT", value)
     with pytest.raises(ValueError, match="PORT") as error:

@@ -15,6 +15,8 @@ library or MCP call, install the [`llm` extra](installation.md#optional-extras),
 model allowed by your deployment, and configure its provider credential. The CLI package
 already depends on that extra.
 
+Check `meta.errors` before using output from `run()`. A nonempty error list means the call failed; `[[]]` can also be a successful empty result.
+
 Provider routing is set in the process environment: `BLUE_DATA_LLM_PROVIDER` defaults to
 `openai`, and `BLUE_DATA_LLM_ALLOWED_MODELS` can limit the models callers may select.
 For MCP, these settings belong to the server process. A call, stored pipeline, or operator
@@ -91,6 +93,8 @@ output, _, meta = operator.run(
     {"query": "Return one example product."},
     {"llm.model": "gpt-5-mini", "llm.reasoning_effort": "low"},
 )
+if meta.errors:
+    raise RuntimeError(meta.errors)
 ```
 
 The same properties map works with `semantic_filter@3.0.0`; see the
@@ -217,13 +221,15 @@ operator = active_registry().resolve("nl2llm@3.0.0")
 output, _, meta = operator.run(
     [[]],
     {"query": "Return one example product."},
-    {"llm_client": client, "llm.model": "gpt-6-sol"},
+    {"llm_client": client, "llm.model": "gpt-6-sol", "llm.temperature": None},
 )
+if meta.errors:
+    raise RuntimeError(meta.errors)
 ```
 
-With `BLUE_DATA_LLM_PROVIDER=openai`, the call selects GPT-6 Sol. The client's
-temperature of zero is an explicit client setting and is rejected for GPT-6 Sol
-before the provider call. Set `llm.temperature` to `None` on the call to clear it. The
+With `BLUE_DATA_LLM_PROVIDER=openai`, the call selects GPT-6 Sol and clears the client's
+explicit temperature setting. Omitting `llm.temperature: None` would keep the client's
+temperature of zero, which is rejected for GPT-6 Sol before the provider call. The
 client ledger remains available after the call. A live call needs the
 deployment's provider credential.
 
@@ -406,6 +412,25 @@ execution. `execute_query` must be an actual boolean.
 ASCII `SELECT`, ignoring case without trimming. It cannot enable WITH, DDL, or writes.
 The generated query must be a nonempty string starting with the SELECT token.
 
+SQLite and MySQL sources use collection `public`; the MySQL database name is not its
+collection. PostgreSQL uses the registered schema name. SQL addressing requires the
+exact database and collection names.
+
+`run()` on `nl2sql@4.0.0` checks the registered database and collection names before
+calling the model; a missing name in a nonempty list returns an error. PostgreSQL and
+MySQL use the registered lists, while SQLite generation can also find a new database in
+its configured directory. The read-only executor checks the registered names on all
+three backends. An existing empty target is valid; an empty or unsynced list cannot
+establish that a target is missing.
+
+After creating a database, synchronize the registry before using it. MySQL can keep an
+existing connection's old database list after a sync; if a new database is still
+missing, recreate its source and registry.
+
+Custom schema callbacks still supply their own schema. The new generation check does not
+apply to `nl2sql@1.0.0`, `nl2sql@2.0.0`, or direct `apply()` / `invoke()` calls;
+execution through the read-only executor still checks its declared target.
+
 Schema generation uses registered entity and attribute names and declared types,
 plus relation names and source/target endpoints (`source`, `target`, `source_entity`,
 `target_entity`). The optional `foreign_keys_source_columns` and
@@ -445,6 +470,8 @@ output, _, meta = operator.run(
      "database": "analytics", "collection": "public"},
     {"execute_query": True},
 )
+if meta.errors:
+    raise RuntimeError(meta.errors)
 ```
 
 Use `PipelineExecutor(operators)` for direct pipeline execution with that registry. Rule planning
