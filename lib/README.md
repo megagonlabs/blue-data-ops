@@ -485,7 +485,7 @@ A generator that needs schema context receives `DataContextSnapshot`, never rows
 
 ### OpenAI plan generation
 
-`OpenAIPlanGenerator` makes one non-streaming Responses call per `generate()` and requires the `openai` extra.
+`OpenAIPlanGenerator` makes one non-streaming Responses call per `generate()` and requires the OpenAI SDK, which the `openai` and `llm` extras install.
 
 ```python
 from blue_data_ops.operators import active_registry
@@ -532,7 +532,7 @@ This README summarizes the compatibility and migration contracts needed by wheel
 
 ## Running tests
 
-The complete unit suite includes cross-adapter provider regressions. In addition to this package's `dev` extra, it requires the `llm` extra and the CLI and MCP packages with their `dev` extras, all in the same environment. The local package requirements from the repository root are `./lib[dev,llm]`, `./platform/ops-cli[dev]` and `./platform/ops-mcp[dev]`; see the installation guide for the Blue SDK and optional backend dependencies. A core-only `dev` installation does not supply that complete test environment.
+The `dev` extra is enough to run the unit suite. Tests that need LiteLLM, the PostgreSQL or MySQL drivers, or the CLI and MCP packages skip with a reason when those are absent. To run them as well, install `./lib[dev,llm]`, `./platform/ops-cli[dev]` and `./platform/ops-mcp[dev]` from the repository root in the same environment; the installation guide lists the Blue SDK and driver requirements.
 
 With those prerequisites installed, run from `lib/`:
 

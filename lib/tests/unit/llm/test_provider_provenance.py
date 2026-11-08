@@ -354,18 +354,19 @@ def retry_cases() -> None:
 
 
 async def surface_cases(positive: bool) -> None:
+    from importlib import import_module
     from tempfile import TemporaryDirectory
     from unittest.mock import patch
-
-    from blue_data_ops_cli import config
-    from blue_data_ops_cli.commands import cli
-    from blue_data_ops_mcp.server import create_server
-    from click.testing import CliRunner
-    from mcp.shared.memory import create_connected_server_and_client_session
 
     from blue_data_ops.operators import Operator, OperatorRegistry
     from blue_data_ops.plan import DataPipeline, PipelineExecutor
 
+    # The CLI, the MCP server and their dependencies are not part of the dev extra.
+    config: Any = import_module("blue_data_ops_cli.config")
+    cli: Any = import_module("blue_data_ops_cli.commands").cli
+    runner: Any = import_module("click.testing").CliRunner()
+    server: Any = import_module("blue_data_ops_mcp.server")
+    memory: Any = import_module("mcp.shared.memory")
     error = owned(stack_error("429" if positive else "parse-key"))
 
     class Failure(Operator):
@@ -410,7 +411,6 @@ async def surface_cases(positive: bool) -> None:
         plan_file = path / "plan.json"
         plan_file.write_text(json.dumps(spec))
         with patch.object(config, "build_catalog", return_value=registry):
-            runner = CliRunner()
             pipeline_name = "provider-positive" if positive else "provider-negative"
             imported = runner.invoke(
                 cli,
@@ -447,8 +447,8 @@ async def surface_cases(positive: bool) -> None:
                 assert detail["stage"] == "EXECUTE"
                 assert MARKER not in result.stdout + result.stderr
                 assert folder not in result.stdout + result.stderr
-    server = create_server(registry=registry, operator_ids=(operator.operator_id,))
-    async with create_connected_server_and_client_session(server) as client:
+    mcp_server = server.create_server(registry=registry, operator_ids=(operator.operator_id,))
+    async with memory.create_connected_server_and_client_session(mcp_server) as client:
         wire = await client.call_tool(
             "ops_provider_provenance",
             {"input_data": [[{"private": MARKER}]]},

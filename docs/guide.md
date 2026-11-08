@@ -307,6 +307,8 @@ A package that changes between two calls can make the second one fail, and there
 
 Six operators reach a database through a `blue-data` registry: `create_database`, `create_table`, `insert_table`, `data_discover`, `nl2sql`, and `nl2bn`.
 Wrap the registry in a `RegistrySeam` and pass it in the call properties.
+`create_table` and `create_database` refuse names that are not strings or contain a double quote, backtick, semicolon or NUL, and column `type` or `misc` that is not a string or contains a semicolon, `--`, `/*` or NUL, before any registry call; `run()` returns `INVALID_INPUT` naming the field. Column `type` and `misc` are still inserted as SQL, and so are column names on SQLite, which does not quote them (a column named `unit price` becomes a column `unit` whose declared type begins with `price`); pass only definitions and names you would run yourself.
+With `overwrite`, the SQLite, PostgreSQL and MySQL sources drop the existing table before they build the new definition, and `create_table` checks every field they read first. A definition the database itself rejects is not caught by that check: PostgreSQL rolls the drop back, though the registry no longer lists the table until the source is synced again; SQLite and MySQL have already committed the drop, so there the table is lost.
 This block creates a throwaway SQLite database, makes a table, inserts a row, reads it back, and finds the table by search.
 
 ```python
@@ -598,7 +600,7 @@ Without an allowlist, built-ins are limited to the `active_registry()` selection
 
 ## Plan with a provider
 
-`OpenAIPlanGenerator` needs the `openai` extra.
+`OpenAIPlanGenerator` needs the OpenAI SDK, which the `openai` and `llm` extras install.
 It makes one non-streaming Responses call per `generate()` and constructs `openai.OpenAI()` at first use unless you inject a client with `client=`.
 
 ```python

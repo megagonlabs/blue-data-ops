@@ -9,7 +9,7 @@
 | `created_by` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
 | `data_registry` | `properties` | `no` | `none` | helper:resolve_registry; `RegistrySeam` or raw `DataRegistry`; another value falls through to naming keys | `seam` |
 | `data_registry.name` | `properties` | `no` | `none` | helper:resolve_registry; used only with a truthy `platform.name`; converted to string | `seam` |
-| `database` | `attributes` | `yes` | `""` | attribute-spec:str; required non-blank string | `scalar` |
+| `database` | `attributes` | `yes` | `""` | attribute-spec:str; required non-blank string with no `"`, backtick, `;` or NUL | `scalar` |
 | `description` | `attributes` | `yes` | `""` | `attribute-spec:str` | `scalar` |
 | `execution.timeout_seconds` | `base-properties` | `no` | `none` | finite-positive-number; Boolean rejected | `scalar` |
 | `overwrite` | `attributes` | `yes` | `false` | `attribute-spec:bool` | `scalar` |
@@ -20,6 +20,8 @@
 ## Behavior
 
 The registry receives `source`, `database`, `properties`, and `overwrite`. If present, `description` is written next and `created_by` is written last. A later failure can therefore leave the database or its earlier metadata in place. The call requests an index rebuild after each operation.
+
+The PostgreSQL and MySQL sources quote the database name without escaping it, so a name that is not a string, or holds `"`, a backtick, `;` or NUL, is refused before any registry call. `run()` returns `INVALID_INPUT`, `invoke()` returns `None`, and raw `apply()` returns the original input. `overwrite` is read as attribute validation reads it, so `"true"`, `"yes"` and `"1"` mean true and `"false"`, `"no"` and `"0"` mean false. A value validation refuses, such as `"maybe"`, is refused in the same way; when no name is refused first, `run()`'s suggestion is `overwrite must be true or false`. A null `overwrite` is refused by `run()` and `invoke()` as well, but raw `apply()`, which does not validate, reads it as false.
 
 `apply()` catches a missing registry or a registry-operation failure and returns the original input. Registry resolution itself occurs before that catch, so a resolver exception remains visible. `invoke()` validates first and otherwise keeps the same raw behavior. `run()` calls the execution body directly: it returns `[[]]` with one `EXECUTION_FAILED` error for missing registry, resolver failure, or registry-operation failure. Empty input is accepted because the operation is controlled by attributes.
 

@@ -2,7 +2,7 @@
   "format": "blue-data-ops/operator-skill@1",
   "operator_id": "create_database@2.0.0",
   "resources": {
-    "guide": {"path": "Operator.md", "sha256": "d167db431a6d4b5d10975d0363fc282404cc4d50afa6c0c05ff6f4ff9047011b"},
+    "guide": {"path": "Operator.md", "sha256": "ab0a3c5afc1be67e987a54184466efdc25c219252b3ab2cf694fb43857f21b63"},
     "examples": {"path": "examples.md", "sha256": "95799fbbd7d6a7c7b5e59b4d6b7d0930109289493cb882a34264716326b01d81"}
   }
 }

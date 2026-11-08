@@ -14,6 +14,7 @@ from blue_data_ops.operators import Operator, OperatorRegistry
 from blue_data_ops.operators.types import Attributes, DataBundle, Properties
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
 from click.testing import CliRunner
+from optional_integrations import require_optional
 
 from blue_data_ops_cli import config
 from blue_data_ops_cli.commands import cli
@@ -90,6 +91,8 @@ async def test_owned_diagnostics_agree_through_run_pipeline_cli_and_mcp(
     kind: str,
     with_log: bool,
 ) -> None:
+    for package in ("blue_data_ops_mcp", "mcp"):
+        require_optional(package)
     error, expected_message = owned_error(kind, tmp_path)
     operator = Failure(error)
     registry = OperatorRegistry()

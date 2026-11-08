@@ -329,7 +329,7 @@ The planner compiles only admitted, supported ids that its own discovery returne
 
 ## Provider-backed plan generation
 
-`OpenAIPlanGenerator` makes one non-streaming Responses call per `generate()` and needs the `openai` extra.
+`OpenAIPlanGenerator` makes one non-streaming Responses call per `generate()` and needs the OpenAI SDK, which the `openai` and `llm` extras install.
 `allowed_operator_ids` is an authorization boundary rather than a hint: the decoder checks the same set the constructor was given.
 
 ```python

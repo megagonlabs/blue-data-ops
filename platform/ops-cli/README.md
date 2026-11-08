@@ -557,7 +557,7 @@ settings: planner=rule (default)
 ```
 
 `--goal` replaces the goal in the request file. The shipped rule template matches goals containing `average` and either `above` or `greater`; another goal can produce `NO_CANDIDATES`.
-`--planner rule` uses that template. `--planner openai` calls a model, needs the `openai` extra, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
+`--planner rule` uses that template. `--planner openai` calls a model, needs the supported OpenAI SDK, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
 `--send-data-context` discloses the request's schema snapshot to that model and is off by default; without it a generator that has been handed a snapshot fails before it makes any provider traffic.
 
 ```bash

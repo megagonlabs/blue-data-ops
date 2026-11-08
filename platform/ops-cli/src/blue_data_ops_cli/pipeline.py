@@ -500,7 +500,7 @@ def pipeline_group() -> None:
     type=click.Choice(PLANNERS),
     default=None,
     show_default="the profile's BLUE_DATA_OPS_PLANNER, else rule",
-    help="rule uses the shipped templates; openai calls a model and needs the openai extra.",
+    help="rule uses the shipped templates; openai calls a model and needs the OpenAI SDK.",
 )
 @click.option(
     "--model",

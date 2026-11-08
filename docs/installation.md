@@ -251,7 +251,7 @@ python -m pip install "./lib[dev,llm]" psycopg2-binary mysql-connector-python \
 (cd lib && python -m pytest)
 ```
 
-With these packages installed, their integration tests should run; check the skip reasons. Native-extension cases still require a compatible native build. The CLI's core pin installs the `vector` extra, so this profile includes `sentence-transformers`; deterministic vector tests still use the stub and download no model.
+With these packages installed, their integration tests run; the skip report names anything still missing. Four response-cache tests also need `blue-data-llm-source`: with its checkout under the same parent directory, also run `python -m pip install ../blue-data-llm-source/lib`. Two Bayesian-network tests need the `bn` extra of `blue-data`: `python -m pip install "../blue-data/lib[bn,server]"`. Native-extension cases still require a compatible native build. The CLI's core pin installs the `vector` extra, so this profile includes `sentence-transformers`; deterministic vector tests still use the stub and download no model.
 
 Each interface package has its own suite.
 From `platform/ops-mcp/` and from `platform/ops-cli/`:
@@ -260,24 +260,16 @@ From `platform/ops-mcp/` and from `platform/ops-cli/`:
 python -m pytest
 ```
 
+After only one package's install script, the tests that also drive the other interface skip with `optional integration blue_data_ops_cli is not installed` (MCP suite) or `optional integration blue_data_ops_mcp is not installed` (CLI suite). The profile above installs both, so they run there.
+
 All three configurations set `asyncio_mode = "auto"` and report coverage on `src`.
-Ruff and Pyright read their settings from the same `pyproject.toml`:
+Ruff and Pyright read their settings from the same `pyproject.toml`; run them from `lib/`, `platform/ops-cli/` or `platform/ops-mcp/` with the environment activated:
 
 ```bash
 python -m ruff format --check .
 python -m ruff check .
 python -m pyright
 ```
-
-### Bare-dev CI
-
-`.github/workflows/lib-dev.yml` runs the full library unit suite on CPython 3.12 and 3.13 after a fresh `lib[dev]` install. Before pytest loads its stubs, it checks that LiteLLM, SQL drivers, CLI/MCP packages, sentence-transformers, Transformers and Torch are absent. No provider keys, database services or model downloads are needed.
-
-The workflow reads the private sibling repository, so configure repository variable `BLUE_DATA_CI_REF` to a reviewed full commit SHA and repository secret `BLUE_DATA_CI_READ_TOKEN` as an expiring, fine-grained token for a dedicated account with Contents: read-only access to only `megagon-internal/blue-data`. Start the 1.0 setup with `3f0d1f3c7dfba02af3dc995751f3d353471f9753`: the bare-dev setup and unit-test body passed locally on both Python versions at that dependency commit. Update the pin when reviewing dependency changes.
-
-Checkout credentials are not persisted or passed to test subprocesses. Review and configure these settings before pushing the workflow. A repository maintainer should own token renewal before expiry and follow the organization's [token approval and lifetime policy](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/setting-a-personal-access-token-policy-for-your-organization). Keep GitHub's setting for sending secrets to fork PRs disabled; a fork can edit the workflow's own guard. After reviewing a fork change, put the reviewed change on a trusted repository branch and open a pull request to `1.0`. Repository writers can access the private dependency through this secret. Dependabot PRs without the secret fail setup.
-
-The job triggers on pushes and pull requests targeting `1.0`, plus manual dispatch. For a [manual run](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow), choose **Actions → Bare lib dev → Run workflow** and select branch `1.0`. The workflow must also exist on the repository's default branch for manual dispatch to be available. Check the first GitHub-hosted run after applying these settings; local command validation does not verify repository authentication or hosted-runner behavior.
 
 ## Next steps
 

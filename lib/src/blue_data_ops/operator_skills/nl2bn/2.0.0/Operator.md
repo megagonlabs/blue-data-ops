@@ -46,7 +46,7 @@
 
 ## Query, correction, and execution
 
-With no supplied schema, the operator fetches one from the registry. A string containing `nodes` and `edges`, or a raw mapping passed to `apply()`, enables node, state, and evidence validation. Unstructured schema content still reaches the generation prompt but does not receive graph validation.
+With no supplied schema, the operator fetches one from the registry. If that schema has no `graph_structure`, the operator uses the graph the registry stored when it synced the source: the collection's `metadata.graph_structure`, or a `graph_structure` on the stored record itself when the metadata holds none it can use. A stored graph is used only when its `nodes` and `edges` are mappings and it has at least one node. A registry that overrides `get_data_source_schema`, or a collection with no stored graph, gets no such fallback. A string containing `nodes` and `edges`, or a raw mapping passed to `apply()`, enables node, state, and evidence validation. Unstructured schema content still reaches the generation prompt but does not receive graph validation, so a guessed state name reaches inference unchecked.
 
 The first provider request includes the question, context, and schema section. A malformed or invalid query can trigger up to `max_corrections` additional calls. Every correction request includes the original query, validation errors, and the same schema section again. Owners must account for that repeated disclosure when the schema is sensitive.
 
@@ -60,3 +60,15 @@ syntax stay literal. Define custom prompts in trusted operator defaults. Injecte
 clients retain generation settings, while operator prompt/extraction defaults win.
 
 Bayesian inference still runs; the legacy `execute_query` property is ignored and is not an SQL safety switch.
+
+## Bayesian-network sources
+
+`BayesianNetworkSource` comes with the `blue-data` `bn` extra (`pgmpy` and `networkx`). It reads each network from `<source_directory>/<database>/<collection>/`, which must hold `model.bif`, `node_mapping.json` and `state_mapping.json`. A directory without `model.bif` is not listed as a collection, and a model without both mapping files does not load, so sync stores no graph for it and inference fails.
+
+The CLI and MCP server load sources from the file named by `BLUE_DATA_SOURCES_CONFIG`. This source has no short type name; use `"type": "class"` with its full class path:
+
+```json
+{"sources": [{"type": "class", "name": "bn", "_class": "blue_data.source.network.bn.bayesian_network_source.BayesianNetworkSource", "properties": {"connection": {"source_directory": "/path/to/networks"}}}]}
+```
+
+Loading syncs each source and stores its graphs. With `BLUE_DATA_SOURCES_SYNC=false` nothing is stored, and callers must pass `schema` to get graph validation.

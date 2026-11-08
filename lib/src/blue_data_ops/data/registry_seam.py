@@ -104,6 +104,16 @@ class RegistrySeam:
     def get_source_properties(self, source: str) -> Any:
         return self._delegate.get_source_properties(source)
 
+    def get_source_database_collection_properties(
+        self, source: str, database: str, collection: str
+    ) -> Any:
+        # Sync stores the metadata a source reports for a collection under "metadata".
+        # A wrapped registry without this reader has no stored properties to offer.
+        read = getattr(self._delegate, "get_source_database_collection_properties", None)
+        if not callable(read):
+            return None
+        return read(source, database, collection)
+
     # The record listings below read registered metadata only; they neither connect
     # to the source nor execute a query. Planning context and SQL prompts use them instead of
     # build_schema_for_nl() so it can tell an absent declared type from a real one.
@@ -159,7 +169,8 @@ class RegistrySeam:
         # The facade keeps the caller-supplied `protocol` parameter for signature
         # compatibility but does not forward it: the wrapped registry derives the
         # protocol from the source's own connection properties, so the parameter
-        # has no delegate-side counterpart.
+        # has no delegate-side counterpart. A network's stored graph is read with
+        # get_source_database_collection_properties().
         del protocol
         return self._delegate.get_data_source_schema(
             source=source,

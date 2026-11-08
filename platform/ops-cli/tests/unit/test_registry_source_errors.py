@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -10,9 +11,8 @@ from blue_data.registry.data_registry import DataRegistry  # pyright: ignore[rep
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.operators import OperatorRegistry, active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
-from blue_data_ops_mcp.server import create_server
 from click.testing import CliRunner
-from mcp.shared.memory import create_connected_server_and_client_session
+from optional_integrations import require_optional
 
 from blue_data_ops_cli import config
 from blue_data_ops_cli.commands import cli
@@ -34,6 +34,10 @@ def attrs(name: str) -> dict[str, Any]:
 async def test_missing_source_is_contained_before_client_on_all_surfaces(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
 ):
+    for package in ("blue_data_ops_mcp", "mcp"):
+        require_optional(package)
+    memory: Any = importlib.import_module("mcp.shared.memory")
+    server_module: Any = importlib.import_module("blue_data_ops_mcp.server")
     import blue_data_ops.operators._nl2bn_outcome as bn_outcome
     import blue_data_ops.operators.nl2bn_operator as bn
     import blue_data_ops.operators.nl2sql_operator as sql
@@ -95,10 +99,10 @@ async def test_missing_source_is_contained_before_client_on_all_surfaces(
     assert wire["error"]["detail"]["retryable"] is False
     assert error["message"] in wire["error"]["message"]
 
-    server = create_server(
+    server = server_module.create_server(
         registry=catalog, data_registry=seam, operator_ids=(operator.operator_id,)
     )
-    async with create_connected_server_and_client_session(cast(Any, server)._mcp_server) as client:
+    async with memory.create_connected_server_and_client_session(server._mcp_server) as client:
         result = await client.call_tool("ops_" + name, {"input_data": [[]], "attributes": target})
     assert result.isError is False
     assert cast(dict[str, Any], result.structuredContent)["exec_meta"]["errors"][0] == error

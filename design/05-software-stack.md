@@ -94,7 +94,7 @@ That duplication is deliberate: the extra names the full set an LLM-backed call 
 | `DataRegistry` | `blue_data.registry.data_registry` | the registry the seam wraps and the default provider constructs |
 | `DataSource` | `blue_data.source.source` | the type `RegistrySeam.register_source()` accepts |
 
-The seam calls a fixed set of registry methods and nothing else: `create_source_database`, `create_source_database_collection_entity`, `set_source_database_description`, `set_source_database_collection_entity_description`, `set_record_data`, `get_record`, `get_source_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `connect_source`, `register_source`, `execute_query`, `get_data_source_schema`, `search_records`, `search_records_hierarchical`, and `build_index`.
+The seam calls a fixed set of registry methods and nothing else: `create_source_database`, `create_source_database_collection_entity`, `set_source_database_description`, `set_source_database_collection_entity_description`, `set_record_data`, `get_record`, `get_source_properties`, `get_source_database_collection_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `connect_source`, `register_source`, `execute_query`, `get_data_source_schema`, `search_records`, `search_records_hierarchical`, and `build_index`.
 
 `blue-data` ships no `py.typed`, so its imports are the package's one untyped-library boundary.
 The seam holds a single `Any`-typed delegate attribute and crosses that boundary once, which is why unknown member types stop in `data/` rather than spreading into every caller.
