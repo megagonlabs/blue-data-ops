@@ -418,7 +418,7 @@ class DataContextProvider(Protocol):
 | Name | Kind | Behavior |
 |---|---|---|
 | `RulePlanGenerator(rules=None)` | generator | evaluates caller rules in order and keeps their drafts. The default rule recognizes the built-in filter-then-average request. |
-| `OpenAIPlanGenerator(model, *, registry, allowed_operator_ids, ...)` | generator | one non-streaming Responses call per `generate()`, against the packaged strict schema. Requires the `openai` extra. |
+| `OpenAIPlanGenerator(model, *, registry, allowed_operator_ids, ...)` | generator | one non-streaming Responses call per `generate()`, against the packaged strict schema. Requires the OpenAI SDK (`openai` or `llm` extra). |
 | `RequireSinglePlan()` | selector | accepts exactly one draft; zero raises `NO_CANDIDATES` and several raise `AMBIGUOUS_CANDIDATES` |
 | `RegistryDataContextProvider(registry, *, ...)` | context provider | a bounded schema snapshot from three read-only registry calls: source properties, collection entities, entity attributes. Reads no rows. |
 | `SELECT_THEN_AVERAGE_TEMPLATE` | rule template | the shipped filter-then-average template |

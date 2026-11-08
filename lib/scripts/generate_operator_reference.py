@@ -23,6 +23,14 @@ SUPPLEMENTAL_SOURCE_LOCATOR = "lib/tests/unit/operators/test_sklearn.py"
 ACCEPTED_PROJECTION_SHA256 = "5c38499246bc80a503c17545fd37e2203384086b409573fdb3c453cedbffac3c"
 # Keep archived evidence intact while binding maintenance changes to exact source.
 _CURRENT_IMPLEMENTATION_BINDINGS: dict[str, tuple[str, str]] = {
+    "create_database@2.0.0": (
+        "5ceaf84cff3d46f1f41d2642e110a0533484f32fa2501912d3db78a431ef8c90",
+        "122d280ed5170ab193269094cccadae4cf74306ccc2d4d788cd849c0d8f10105",
+    ),
+    "create_table@2.0.0": (
+        "4df34a0a7d6415b0cced1187c69c11714dffa556aa34188e2153b4973701d298",
+        "1fc73ce0174a4ebd432938350a9009dd0a314a1e7f5fd2563d2f9667a1b86695",
+    ),
     "insert_table@3.0.0": (
         "150d3c31cf4cae65e1d991671ca62ad3e7392a5a4625098fa05f633c6afc6cc1",
         "8bfe55f9c8271fa75f1721421a145e2b6eefd375f52fddf2aef174a19192944f",

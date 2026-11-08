@@ -214,11 +214,15 @@ linked original exception. Legacy v1/v2 semantic coercions now fail validation; 
 structured v2 calls gain the diagnostic when their existing shared decoder rejects a reply.
 Invalid `nl2llm@3.0.0` record shapes still use `EXECUTION_RESULT_INVALID / NORMALIZE`.
 
-Structured `nl2sql@3.0.0` may reject an absent local SQLite database or collection before generation
-when populated registered peers and a directory name listing prove absence. Missing or unavailable
-directories, remote/custom sources and unsynchronized metadata remain inconclusive. Remote target
-names can still generate SQL until host execution reports a supported failure. Raw `apply()`, v2
-and host-bound SQL execution retain their routing and capability checks.
+Structured `nl2sql@3.0.0` and `nl2sql@4.0.0` check the declared database and collection before generation.
+On PostgreSQL and MySQL sources, a name missing from a nonempty registered list is refused without a
+model call. On SQLite, generation is refused only when populated registered peers and a directory name
+listing prove absence; missing or unavailable directories remain inconclusive. Custom source classes,
+registries that supply their own `get_data_source_schema` or are not blue-data `DataRegistry` objects,
+and empty registered lists are not checked; the `schema` attribute does not change the check. A
+populated list is enforced even when it is stale: a database or collection created after the last sync
+is refused until the source is synced, and on MySQL until the source and its registry are recreated.
+Raw `apply()`, v1/v2 and host-bound SQL execution retain their routing and capability checks.
 
 Genuine loaded database/provider classes receive fixed diagnostics. Classifiers do not load drivers
 or providers. Transient provider records may advise another call; client retry attempts and delays

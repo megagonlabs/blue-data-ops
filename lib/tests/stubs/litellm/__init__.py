@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any, cast
 
 # Reviewed provider names from LiteLLM 1.98.0. The client checks model prefixes and the
-# deployment provider against this list. Tests allow installed names covered by this list
-# or the separate 1.102.0 and 1.106.5 additions, then select exactly the installed names.
+# deployment provider against this list. Client tests use the reviewed union with the
+# separate 1.102.0, 1.106.5 and 1.108.0 additions below. One test checks that the installed
+# release's names are covered; an unknown installed name does not block the offline tests.
 # Regenerate with:
 #
 #     python -c "import litellm
@@ -188,6 +189,18 @@ provider_additions_11065: tuple[str, ...] = (
     "strands_decider",
     "transcribe",
     "typesafe",
+)
+
+
+# Reviewed additions from the LiteLLM 1.108.0 wheel's provider list.
+provider_additions_11080: tuple[str, ...] = (
+    "bespoke",
+    "coralbricks",
+    "databricks_agent",
+    "inferenceapis",
+    "laya",
+    "microsoft_365_copilot",
+    "scaledown",
 )
 
 

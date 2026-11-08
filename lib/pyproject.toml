@@ -27,8 +27,8 @@ dependencies = [
 [project.optional-dependencies]
 ml = ["numpy", "scikit-learn"]
 vector = ["numpy", "sentence-transformers"]
-llm = ["litellm>=1.98,<2", "tenacity<10", "diskcache<6"]
-# Planner-only OpenAI SDK seam, bounded to the supported 2.x Responses API surface.
+llm = ["litellm>=1.98,<2", "tenacity<10", "diskcache<6", "openai>=2.54,<3"]
+# OpenAI SDK for the standalone planner.
 openai = ["openai>=2.54,<3"]
 dev = [
     "numpy",

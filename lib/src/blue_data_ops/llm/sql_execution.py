@@ -4,8 +4,10 @@ import sys
 from dataclasses import dataclass
 from typing import Any, cast
 
+from blue_data_ops.data.errors import RegistryFailure
 from blue_data_ops.data.sql_errors import query_schema_failure
-from blue_data_ops.data.sql_schema import project_sql_schema
+from blue_data_ops.data.sql_schema import has_schema_override, project_sql_schema
+from blue_data_ops.data.sql_targets import validate_sql_target
 from blue_data_ops.data.sql_types import is_data_registry, sql_source_base
 from blue_data_ops.llm.errors import LLMError, sql_schema_failure
 from blue_data_ops.llm.sql_guard import is_read_query
@@ -114,6 +116,14 @@ class ReadOnlySQLExecutor:
 
     def get_schema(self, target: tuple[str, str, str]) -> Any:
         self.preflight(target)
+        try:
+            validate_sql_target(
+                self._registry, *target, schema_override=has_schema_override(self._registry)
+            )
+        except RegistryFailure:
+            raise
+        except Exception:
+            raise sql_error("sql_execution_failed") from None
         try:
             return project_sql_schema(self._registry, *target)
         except Exception:

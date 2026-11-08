@@ -449,16 +449,65 @@ def test_get_data_source_schema_blue_data_signature() -> None:
 
 def test_get_data_source_schema_real_shapes() -> None:
     # The facade preserves an empty schema for an unknown source; the owned check fails.
-    # A bn-protocol source reports graph_structure at the top level rather than under metadata.
     seam = RegistrySeam(DataRegistry(name="schema_probe", rebuild=True))
     assert seam.get_data_source_schema("absent", "db", "c") == {"entities": [], "relations": []}
+    assert not seam.get_source_database_collection_properties("absent", "db", "c")
     with pytest.raises(RegistryFailure) as caught:
         _diagnose_source(seam, "absent")
     assert caught.value.reason is RegistryReason.SOURCE_NOT_REGISTERED
 
-    bn_source = _memory_sql_stub("bn_src")
-    bn_source.properties = {"connection": {"protocol": "bn"}}
-    seam.register_source(bn_source)
-    schema = seam.get_data_source_schema("bn_src", "db", "c", "bn")
-    assert "graph_structure" in schema  # top-level, the shape consumers must fall back to
-    assert "metadata" not in schema
+
+def test_bayesian_network_graph_is_stored_under_collection_metadata(tmp_path: Path) -> None:
+    # A real network source reports protocol "network/bn", and sync stores its graph
+    # under the collection's metadata. The schema may omit that graph; a schema that
+    # reports one reports the stored graph.
+    pytest.importorskip("pgmpy", reason="Bayesian-network sources need the blue-data bn extra")
+    from blue_data.source.network.bn.bayesian_network_source import (
+        BayesianNetworkSource,
+    )
+
+    model = tmp_path / "models" / "weather"
+    model.mkdir(parents=True)
+    (model / "model.bif").write_text(
+        "network unknown {}\n"
+        "variable Rain { type discrete [ 2 ] { yes, no }; }\n"
+        "variable WetGrass { type discrete [ 2 ] { yes, no }; }\n"
+        "probability ( Rain ) { table 0.2, 0.8; }\n"
+        "probability ( WetGrass | Rain ) { (yes) 0.9, 0.1; (no) 0.1, 0.9; }\n"
+    )
+    (model / "node_mapping.json").write_text('{"Rain": "Rain", "WetGrass": "WetGrass"}')
+    (model / "state_mapping.json").write_text('{"yes": "yes", "no": "no"}')
+    registry = DataRegistry(name="bn_probe", rebuild=False)
+    seam = RegistrySeam(registry)
+    seam.register_source(
+        BayesianNetworkSource("bn", properties={"connection": {"source_directory": str(tmp_path)}})
+    )
+    registry.sync_source("bn", recursive=True)
+
+    assert seam.get_source_properties("bn")["connection"]["protocol"] == "network/bn"
+    stored = seam.get_source_database_collection_properties("bn", "models", "weather")
+    graph = stored["metadata"]["graph_structure"]
+    assert graph["nodes"]["Rain"]["states"] == ["yes", "no"]
+    assert graph["edges"] == {"Rain": ["WetGrass"]}
+    schema = seam.get_data_source_schema("bn", "models", "weather", "bn")
+    assert schema.get("graph_structure", graph) == graph
+
+
+def test_get_source_database_collection_properties_delegates() -> None:
+    class _Recorder:
+        def __init__(self) -> None:
+            self.args: tuple[str, ...] = ()
+
+        def get_source_database_collection_properties(self, *args: str) -> dict[str, Any]:
+            self.args = args
+            return {"metadata": {"node_count": 2}}
+
+    recorder = _Recorder()
+    seam = RegistrySeam(cast(Any, recorder))
+    assert seam.get_source_database_collection_properties("s", "db", "c") == {
+        "metadata": {"node_count": 2}
+    }
+    assert recorder.args == ("s", "db", "c")
+    # A wrapped registry without the reader has no stored properties.
+    without = RegistrySeam(cast(Any, object()))
+    assert without.get_source_database_collection_properties("s", "db", "c") is None

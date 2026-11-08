@@ -191,33 +191,35 @@ def test_unknown_count_is_omitted_and_zero_is_known(backend: str, count: int | N
 @pytest.mark.parametrize("cext", [False, True])
 def test_mysql_native_binding_does_not_rewrite_percent_identifiers(cext: bool):
     pytest.importorskip("mysql.connector")
-    from mysql.connector.cursor import RE_SQL_FIND_PARAM
-
-    cext_param = getattr(
-        importlib.import_module("mysql.connector.cursor_cext"), "RE_SQL_FIND_PARAM"
-    )
+    formatter = importlib.import_module("mysql.connector.cursor").RE_SQL_FIND_PARAM
+    if cext:
+        try:
+            formatter = getattr(
+                importlib.import_module("mysql.connector.cursor_cext"), "RE_SQL_FIND_PARAM"
+            )
+        except ImportError as error:
+            pytest.skip(f"optional MySQL C extension is unavailable: {error}")
 
     from blue_data_ops.data.sql_insert import insert_batch, insert_sql
 
     table, column = 'a%s"', "b%s`"
     query = insert_sql(table, [column], "mysql")
     expected = insert_sql(table, [column], "mysql", native=True)
-    # Both installed connector cursor formatters corrupt this valid identifier.
-    assert RE_SQL_FIND_PARAM.sub(b"?", query.encode()) != expected.encode()
-    assert cext_param.sub(b"?", query.encode()) != expected.encode()
+    # Each installed connector cursor formatter corrupts this valid identifier.
+    assert formatter.sub(b"?", query.encode()) != expected.encode()
     c = Connection(cext=cext)
     assert insert_batch(source_for("mysql", [c]), "db", table, [column], [(7,)]) == 1
     assert c.sql == [expected] and c.rows == [(7,)]
+    assert c.commits == 1
 
 
 def test_installed_postgres_mogrify_preserves_percent_identifiers():
     pytest.importorskip("psycopg2")
-    import psycopg2.extensions as extensions
+    driver = importlib.import_module("psycopg2.extensions")
 
     from blue_data_ops.data.sql_insert import insert_sql
 
     # No connection initialization or server: mogrify runs the installed C formatter.
-    driver = cast(Any, extensions)
     cur = driver.cursor(driver.connection.__new__(driver.connection))
     query = insert_sql('a%s"%', ["列%s%"], "postgres")
     assert cur.mogrify(query, (7,)) == 'INSERT INTO "a%s""%" ("列%s%") VALUES (7)'.encode()
@@ -257,16 +259,16 @@ def test_installed_mysql_native_driver_sends_exact_identifier_bytes(
     value: str | Decimal,
 ):
     pytest.importorskip("mysql.connector")
-    from mysql.connector.connection import MySQLConnection
-    from mysql.connector.constants import ServerCmd
-    from mysql.connector.protocol import MySQLProtocol
+    connector: Any = importlib.import_module("mysql.connector.connection")
+    ServerCmd: Any = importlib.import_module("mysql.connector.constants").ServerCmd
+    protocol: Any = importlib.import_module("mysql.connector.protocol")
 
     from blue_data_ops.data.sql_insert import insert_batch, insert_sql
 
-    connection = MySQLConnection()
-    connection._character_set.set_mysql_version((8, 4, 0))  # pyright: ignore[reportPrivateUsage]
+    connection = connector.MySQLConnection()
+    connection._character_set.set_mysql_version((8, 4, 0))
     monkeypatch.setattr(connection, "_charset_id", charset_id)
-    monkeypatch.setattr(connection, "_protocol", MySQLProtocol())
+    monkeypatch.setattr(connection, "_protocol", protocol.MySQLProtocol())
     packets: list[tuple[Any, Any]] = []
     ok = b"\x07\x00\x00\x01\x00\x01\x00\x00\x00\x00\x00"
     prepare_ok = b"\x0c\x00\x00\x01\x00\x07\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"

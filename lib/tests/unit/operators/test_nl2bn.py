@@ -7,7 +7,8 @@ schema rendering, correction, exception boundaries, and registry execution.
 from __future__ import annotations
 
 import json
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 import litellm  # the deterministic stub
 import pytest
@@ -262,6 +263,248 @@ def test_provided_unstructured_dict_is_dumped(
     _sequence_provider(monkeypatch, VALID_RESPONSE)
     op.apply(INPUT, {**ATTRS, "schema": {"x": 1}}, _props(seam))
     assert json.dumps({"x": 1}, indent=2) in _prompt_of(0)
+
+
+# --- graph stored by the registry's sync ----------------------------------------------
+WRONG_STATE = (
+    '{"target_node": "cirrhosis", "target_state": "True", "context": {"alcoholism": "yes"}}'
+)
+
+
+class _NetworkSource:
+    """Reports one network the way a Bayesian-network source does, without pgmpy."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.properties: dict[str, Any] = {"connection": {"protocol": "network/bn"}}
+        self.queries: list[Any] = []
+
+    def fetch_metadata(self) -> dict[str, Any]:
+        return {}
+
+    def fetch_databases(self) -> list[str]:
+        return ["default"]
+
+    def fetch_database_metadata(self, database: str) -> dict[str, Any]:
+        return {}
+
+    def fetch_database_collections(self, database: str) -> list[str]:
+        return ["hepar2"]
+
+    def fetch_database_collection_metadata(self, database: str, collection: str) -> dict[str, Any]:
+        return {
+            "collection": collection,
+            "node_count": 2,
+            "edge_count": 1,
+            "graph_structure": GRAPH,
+        }
+
+    def fetch_database_collection_entities(self, database: str, collection: str) -> dict[str, Any]:
+        return {}
+
+    def fetch_database_collection_relations(self, database: str, collection: str) -> dict[str, Any]:
+        return {}
+
+    def _query_requires_commit(self, query: Any) -> bool:
+        return False
+
+    def execute_query(self, query: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        self.queries.append(query)
+        return [{"probability": 0.42}]
+
+
+class _SchemaOnlyRegistry:
+    """A registry that is not a DataRegistry and stores no collection properties."""
+
+    def __init__(self, schema: Any = None) -> None:
+        self.schema: Any = {"entities": [], "relations": []} if schema is None else schema
+
+    def get_data_source_schema(self, **_kwargs: Any) -> Any:
+        return self.schema
+
+    def execute_query(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [{"probability": 0.42}]
+
+
+class _StoredPropertiesRegistry(_SchemaOnlyRegistry):
+    def __init__(self, stored: Any, schema: Any = None) -> None:
+        super().__init__(schema)
+        self.stored = stored
+        self.reads: list[tuple[str, ...]] = []
+
+    def get_source_database_collection_properties(self, *args: str) -> Any:
+        self.reads.append(args)
+        return self.stored
+
+
+def test_synced_network_graph_validates_generated_query(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from blue_data.registry.data_registry import (  # pyright: ignore[reportMissingTypeStubs]
+        DataRegistry,
+    )
+
+    registry: Any = DataRegistry(name="bn_stored_graph", rebuild=False)
+    source = _NetworkSource("bn_src")
+    registry.register_source(source)
+    registry.sync_source("bn_src", recursive=True)
+    seam = RegistrySeam(registry)
+
+    _sequence_provider(monkeypatch, WRONG_STATE, VALID_RESPONSE)
+    out = op.apply(INPUT, dict(ATTRS), _props(seam))
+
+    assert "- cirrhosis: [present, absent]" in _prompt_of(0)
+    assert "Target state 'True' not valid for node 'cirrhosis'." in _prompt_of(1)
+    assert len(litellm.calls) == 2
+    assert source.queries == [json.dumps(json.loads(VALID_RESPONSE))]
+    assert out[0][0]["prob"] == 0.42
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        {"metadata": {"graph_structure": GRAPH}},
+        {"graph_structure": GRAPH},
+        {"metadata": {"graph_structure": {"nodes": {}, "edges": {}}}, "graph_structure": GRAPH},
+    ],
+    ids=["metadata", "top-level", "unusable-metadata"],
+)
+def test_stored_graph_locations(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch, stored: dict[str, Any]
+) -> None:
+    registry = _StoredPropertiesRegistry(stored)
+    _sequence_provider(monkeypatch, VALID_RESPONSE)
+    op.apply(INPUT, dict(ATTRS), _props(RegistrySeam(cast(Any, registry))))
+    assert registry.reads == [("bn_src", "default", "hepar2")]
+    assert "- cirrhosis: [present, absent]" in _prompt_of(0)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        None,
+        [],
+        {"metadata": {}},
+        {"metadata": {"graph_structure": {"nodes": {"a": {}}}}},
+        {"metadata": {"graph_structure": {"nodes": ["a"], "edges": {}}}},
+        {"metadata": {"graph_structure": {"nodes": {"a": "x"}, "edges": {}}}},
+        {"metadata": {"graph_structure": {"nodes": {"a": {}}, "edges": []}}},
+    ],
+    ids=["none", "list", "no-graph", "no-edges", "node-list", "node-text", "edge-list"],
+)
+def test_unusable_stored_graph_keeps_unstructured_schema(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch, stored: Any
+) -> None:
+    registry = _StoredPropertiesRegistry(stored)
+    _sequence_provider(monkeypatch, WRONG_STATE)
+    out = op.apply(INPUT, dict(ATTRS), _props(RegistrySeam(cast(Any, registry))))
+    assert "**Bayesian Network Schema:**" in _prompt_of(0)
+    assert len(litellm.calls) == 1
+    assert out[0][0]["query"] == json.loads(WRONG_STATE)
+
+
+def test_registry_without_stored_properties_keeps_unstructured_schema(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sequence_provider(monkeypatch, WRONG_STATE)
+    out = op.apply(INPUT, dict(ATTRS), _props(RegistrySeam(cast(Any, _SchemaOnlyRegistry()))))
+    assert "**Bayesian Network Schema:**" in _prompt_of(0)
+    assert out[0][0]["query"] == json.loads(WRONG_STATE)
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [{"graph_structure": GRAPH}, {"metadata": {"graph_structure": GRAPH}}],
+    ids=["top-level", "metadata"],
+)
+def test_registry_graph_is_used_without_reading_stored_graph(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch, schema: dict[str, Any]
+) -> None:
+    other = {"nodes": {"rain": {"states": ["yes", "no"]}}, "edges": {}}
+    registry = _StoredPropertiesRegistry({"metadata": {"graph_structure": other}}, schema)
+    _sequence_provider(monkeypatch, VALID_RESPONSE)
+    op.apply(INPUT, dict(ATTRS), _props(RegistrySeam(cast(Any, registry))))
+    assert registry.reads == []
+    assert "- cirrhosis: [present, absent]" in _prompt_of(0)
+
+
+@pytest.mark.parametrize("provided", [json.dumps(GRAPH), "free-text schema"])
+def test_caller_schema_is_used_without_reading_stored_graph(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch, provided: str
+) -> None:
+    other = {"nodes": {"rain": {"states": ["yes", "no"]}}, "edges": {}}
+    registry = _StoredPropertiesRegistry({"metadata": {"graph_structure": other}})
+    _sequence_provider(monkeypatch, VALID_RESPONSE)
+    op.apply(INPUT, {**ATTRS, "schema": provided}, _props(RegistrySeam(cast(Any, registry))))
+    assert registry.reads == []
+    assert "rain" not in _prompt_of(0)
+
+
+def test_registry_with_own_schema_method_keeps_its_schema(
+    op: NL2BNOperator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _OwnSchemaSeam(RegistrySeam):
+        def get_data_source_schema(self, *args: Any, **kwargs: Any) -> Any:
+            return {"entities": [], "relations": []}
+
+    registry = _StoredPropertiesRegistry({"metadata": {"graph_structure": GRAPH}})
+    _sequence_provider(monkeypatch, WRONG_STATE)
+    op.apply(INPUT, dict(ATTRS), _props(_OwnSchemaSeam(cast(Any, registry))))
+    assert registry.reads == []
+    assert "**Bayesian Network Schema:**" in _prompt_of(0)
+
+
+def test_real_bayesian_network_without_schema_corrects_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("pgmpy", reason="Bayesian-network sources need the blue-data bn extra")
+    from blue_data.registry.data_registry import (  # pyright: ignore[reportMissingTypeStubs]
+        DataRegistry,
+    )
+    from blue_data.source.network.bn.bayesian_network_source import (  # pyright: ignore[reportMissingTypeStubs]
+        BayesianNetworkSource,
+    )
+
+    from blue_data_ops.operators import versioned_registry
+
+    model = tmp_path / "models" / "weather"
+    model.mkdir(parents=True)
+    (model / "model.bif").write_text(
+        "network unknown {}\n"
+        "variable Rain { type discrete [ 2 ] { yes, no }; }\n"
+        "variable WetGrass { type discrete [ 2 ] { yes, no }; }\n"
+        "probability ( Rain ) { table 0.2, 0.8; }\n"
+        "probability ( WetGrass | Rain ) { (yes) 0.9, 0.1; (no) 0.1, 0.9; }\n"
+    )
+    (model / "node_mapping.json").write_text('{"Rain": "Rain", "WetGrass": "WetGrass"}')
+    (model / "state_mapping.json").write_text('{"yes": "yes", "no": "no"}')
+    registry: Any = DataRegistry(name="bn_real", rebuild=False)
+    registry.register_source(
+        BayesianNetworkSource("bn", properties={"connection": {"source_directory": str(tmp_path)}})
+    )
+    registry.sync_source("bn", recursive=True)
+
+    wrong = '{"target_node": "Rain", "target_state": "True", "context": {"WetGrass": "True"}}'
+    right = '{"target_node": "Rain", "target_state": "yes", "context": {"WetGrass": "yes"}}'
+    _sequence_provider(monkeypatch, wrong, right)
+    attrs = {
+        "question": "chance of rain if the grass is wet?",
+        "source": "bn",
+        "database": "models",
+        "collection": "weather",
+        "protocol_variant": "pgmpy",
+        "explanation": False,
+    }
+    out, _, meta = (
+        versioned_registry()
+        .resolve("nl2bn@3.0.0")
+        .run(INPUT, attrs, {"data_registry": registry, "llm.model": "test-model"})
+    )
+
+    assert meta.errors == []
+    assert "- Rain: [yes, no]" in _prompt_of(0)
+    assert len(litellm.calls) == 2
+    assert out[0][0]["prob"] == pytest.approx(0.18 / 0.26)
 
 
 # --- successful execution -----------------------------------------------------------

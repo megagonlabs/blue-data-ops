@@ -26,6 +26,12 @@
 | [architecture.md](architecture.md) | Understand how the pieces fit together — the component diagram and the path data takes through `run()`, the executor, and the planner |
 | [extending.md](extending.md) | Write your own operator, registry, plan generator, or embedder against the package seams |
 
+## History
+
+| Doc | Read this if you want to... |
+|---|---|
+| [history/python315-compatibility-wheels.md](history/python315-compatibility-wheels.md) | See how the earlier Python 3.15 compatibility wheels were built; that route no longer installs |
+
 ## Authoritative references
 
 These pages describe current behavior.

@@ -10,6 +10,7 @@ from blue_data_ops.data.errors import RegistryNotConfigured
 from blue_data_ops.data.registry_seam import (
     _diagnose_source,  # pyright: ignore[reportPrivateUsage]
 )
+from blue_data_ops.data.sql_schema import has_schema_override
 from blue_data_ops.llm import prepare_llm_operator_properties, resolve_llm_client
 from blue_data_ops.llm.client import validate_llm_caller_controls
 from blue_data_ops.llm.errors import LLMError, is_reply_failure, raise_reply_failure
@@ -224,6 +225,37 @@ def _validate_bn_query(bn_query_data: dict[str, Any], graph_structure: dict[str,
     return errors
 
 
+def _stored_graph_structure(
+    registry: RegistrySeam, source: str, database: str, collection: str
+) -> dict[str, Any] | None:
+    """Return the graph stored for a network collection, or None.
+
+    Sync stores it under the collection's metadata; older records kept it at the top
+    level. Only a graph whose nodes and edges are both mappings, with at least one
+    node, is returned.
+    """
+    stored: Any = registry.get_source_database_collection_properties(source, database, collection)
+    if not isinstance(stored, dict):
+        return None
+    record = cast("dict[str, Any]", stored)
+    for layer in (record.get("metadata"), record):
+        if not isinstance(layer, dict):
+            continue
+        graph: Any = cast("dict[str, Any]", layer).get("graph_structure")
+        if not isinstance(graph, dict):
+            continue
+        candidate = cast("dict[str, Any]", graph)
+        nodes: Any = candidate.get("nodes")
+        if (
+            isinstance(nodes, dict)
+            and nodes
+            and all(isinstance(info, dict) for info in cast("dict[str, Any]", nodes).values())
+            and isinstance(candidate.get("edges"), dict)
+        ):
+            return candidate
+    return None
+
+
 def _resolve_schema_section(
     provided_schema: Any,
     registry: RegistrySeam,
@@ -236,7 +268,8 @@ def _resolve_schema_section(
     A non-None graph_structure means the schema is structured (has nodes and edges)
     and generated queries are validated against it. Mirrors the upstream unified
     schema/graph_structure handling exactly, including the metadata-key fallback for
-    registries that report graph_structure at the schema's top level.
+    registries that report graph_structure at the schema's top level. When the fetched
+    schema carries no graph, the graph stored for the collection at sync is used.
     """
     schema_dict: Any = None
     graph_structure: Any = None
@@ -245,8 +278,8 @@ def _resolve_schema_section(
     schema_info: str | None = None
 
     if not provided_schema:
-        # Fetch from the registry; the "bn" protocol argument requests metadata with
-        # graph_structure where the registry supports it.
+        # Fetch from the registry. The seam keeps the "bn" argument for compatibility
+        # and discards it; the registry derives the protocol from the source.
         schema_dict = registry.get_data_source_schema(
             source, database, collection, "bn", format="dict"
         )
@@ -266,6 +299,12 @@ def _resolve_schema_section(
         is_structured = bool(
             graph_structure and "nodes" in graph_structure and "edges" in graph_structure
         )
+        # A registry with its own schema method owns the schema it reports.
+        if not is_structured and not has_schema_override(registry):
+            stored = _stored_graph_structure(registry, source, database, collection)
+            if stored is not None:
+                graph_structure = stored
+                is_structured = True
     else:
         if isinstance(provided_schema, str):
             try:

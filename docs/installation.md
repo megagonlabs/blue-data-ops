@@ -33,7 +33,7 @@ The core runtime dependencies are `blue-data>=1.0.0,<2`, `pydantic>=2`, `jsonmer
 Everything heavier sits behind an extra.
 Editable installs also need the build requirements declared by each package, including `setuptools>=77.0.3` and `wheel`. Configure a package index or provide a wheelhouse containing these and the runtime dependencies before installing in a fresh environment.
 
-Python 3.12 and 3.13 are the supported interpreters (`requires-python = ">=3.12,<3.14"`). The historical CPython 3.15 compatibility-wheel notes below are outside the declared range; pip refuses that install. Other platforms and free-threaded Python 3.15 have not been verified.
+Python 3.12 and 3.13 are the supported interpreters (`requires-python = ">=3.12,<3.14"`). The [historical CPython 3.15 compatibility-wheel notes](history/python315-compatibility-wheels.md) are outside the declared range; pip refuses that install. Other platforms and free-threaded Python 3.15 have not been verified.
 
 Select a source whose metadata satisfies `blue-data>=1.0.0,<2`. The verified 1.0 source
 includes `blue_data.server` and the `server` extra; the 0.1.0 development source cannot
@@ -92,18 +92,18 @@ This is the direct path for a contributor, and the one [quickstart.md](quickstar
 |---|---|---|
 | `ml` | `numpy`, `scikit-learn` | `classify`, `cluster`, `sklearn_estimator` |
 | `vector` | `numpy`, `sentence-transformers` | `vector_embed`, `vector_search`, `vector_similarity` |
-| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
+| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
 | `openai` | `openai>=2.54,<3` | `OpenAIPlanGenerator` |
 | `dev` | `numpy`, `scikit-learn`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff==0.17.3`, `pyright==1.1.414`, `build`, `twine` | running the tests, the linters, and the build |
 
 The package bounds `jsonpath-ng` below 2, `tenacity` below 10, and `diskcache` below 6 without adding minimum versions. `blue-data` retains its `>=1.0.0` minimum and adds `<2`.
 The next major version of each requires a compatibility review.
 
+Both `openai` and `llm` require `openai>=2.54,<3`; `openai` leaves out LiteLLM. Other Blue packages declare their own extras.
+
 Prompt rendering uses one standard-library dollar-placeholder pass and requires no direct Jinja2 dependency.
 
-`dev` deliberately leaves out `litellm` and `sentence-transformers`.
-The test suite substitutes deterministic stubs for those two from `lib/tests/stubs/`, so the default test run needs neither the download nor a provider.
-Install `llm` or `vector` alongside `dev` when you want to exercise the real libraries.
+`dev` leaves out LiteLLM, SQL drivers, the CLI/MCP packages, and sentence-transformers. Deterministic operator tests use stubs from `lib/tests/stubs/`; cases that require a genuine optional package skip individually with a reason when it is absent. Tests that use installed packages also run separately, as shown below. Both runs are offline and need no provider key or model download.
 
 The base install carries all 33 operator cards, so discovery, resolution, and pipeline construction work without any extra.
 An operator whose extra is missing does not raise on import; its `run()` call returns `[[]]` with an `EXECUTION_FAILED` record in the execution metadata.
@@ -114,7 +114,7 @@ Install `vector` only when you need embedding generation or search; `vector_simi
 
 ## Path 2: built wheel
 
-Build with the `dev` extra installed. Run these commands from the directory containing both checkouts.
+Install the `build` frontend (also included in `dev`) for all three builds. The backend requirements and runtime dependencies still need a configured package index or wheelhouse. Run these commands from the directory containing both checkouts.
 `lib/scripts/build.sh` clears the component's `build/` and `dist/`, runs `python -m build`, then checks the wheel.
 It writes `blue_data_ops-1.0.0-py3-none-any.whl` and `blue_data_ops-1.0.0.tar.gz` into `lib/dist/`.
 The core checker expects `.py`, `.json`, `.md` and `py.typed` files from the `src/` working tree, excluding `__pycache__`.
@@ -127,6 +127,7 @@ It adds no general sdist-contamination guarantee and does not clear `*.egg-info`
 Wheel lookup and the metadata prefix assume the version in `pyproject.toml` is already canonical.
 
 ```bash
+python -m pip install build
 python -m pip install ./blue-data/lib
 cd blue-data-ops
 (cd lib && ./scripts/build.sh)
@@ -193,7 +194,7 @@ python -m pip install ./platform/ops-cli
 
 `platform/ops-cli/scripts/install.sh` runs those three steps through the library's own installer, and adds the dev extras on top.
 The package pins the core at `blue-data-ops[ml,vector,llm]==1.0.0`, so the three extras arrive with it whether or not the second command above named them.
-Add its own `openai` extra for the provider-backed planner behind `blue-ops pipeline add --planner openai`.
+The core `llm` extra already installs `openai>=2.54,<3` for `blue-ops pipeline add --planner openai`; the CLI's explicit `openai` extra remains available. `metadata inspect` reports module importability, not which extras were requested or whether an installed version is certified.
 
 Installing it puts one command on `PATH`, `blue-ops`.
 Confirm it, and see what the install resolved to:
@@ -242,6 +243,16 @@ With the `dev` extra installed, from `lib/`:
 python -m pytest
 ```
 
+To run the tests that need LiteLLM, SQL drivers and the CLI/MCP packages, install them from the repository root and run the same library suite:
+
+```bash
+python -m pip install "./lib[dev,llm]" psycopg2-binary mysql-connector-python \
+  "../blue-data/lib[server]" "./platform/ops-cli[dev]" "./platform/ops-mcp[dev]"
+(cd lib && python -m pytest)
+```
+
+With these packages installed, their integration tests run; the skip report names anything still missing. Four response-cache tests also need `blue-data-llm-source`: with its checkout under the same parent directory, also run `python -m pip install ../blue-data-llm-source/lib`. Two Bayesian-network tests need the `bn` extra of `blue-data`: `python -m pip install "../blue-data/lib[bn,server]"`. Native-extension cases still require a compatible native build. The CLI's core pin installs the `vector` extra, so this profile includes `sentence-transformers`; deterministic vector tests still use the stub and download no model.
+
 Each interface package has its own suite.
 From `platform/ops-mcp/` and from `platform/ops-cli/`:
 
@@ -249,8 +260,10 @@ From `platform/ops-mcp/` and from `platform/ops-cli/`:
 python -m pytest
 ```
 
+After only one package's install script, the tests that also drive the other interface skip with `optional integration blue_data_ops_cli is not installed` (MCP suite) or `optional integration blue_data_ops_mcp is not installed` (CLI suite). The profile above installs both, so they run there.
+
 All three configurations set `asyncio_mode = "auto"` and report coverage on `src`.
-Ruff and Pyright read their settings from the same `pyproject.toml`:
+Ruff and Pyright read their settings from the same `pyproject.toml`; run them from `lib/`, `platform/ops-cli/` or `platform/ops-mcp/` with the environment activated:
 
 ```bash
 python -m ruff format --check .
@@ -268,51 +281,4 @@ python -m pyright
 
 ## Python 3.15 compatibility wheels (historical)
 
-This route no longer works: every package declares `requires-python = ">=3.12,<3.14"`, so pip refuses to install it on Python 3.15. The notes below are kept only as a record of the earlier compatibility builds and their scripts in `lib/scripts/`.
-
-Regular CPython 3.15 on macOS ARM64 can use local `fastuuid==0.14.0+blue.1` and `litellm==1.106.5+blue.1` wheels. These builds are selected with `lib/scripts/python315-constraints.txt`; published dependency ranges stay unchanged. These local versions are not on PyPI.
-
-LiteLLM 1.106.5 excludes 3.15 in its metadata and imports the removed `sre_constants` and `sre_parse` modules. `patch-litellm-python315-wheel.py` replaces those two imports with CPython's `re._constants` and `re._parser`, updates the wheel RECORD and restricts this build to Python 3.15. It checks the official wheel's SHA-256 before writing and preserves native code, tags and licenses. The private regex modules need rechecking on future interpreters.
-
-Fastuuid's upstream build uses a PyO3 version whose direct build gate excludes 3.15. `build-python315-wheel.py` enables `abi3-py310` on the genuine native implementation and builds with regular CPython 3.12–3.14. It verifies the pinned upstream source hash and preserves the license. Renaming a CPython-specific binary or changing only Requires-Python cannot provide native compatibility.
-
-To prepare a wheelhouse on macOS ARM64, use new directories and a regular CPython 3.12–3.14 build environment with `maturin==1.15.0`, Cargo >=1.78, Rust and the Xcode command-line tools. The native build needs PyPI/crates.io access unless its inputs are already cached. From the repository root:
-
-```bash
-python3.12 lib/scripts/build-python315-wheel.py \
-  --sdist /path/to/fastuuid-0.14.0.tar.gz \
-  --work-dir .native315 --wheel-dir .wheels315
-python3.12 lib/scripts/patch-litellm-python315-wheel.py \
-  /path/to/litellm-1.106.5-cp310-abi3-macosx_11_0_arm64.whl \
-  --wheel-dir .wheels315
-```
-
-The fastuuid source SHA-256 is `178947fc2f995b38497a74172adee64fdeb8b7ec18f2a5934d037641ba265d26`; the official LiteLLM ARM64 wheel SHA-256 is `25d71b305f7d0c67b990f21993f4aa9cd62c5a48ca0400b9b7aba6a355e2ad0b`. Both scripts refuse an unexpected input; the patcher refuses to replace an output wheel. Keep third-party licenses with any distributed wheelhouse.
-
-For a minimal library/LLM installation in a new regular Python 3.15 environment, point `BLUE_DATA_PATH` at a compatible exported blue-data 1.0 library source and `PIP_FIND_LINKS` at the prepared wheelhouse:
-
-```bash
-python3.15 -m venv .venv315
-source .venv315/bin/activate
-export PIP_FIND_LINKS="$PWD/.wheels315"
-export PYYAML_FORCE_LIBYAML=0
-python -m pip install -e "$BLUE_DATA_PATH"
-python -m pip install -c lib/scripts/python315-constraints.txt -e './lib[llm]'
-python -m pip check
-python -c 'import blue_data_ops, litellm, fastuuid; print("imports OK")'
-```
-
-PyYAML 6.0.3 has a supported pure-Python build selected by `PYYAML_FORCE_LIBYAML=0`; its source build needs setuptools and Cython and executes upstream packaging code. The tested route uses that implementation, without the optional LibYAML accelerator. Keep the constraints and wheelhouse when adding packages to this environment. Resolve the complete dependency closure rather than using `--no-deps` or changing only package metadata.
-
-To install the CLI and MCP adapters in that environment, include the SDK's server extra and the CLI's ML/vector dependencies:
-
-```bash
-python -m pip install -e "${BLUE_DATA_PATH}[server]"
-python -m pip install -c lib/scripts/python315-constraints.txt \
-  -e './lib[ml,vector,llm]' -e ./platform/ops-cli -e ./platform/ops-mcp
-python -m pip check
-blue-ops --version
-python -c 'from importlib.metadata import version; print(version("blue-data-ops-mcp"))'
-```
-
-The verified dependency profile uses regular CPython 3.15.0 on macOS ARM64, NumPy 2.5.4, SciPy 1.18.1, scikit-learn 1.9.1, sentence-transformers 6.2.0, PyTorch 2.15.0, FastAPI 0.162.0 and MCP 1.30.0, with the compatibility builds above. The current SciPy and PyTorch wheels in this profile target macOS 14 or later. Native imports and small numerical/estimator operations are checked separately from unit tests that replace model downloads and provider responses. No embedding model download is required by those offline tests. A fresh installation can resolve newer dependency versions, so verify its complete closure before substituting them. Linux, Windows, Intel macOS and free-threaded Python remain unverified.
+Python 3.15 is outside the declared range and pip refuses the install. The complete [historical compatibility-wheel recipe](history/python315-compatibility-wheels.md) records the earlier builds, dependency profile, platform limits and scripts.

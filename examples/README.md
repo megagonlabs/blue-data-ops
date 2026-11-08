@@ -208,7 +208,7 @@ PYTHONPATH=examples python examples/integration-demos/openai_planner_sqlite.py \
   --nl2sql-model gpt-6-luna
 ```
 
-**Requires:** the `openai` and `llm` extras and `OPENAI_API_KEY`
+**Requires:** the `llm` extra, which includes the OpenAI SDK, and `OPENAI_API_KEY`
 
 
 ## Shared files
@@ -243,7 +243,7 @@ Standard error is not part of the captured result. For `operator_outcomes.py`, r
 | [`feature-demos/nl2sql_sqlite.py`](feature-demos/nl2sql_sqlite.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |
 | [`feature-demos/semantic_filter.py`](feature-demos/semantic_filter.py) | `llm` extra, `OPENAI_API_KEY` | no — a provider answers |
 | [`integration-demos/embedding_planner.py`](integration-demos/embedding_planner.py) | base install | [yes](integration-demos/embedding_planner.output.txt) |
-| [`integration-demos/openai_planner_sqlite.py`](integration-demos/openai_planner_sqlite.py) | `openai` and `llm` extras, `OPENAI_API_KEY` | no — providers answer |
+| [`integration-demos/openai_planner_sqlite.py`](integration-demos/openai_planner_sqlite.py) | `llm` extra, `OPENAI_API_KEY` | no — providers answer |
 | [`_sqlite_demo.py`](_sqlite_demo.py) | base install | not a script of its own |
 
 The NL2SQL demos generate SQL by default. The feature demo's `--execute` path binds

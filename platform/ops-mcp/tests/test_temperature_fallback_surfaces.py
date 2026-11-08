@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 from pathlib import Path
 from typing import Any, cast
 
@@ -10,10 +11,9 @@ import litellm
 import pytest
 from blue_data_ops.operators import active_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
-from blue_data_ops_cli.commands import cli
-from click.testing import CliRunner
 from litellm.exceptions import BadRequestError, UnsupportedParamsError
 from mcp.shared.memory import create_connected_server_and_client_session
+from optional_integrations import require_optional
 
 from blue_data_ops_mcp.server import create_server
 
@@ -28,6 +28,9 @@ def test_temperature_fallback_on_public_surfaces(
     explicit: bool,
     rejection_kind: str,
 ) -> None:
+    if surface == "cli":
+        require_optional("blue_data_ops_cli")
+    monkeypatch.setenv("BLUE_DATA_OPS_HOME", str(tmp_path / "profiles"))
     calls: list[dict[str, Any]] = []
 
     def completion(**kwargs: Any) -> dict[str, Any]:
@@ -82,6 +85,11 @@ def test_temperature_fallback_on_public_surfaces(
         )
         success = run.succeeded
     elif surface == "cli":
+        from click.testing import CliRunner
+
+        config: Any = importlib.import_module("blue_data_ops_cli.config")
+        cli: Any = importlib.import_module("blue_data_ops_cli.commands").cli
+        assert Path(config.cli_home()).resolve().is_relative_to(tmp_path.resolve())
         data = tmp_path / "input.json"
         data.write_text("[[]]")
         options = [

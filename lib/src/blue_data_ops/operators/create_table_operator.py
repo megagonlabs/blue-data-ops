@@ -10,7 +10,9 @@ from blue_data_ops.data.local_names import sqlite_connect_missing
 from blue_data_ops.data.registry_seam import (
     _diagnose_source,  # pyright: ignore[reportPrivateUsage]
 )
+from blue_data_ops.operators._coercion import coerce_flag
 from blue_data_ops.operators._discovery import DiscoverySpec
+from blue_data_ops.operators._sql_definitions import create_table_problem
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
@@ -121,7 +123,7 @@ class CreateTableOperator(Operator):
         *,
         _diagnose_registry: bool = False,
     ) -> FunctionResult:
-        overwrite = attributes.get("overwrite", False)
+        overwrite = coerce_flag(attributes.get("overwrite"), default=False)
         source = cast(str, attributes.get("source", "default_source"))
         database = cast(str, attributes.get("database", "default"))
         collection = cast(str, attributes.get("collection", "public"))
@@ -130,6 +132,15 @@ class CreateTableOperator(Operator):
         table_properties = attributes.get("properties", {})
         columns = attributes.get("columns")
         misc = cast("dict[str, Any]", attributes.get("misc", {}))
+
+        # Checked here as well as in validation, because raw apply() does not validate.
+        problem = create_table_problem(attributes)
+        if problem:
+            logger.error("create_table refused its SQL text; passing input through")
+            raise _CreateTableFailure(ValueError(problem))
+        if overwrite is None:
+            logger.error("create_table refused its overwrite value; passing input through")
+            raise _CreateTableFailure(ValueError("overwrite must be true or false"))
 
         registry = resolve_registry(properties)
         if not registry:
@@ -219,6 +230,14 @@ class CreateTableOperator(Operator):
         properties: Properties | None = None,
     ) -> ValidationResult:
         suggestion = "supply valid source, database, collection, table, columns, and key metadata"
+        # First, so a list or mapping where a name belongs is named rather than crashing
+        # the checks below.
+        problem = create_table_problem(attributes)
+        if problem:
+            return ValidationResult(False, problem)
+        overwrite = attributes.get("overwrite", False)
+        if overwrite is None or coerce_flag(overwrite, default=False) is None:
+            return ValidationResult(False, "overwrite must be true or false")
         if not super().validate(input_data, attributes, properties):
             return ValidationResult(False, suggestion)
 
@@ -299,7 +318,7 @@ class CreateTableOperator(Operator):
         source = attributes.get("source", "default_source")
         database = attributes.get("database", "default")
         collection = attributes.get("collection", "public")
-        overwrite = attributes.get("overwrite", False)
+        overwrite = coerce_flag(attributes.get("overwrite"), default=False)
 
         try:
             table_name = input_data[0][0].get("name", "") if input_data and input_data[0] else ""

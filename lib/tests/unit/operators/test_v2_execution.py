@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import builtins
-import time
 from collections.abc import Callable
 from dataclasses import asdict
 from threading import Event
@@ -36,6 +35,7 @@ from blue_data_ops.operators import (
     active_registry,
 )
 from blue_data_ops.operators.operator import apply_defaults
+from tests.unit.operators._timeout_sync import blocked_worker
 
 
 class CopyBomb:
@@ -657,9 +657,10 @@ def test_invalid_timeout_is_recoverable_and_suppresses_body(value: object) -> No
 
 
 class SlowOperator(ProbeOperator):
-    def __init__(self, finished: Event) -> None:
+    def __init__(self, finished: Event, body: Callable[[], None]) -> None:
         super().__init__()
         self.finished = finished
+        self.body = body
 
     def _execute(
         self,
@@ -669,25 +670,33 @@ class SlowOperator(ProbeOperator):
     ) -> FunctionResult:
         del attributes, properties
         self.body_calls += 1
-        time.sleep(0.04)
+        self.body()
         self.finished.set()
         return FunctionResult(input_data, {"late": True})
 
 
-def test_positive_timeout_discards_late_result_without_retry() -> None:
+def test_positive_timeout_discards_late_result_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     finished = Event()
-    operator = SlowOperator(finished)
-    output_data, output_attributes, meta = operator.run(
-        [[{"x": 1}]],
-        {"required": "given"},
-        {"execution.timeout_seconds": 0.005},
-    )
+    with blocked_worker(monkeypatch) as body:
+        operator = SlowOperator(finished, body)
+        output_data, output_attributes, meta = operator.run(
+            [[{"x": 1}]],
+            {"required": "given"},
+            {"execution.timeout_seconds": 0.005},
+        )
+        assert output_data == [[]] and output_attributes == {}
+        assert meta.errors[0].code is ErrorCode.OPERATOR_TIMEOUT
+        assert operator.body_calls == 1
+        assert not finished.is_set()
     assert output_data == [[]]
     assert output_attributes == {}
     assert meta.errors[0].code is ErrorCode.OPERATOR_TIMEOUT
     assert meta.errors[0].stage is ErrorStage.EXECUTE
     assert operator.body_calls == 1
-    assert finished.wait(timeout=0.2)
+    assert meta.errors[0].category is ErrorCategory.TIMEOUT
+    assert finished.is_set()
 
 
 def test_legacy_timeout_property_is_inert() -> None:

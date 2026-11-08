@@ -29,11 +29,13 @@ scripts/install.sh
 That installs the sibling `blue-data` checkout, the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
 `blue-data` is a core dependency of the library, so the selected source must be installed first; [`docs/installation.md`](../../docs/installation.md) is the source of truth for the paths that put it there.
 
-Add the provider-backed planner's dependency with the `openai` extra:
+The core `llm` dependency already installs the planner's supported `openai>=2.54,<3` SDK. The explicit `openai` extra remains available:
 
 ```bash
 python -m pip install -e ".[dev,openai]"
 ```
+
+`metadata inspect` reports whether optional modules are importable; it does not prove an extra was requested or certify the installed version.
 
 Installation, runtime use, and pytest work in either environment. This package's Pyright configuration still looks for `.venv` in `platform/ops-cli`, so use the standard virtual-environment path when running the documented Pyright gate.
 
@@ -555,7 +557,7 @@ settings: planner=rule (default)
 ```
 
 `--goal` replaces the goal in the request file. The shipped rule template matches goals containing `average` and either `above` or `greater`; another goal can produce `NO_CANDIDATES`.
-`--planner rule` uses that template. `--planner openai` calls a model, needs the `openai` extra, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
+`--planner rule` uses that template. `--planner openai` calls a model, needs the supported OpenAI SDK, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
 `--send-data-context` discloses the request's schema snapshot to that model and is off by default; without it a generator that has been handed a snapshot fails before it makes any provider traffic.
 
 ```bash

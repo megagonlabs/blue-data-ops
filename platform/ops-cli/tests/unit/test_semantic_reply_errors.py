@@ -9,6 +9,7 @@ import pytest
 from blue_data_ops.operators import default_registry, versioned_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
 from click.testing import CliRunner
+from optional_integrations import require_optional
 
 from blue_data_ops_cli import config
 from blue_data_ops_cli.commands import cli
@@ -32,6 +33,9 @@ async def test_repaired_family_error_agrees_library_pipeline_cli_mcp(
     monkeypatch: Any,
     caplog: Any,
 ) -> None:
+    if version == "2.0.0":
+        for package in ("blue_data_ops_mcp", "mcp"):
+            require_optional(package)
     attrs, bad = CASES[family]
     name = f"semantic_{family}"
     identity = f"{name}@{'1.0.0' if version == 'default' else version}"
@@ -138,6 +142,9 @@ async def test_legacy_filter_aliases_agree_library_pipeline_cli_mcp(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
+    if version == "2.0.0":
+        for package in ("blue_data_ops_mcp", "mcp"):
+            require_optional(package)
     module = importlib.import_module(f"blue_data_ops.operators.semantic_{family}_operator")
     clients: list[Client] = []
 

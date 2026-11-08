@@ -17,6 +17,7 @@ from blue_data_ops.llm.errors import LLMError
 from blue_data_ops.llm.sql_execution import ReadOnlySQLExecutor
 from blue_data_ops.operators import Operator, active_registry, versioned_registry
 from blue_data_ops.operators.types import Attributes, DataBundle, Properties
+from tests.optional_integrations import require_optional
 
 MARKER = "SYNTHETIC_PRIVATE_DATABASE_DETAIL"
 
@@ -219,6 +220,7 @@ def test_write_missing_database(host: tuple[Any, Any], identity: str) -> None:
     ],
 )
 def test_genuine_postgres_conditions(module: str, names: list[str], message: str) -> None:
+    require_optional("psycopg2")
     loaded = importlib.import_module(module)
     assert loaded.__file__ and "site-packages/psycopg2/" in loaded.__file__
     for name in names:
@@ -242,6 +244,7 @@ def test_genuine_postgres_conditions(module: str, names: list[str], message: str
     ],
 )
 def test_mysql_errno_beats_contradictory_subclass(errno: int, message: str) -> None:
+    require_optional("mysql.connector")
     module = importlib.import_module("mysql.connector")
     assert module.__file__ and "site-packages/mysql/connector/" in module.__file__
     error = module.ProgrammingError(MARKER, errno=errno, sqlstate="23000")
@@ -252,6 +255,7 @@ def test_mysql_errno_beats_contradictory_subclass(errno: int, message: str) -> N
 
 @pytest.mark.parametrize("errno", [True, 99999, 0])
 def test_mysql_unknown_metadata_generic(errno: Any) -> None:
+    require_optional("mysql.connector")
     module = importlib.import_module("mysql.connector")
     error = module.ProgrammingError(MARKER, errno=errno, sqlstate="42000")
     assert Raising(error).run([[]], {})[2].errors[0].message == "operator execution failed"
@@ -386,6 +390,7 @@ def test_generation_never_enumerates_other_source_types(
 ) -> None:
     registry, _ = host
     if kind in {"postgres", "mysql"}:
+        require_optional("psycopg2" if kind == "postgres" else "mysql.connector")
         module_name, class_name = {
             "postgres": ("blue_data.source.sql.postgres.postgres_sql_source", "PostgresDBSource"),
             "mysql": ("blue_data.source.sql.mysql.mysql_sql_source", "MySQLDBSource"),

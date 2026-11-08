@@ -50,6 +50,12 @@
 
 The table combines declared defaults with execution fallbacks. For `question`, `""` is the body fallback rather than a declared default. Callers must still pass all five required fields explicitly; structured validation rejects a missing or blank value before registry or client resolution.
 
+SQLite and MySQL sources use collection `public`; the MySQL database name is not its
+collection. PostgreSQL uses the registered schema name. SQL addressing requires the
+exact database and collection names.
+
+`run()` on `nl2sql@4.0.0` rejects database or collection names missing from a nonempty registry list before calling the model. Existing empty targets remain valid. See `docs/llm-settings.md`, SQL execution, for sync requirements and the generation/execution differences.
+
 ## Generation, execution, and errors
 
 Generation is the default and returns `[[{"sql": "..."}]]`. Schema lookup uses the

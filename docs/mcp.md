@@ -78,11 +78,13 @@ Point one at it the usual way:
 
 The URL is the server's default bind.
 Change it in both places together, and read the transport note below before binding anything but loopback.
-The console command takes no `--help`, `--version`, host, or port options; those arguments start the default server. To use another loopback port, call `serve()` from Python and update the client URL:
+The console command does not accept `--help`, `--version`, `--host`, or `--port`. Passing them starts the server with its environment settings instead of showing help or changing the bind address. To use another loopback port, set the port variable and use `http://127.0.0.1:8765/mcp` in the client:
 
 ```bash
-python -c 'from blue_data_ops_mcp import serve; serve(port=8765)'
+BLUE_DATA_OPS_MCP_PORT=8765 blue-data-ops-mcp
 ```
+
+The Python alternative is `serve(port=8765)`; explicit arguments take precedence over environment settings.
 
 ### Transport
 
@@ -243,7 +245,7 @@ server = create_server()
 server.run(transport="streamable-http")
 ```
 
-`serve()` performs the same construction and starts streamable HTTP; `main()`, which the console command calls, is `serve()` with the defaults:
+`serve()` performs the same construction and starts streamable HTTP. `main()`, which the console command calls, invokes `serve()` without explicit bind arguments, so environment settings apply before the built-in loopback defaults:
 
 ```python
 from blue_data_ops_mcp import serve

@@ -9,7 +9,9 @@ from blue_data_ops.data.errors import RegistryFailure, RegistryReason
 from blue_data_ops.data.registry_seam import (
     _diagnose_source,  # pyright: ignore[reportPrivateUsage]
 )
+from blue_data_ops.operators._coercion import coerce_flag
 from blue_data_ops.operators._discovery import DiscoverySpec
+from blue_data_ops.operators._sql_definitions import name_problem
 from blue_data_ops.operators.operator import Operator
 from blue_data_ops.operators.types import (
     Attributes,
@@ -95,11 +97,20 @@ class CreateDatabaseOperator(Operator):
         *,
         _diagnose_registry: bool = False,
     ) -> FunctionResult:
-        overwrite = attributes.get("overwrite", False)
+        overwrite = coerce_flag(attributes.get("overwrite"), default=False)
         source = cast(str, attributes.get("source", ""))
         database = cast(str, attributes.get("database"))
         database_description = attributes.get("description", "")
         database_properties = attributes.get("properties", {})
+
+        # Checked here as well as in validation, because raw apply() does not validate.
+        problem = name_problem("database", database) if "database" in attributes else None
+        if problem:
+            logger.error("create_database refused its name; passing input through")
+            raise _CreateDatabaseFailure(ValueError(problem))
+        if overwrite is None:
+            logger.error("create_database refused its overwrite value; passing input through")
+            raise _CreateDatabaseFailure(ValueError("overwrite must be true or false"))
 
         registry = resolve_registry(properties)
         if not registry:
@@ -159,6 +170,15 @@ class CreateDatabaseOperator(Operator):
         properties: Properties | None = None,
     ) -> ValidationResult:
         suggestion = "supply non-empty source and database values"
+        # First, so a list or mapping where the name belongs is named rather than crashing
+        # the checks below.
+        if "database" in attributes:
+            problem = name_problem("database", attributes["database"])
+            if problem:
+                return ValidationResult(False, problem)
+        overwrite = attributes.get("overwrite", False)
+        if overwrite is None or coerce_flag(overwrite, default=False) is None:
+            return ValidationResult(False, "overwrite must be true or false")
         if not super().validate(input_data, attributes, properties):
             return ValidationResult(False, suggestion)
 
@@ -181,7 +201,7 @@ class CreateDatabaseOperator(Operator):
         # The explanation reports the first input record's name rather than the
         # database attribute; malformed input yields an empty name.
         source = attributes.get("source", "")
-        overwrite = attributes.get("overwrite", False)
+        overwrite = coerce_flag(attributes.get("overwrite"), default=False)
         try:
             database_name = input_data[0][0].get("name", "") if input_data and input_data[0] else ""
         except (IndexError, KeyError, TypeError, AttributeError):

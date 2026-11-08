@@ -66,11 +66,18 @@ REGISTRY_DIAGNOSTICS: dict[RegistryReason, tuple[str, str]] = {
     ),
     RegistryReason.DATABASE_ABSENT: (
         "database is not available in the declared source",
-        "Check the declared database and refresh registered metadata.",
+        (
+            "Check the database name against the registered databases. "
+            "If it was created after the last sync, sync the source."
+        ),
     ),
     RegistryReason.COLLECTION_ABSENT: (
         "collection is not available in the declared database",
-        "Check the declared collection and refresh registered metadata.",
+        (
+            "Check the collection name against the registered collections; "
+            "sync the source if it was created after the last sync. "
+            "MySQL and SQLite use 'public'."
+        ),
     ),
     RegistryReason.BACKEND_FAILED: (
         "operator execution failed",

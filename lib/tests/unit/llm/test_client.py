@@ -10,6 +10,7 @@ import litellm  # the tests/stubs deterministic fake (conftest inserts the stub 
 import pytest
 
 from blue_data_ops.llm import LLMClient, LLMError, prepare_llm_operator_properties
+from tests.optional_integrations import real_litellm_paths
 
 OP_PROPS: dict[str, Any] = {
     "service_prefix": "openai",
@@ -35,9 +36,8 @@ def _prepared(defaults: dict[str, Any], supplied: dict[str, Any]) -> dict[str, A
 @pytest.fixture(autouse=True)
 def _reset_fake(  # pyright: ignore[reportUnusedFunction] — autouse
     monkeypatch: pytest.MonkeyPatch,
-    _selected_provider_names: tuple[str, ...],
 ) -> None:
-    monkeypatch.setattr(litellm, "provider_list", list(_selected_provider_names))
+    monkeypatch.setattr(litellm, "provider_list", list(_REVIEWED_PROVIDER_NAMES))
     litellm.calls.clear()
     litellm.fail_next.clear()
     # Dispatch configuration is the deployment's, so every test states its own rather
@@ -1304,7 +1304,7 @@ REAL_LITELLM_PROBE = """
 import json, os, sys, socket
 socket.socket.connect = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("offline test"))
 
-sys.path.insert(0, sys.argv[1])
+sys.path[:] = json.loads(sys.argv[1])
 try:
     import litellm
 except ModuleNotFoundError as error:
@@ -1362,15 +1362,19 @@ print(json.dumps({
 
 @pytest.fixture(scope="module")
 def _installed_litellm_probe(  # pyright: ignore[reportUnusedFunction]
+    tmp_path_factory: pytest.TempPathFactory,
 ) -> dict[str, Any] | None:
     import json
     import os
     import subprocess
     import sys
-    from pathlib import Path
 
-    src = str(Path(__file__).resolve().parents[3] / "src")
+    directory = tmp_path_factory.mktemp("installed-provider")
+    paths = real_litellm_paths()
     probe_env = {
+        "HOME": str(directory),
+        "BLUE_DATA_OPS_HOME": str(directory / "profiles"),
+        "XDG_CACHE_HOME": str(directory / "cache"),
         "LITELLM_LOCAL_MODEL_COST_MAP": "True",
         "PYTHONDONTWRITEBYTECODE": "1",
         "HF_HUB_OFFLINE": "1",
@@ -1381,7 +1385,15 @@ def _installed_litellm_probe(  # pyright: ignore[reportUnusedFunction]
             if name in os.environ:
                 probe_env[name] = os.environ[name]
     completed = subprocess.run(
-        [sys.executable, "-B", "-c", REAL_LITELLM_PROBE, src],
+        [
+            sys.executable,
+            *(["-S"] if sys.flags.no_site else []),
+            "-B",
+            "-c",
+            REAL_LITELLM_PROBE,
+            json.dumps(paths),
+        ],
+        cwd=directory,
         capture_output=True,
         text=True,
         env=probe_env,
@@ -1398,12 +1410,28 @@ def _installed_litellm_probe(  # pyright: ignore[reportUnusedFunction]
 _STUB_NAMES_198 = tuple(litellm.provider_list)
 _STUB_ADDITIONS_1102 = tuple(litellm.provider_additions_1102)
 _STUB_ADDITIONS_11065 = tuple(litellm.provider_additions_11065)
+_STUB_ADDITIONS_11080 = tuple(litellm.provider_additions_11080)
+_REVIEWED_PROVIDER_NAMES = tuple(
+    sorted(
+        {
+            *_STUB_NAMES_198,
+            *_STUB_ADDITIONS_1102,
+            *_STUB_ADDITIONS_11065,
+            *_STUB_ADDITIONS_11080,
+        }
+    )
+)
 
 
 def _select_provider_names(provider_names: list[str] | None) -> tuple[str, ...]:
     baseline = set(_STUB_NAMES_198)
     additions = set(_STUB_ADDITIONS_1102)
     latest = set(_STUB_ADDITIONS_11065)
+    current = set(_STUB_ADDITIONS_11080)
+    assert len(current) == len(_STUB_ADDITIONS_11080), "duplicate 1.108.0 additions"
+    assert not (current & (baseline | additions | latest)), (
+        "1.108.0 additions overlap older snapshots"
+    )
     assert len(latest) == len(_STUB_ADDITIONS_11065), "duplicate 1.106.5 additions"
     assert not (latest & (baseline | additions)), "1.106.5 additions overlap older snapshots"
     assert len(baseline) == len(_STUB_NAMES_198), "duplicate names in 1.98.0 snapshot"
@@ -1414,19 +1442,13 @@ def _select_provider_names(provider_names: list[str] | None) -> tuple[str, ...]:
     assert provider_names, "installed LiteLLM reported no provider names"
     observed = set(provider_names)
     assert len(observed) == len(provider_names), "duplicate installed provider names"
-    unlisted = sorted(observed - (baseline | additions | latest))
+    unlisted = sorted(observed - (baseline | additions | latest | current))
     assert not unlisted, f"unreviewed installed provider names {unlisted}"
     return tuple(sorted(observed))
 
 
-@pytest.fixture(scope="module")
-def _selected_provider_names(  # pyright: ignore[reportUnusedFunction]
-    _installed_litellm_probe: dict[str, Any] | None,
-) -> tuple[str, ...]:
-    observed = (
-        None if _installed_litellm_probe is None else _installed_litellm_probe["provider_names"]
-    )
-    return _select_provider_names(observed)
+def test_installed_provider_names_are_reviewed(real_litellm: dict[str, Any]) -> None:
+    _select_provider_names(real_litellm["provider_names"])
 
 
 @pytest.fixture(scope="module")
@@ -1469,19 +1491,22 @@ def test_provider_coverage_uses_198_when_litellm_is_absent() -> None:
 
 
 @pytest.mark.parametrize("provider", (*_STUB_ADDITIONS_1102, *_STUB_ADDITIONS_11065))
-def test_new_provider_names_follow_the_installed_snapshot(
+def test_new_provider_names_follow_the_selected_snapshot(
     monkeypatch: pytest.MonkeyPatch, provider: str
 ) -> None:
     monkeypatch.setenv(PROVIDER_VAR, provider)
     client = LLMClient("test", OP_PROPS)
-    if provider in litellm.provider_list:
-        client.execute_api_call({}, additional_data={})
-        assert litellm.calls[-1][DISPATCH_FIELD] == provider
-    else:
-        with pytest.raises(LLMError, match=PROVIDER_VAR) as raised:
+    for names in (_STUB_NAMES_198, _REVIEWED_PROVIDER_NAMES):
+        monkeypatch.setattr(litellm, "provider_list", list(names))
+        litellm.calls.clear()
+        if provider in names:
             client.execute_api_call({}, additional_data={})
-        assert raised.value.code == "bad_provider"
-        assert litellm.calls == []
+            assert litellm.calls[-1][DISPATCH_FIELD] == provider
+        else:
+            with pytest.raises(LLMError, match=PROVIDER_VAR) as raised:
+                client.execute_api_call({}, additional_data={})
+            assert raised.value.code == "bad_provider"
+            assert litellm.calls == []
 
 
 @pytest.mark.parametrize(

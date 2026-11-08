@@ -17,7 +17,8 @@ scripts/install.sh
 That installs the sibling `blue-data` checkout, the library from `../../lib` with the `ml`, `vector` and `llm` extras, then this package, both editable, plus the dev extras.
 `blue-data` is a core dependency of the library, so the selected source must be installed first; [installation.md](installation.md) is the source of truth for the paths that put it there.
 
-Add the provider-backed planner's dependency with the `openai` extra:
+The core `llm` extra installed above already provides the supported OpenAI SDK. The
+CLI's explicit `openai` extra remains available:
 
 ```bash
 python -m pip install -e ".[dev,openai]"
@@ -441,7 +442,7 @@ settings: planner=rule (default)
 ```
 
 `--goal` replaces the goal in the request file. The shipped rule template matches goals containing `average` and either `above` or `greater`; another goal can produce `NO_CANDIDATES`.
-`--planner rule` uses that template. `--planner openai` calls a model, needs the `openai` extra, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
+`--planner rule` uses that template. `--planner openai` calls a model, needs the supported OpenAI SDK, and needs `allowed_operator_ids` in the request file. The sample request includes the two pinned IDs it may plan with.
 `--send-data-context` discloses the request's schema snapshot to that model and is off by default.
 
 ```bash

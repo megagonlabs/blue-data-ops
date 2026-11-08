@@ -52,6 +52,8 @@ The table combines declared defaults with execution fallbacks. For `question`, `
 
 `run()` validates the question, source, database, collection, and protocol before registry or client resolution. A structured graph schema enables node, state, and evidence validation. An invalid first response can make up to `max_corrections` more provider calls; correction requests include the original query, validation errors, and schema section.
 
+With a blank `schema`, the operator fetches the schema from the registry. If that schema has no `graph_structure`, the operator uses the graph the registry stored when it synced the source: the collection's `metadata.graph_structure`, or a `graph_structure` on the stored record itself when the metadata holds none it can use. A stored graph is used only when its `nodes` and `edges` are mappings and it has at least one node. A registry that overrides `get_data_source_schema`, or a collection with no stored graph, gets no such fallback. A supplied `schema` is used as given: a JSON graph with `nodes` and `edges` is validated against, and other text reaches the prompt without graph validation, so a guessed state name reaches inference unchecked.
+
 The registry executes the validated query. The first normalized record must contain `probability` or `prob`; zero is a valid probability. A true no-row result is a successful empty bundle. An unformattable result or a record without either probability key fails with `EXECUTION_FAILED` at `EXECUTE`. This differs from `nl2sql@3.0.0`, whose unformattable native result is contained later at `NORMALIZE`.
 
 Raw `apply()` bypasses structured validation: a blank question and a missing registry each return `[[]]`; other invalid addressing values can raise. Inherited `invoke()` checks the declared attribute schema, but it does not run this version's nonblank addressing or protocol validation. It returns `None` for a declared-schema rejection; otherwise it calls `apply()` and inherits those raw returns and exceptions. Neither entry point returns `ExecMeta`.
@@ -72,3 +74,15 @@ syntax stay literal. Define custom prompts in trusted operator defaults. Injecte
 clients retain generation settings, while operator prompt/extraction defaults win.
 
 Bayesian inference still runs; the legacy `execute_query` property is ignored and is not an SQL safety switch.
+
+## Bayesian-network sources
+
+`BayesianNetworkSource` comes with the `blue-data` `bn` extra (`pgmpy` and `networkx`). It reads each network from `<source_directory>/<database>/<collection>/`, which must hold `model.bif`, `node_mapping.json` and `state_mapping.json`. A directory without `model.bif` is not listed as a collection, and a model without both mapping files does not load, so sync stores no graph for it and inference fails.
+
+The CLI and MCP server load sources from the file named by `BLUE_DATA_SOURCES_CONFIG`. This source has no short type name; use `"type": "class"` with its full class path:
+
+```json
+{"sources": [{"type": "class", "name": "bn", "_class": "blue_data.source.network.bn.bayesian_network_source.BayesianNetworkSource", "properties": {"connection": {"source_directory": "/path/to/networks"}}}]}
+```
+
+Loading syncs each source and stores its graphs. With `BLUE_DATA_SOURCES_SYNC=false` nothing is stored, and callers must pass `schema` to get graph validation.

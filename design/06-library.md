@@ -333,7 +333,7 @@ A typical module is short: the class declares `name`, `description`, and `attrib
 
 | Module | Role |
 |---|---|
-| `_coercion.py` | `coerce_numeric(value)`: integer-first then floating-point conversion, returning `None` on failure. The shared aggregate numeric policy |
+| `_coercion.py` | `coerce_numeric(value)`: integer-first then floating-point conversion, returning `None` on failure. The shared aggregate numeric policy. `coerce_flag(value, default)`: reads a `bool` attribute as attribute validation does, so `"false"` is false; `None` gives *default* and a value validation refuses gives `None`. `create_table` and `create_database` use it for `overwrite` |
 | `_record_matching.py` | `record_signature(record, match_option)`: the hashable signature behind `union` and `intersect`, for `"key_match"` and `"seq_match"` |
 | `_query_results.py` | `format_execution_result(result)`: normalizes a registry execution result to the operator output shape, preserving the upstream case chain exactly |
 
@@ -659,7 +659,7 @@ A `ModuleNotFoundError` naming exactly `openai` becomes `GENERATOR_DEPENDENCY_MI
 | create | `create_source_database`, `create_source_database_collection_entity` |
 | describe | `set_source_database_description`, `set_source_database_collection_entity_description` |
 | records | `set_record_data`, `get_record` |
-| introspect | `get_source_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `get_data_source_schema` |
+| introspect | `get_source_properties`, `get_source_database_collection_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `get_data_source_schema` |
 | connect | `connect_source`, `register_source` |
 | query | `execute_query` |
 | search | `search_records`, `search_records_hierarchical` |

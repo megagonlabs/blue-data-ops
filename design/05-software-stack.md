@@ -94,7 +94,7 @@ That duplication is deliberate: the extra names the full set an LLM-backed call 
 | `DataRegistry` | `blue_data.registry.data_registry` | the registry the seam wraps and the default provider constructs |
 | `DataSource` | `blue_data.source.source` | the type `RegistrySeam.register_source()` accepts |
 
-The seam calls a fixed set of registry methods and nothing else: `create_source_database`, `create_source_database_collection_entity`, `set_source_database_description`, `set_source_database_collection_entity_description`, `set_record_data`, `get_record`, `get_source_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `connect_source`, `register_source`, `execute_query`, `get_data_source_schema`, `search_records`, `search_records_hierarchical`, and `build_index`.
+The seam calls a fixed set of registry methods and nothing else: `create_source_database`, `create_source_database_collection_entity`, `set_source_database_description`, `set_source_database_collection_entity_description`, `set_record_data`, `get_record`, `get_source_properties`, `get_source_database_collection_properties`, `list_collection_entities`, `list_entity_attributes`, `list_collection_relations`, `connect_source`, `register_source`, `execute_query`, `get_data_source_schema`, `search_records`, `search_records_hierarchical`, and `build_index`.
 
 `blue-data` ships no `py.typed`, so its imports are the package's one untyped-library boundary.
 The seam holds a single `Any`-typed delegate attribute and crosses that boundary once, which is why unknown member types stop in `data/` rather than spreading into every caller.
@@ -113,7 +113,7 @@ The module that needs a heavy dependency imports it inside the function that use
 |---|---|---|
 | `ml` | `numpy`, `scikit-learn` | `classify`, `cluster`, `sklearn_estimator` |
 | `vector` | `numpy`, `sentence-transformers` | `vector_embed`, `vector_search`, `vector_similarity` |
-| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
+| `llm` | `litellm>=1.98,<2`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3` | `nl2llm`, `nl2sql`, `nl2bn`, and the five `semantic_*` operators |
 | `openai` | `openai>=2.54,<3` | `OpenAIPlanGenerator` |
 | `dev` | `ml` and `openai`, plus `tenacity` and `diskcache` from `llm`, and the test, lint, type-check and build tools. It does not pull `litellm` or `sentence-transformers`, so add `llm` or `vector` to exercise those operators | working on the package |
 
@@ -122,8 +122,8 @@ Two notes on the boundaries.
 `sentence-transformers` is needed only when text has to be embedded.
 `vector_similarity` accepts an omitted `fields` attribute when both inputs already carry embeddings, and that path needs NumPy and nothing more.
 
-The `openai` extra is bounded to the 2.x Responses API surface the plan generator was written against.
-It is a planner-only seam: nothing else in the package imports the SDK, and the LLM-backed operators go through LiteLLM instead.
+Both `openai` and `llm` require `openai>=2.54,<3`; `openai` leaves out LiteLLM.
+Only the plan generator imports the SDK; LLM-backed operators call LiteLLM.
 
 ### Provider libraries
 
@@ -255,7 +255,7 @@ They wrap `python -m build`, `pip install -e`, and a checked `twine upload`; non
 | `sentence-transformers` | unbounded | PyPI | `vector` extra, embedding generation only |
 | `litellm` | `>=1.98,<2` | PyPI | `llm` extra, provider dispatch for LLM-backed operators |
 | `diskcache` | `<6` | PyPI | `llm` extra, opt-in response cache |
-| `openai` | `>=2.54,<3` | PyPI | `openai` extra, plan generation only |
+| `openai` | `>=2.54,<3` | PyPI | `openai` and `llm` extras; planner SDK |
 | `setuptools` | `>=77.0.3` | PyPI | build backend with PEP 639 metadata support |
 | `wheel` | unpinned | PyPI | build requirement |
 | `pytest`, `pytest-asyncio`, `pytest-cov` | unpinned | PyPI | test stack |

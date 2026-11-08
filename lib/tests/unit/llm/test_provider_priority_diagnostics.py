@@ -21,6 +21,9 @@ from blue_data_ops.operators.operator import _execution_error  # pyright: ignore
 )
 def test_specific_provider_class_precedes_bad_request_body(name: str, message: str) -> None:
     if __name__ != "__main__":
+        from tests.optional_integrations import require_optional
+
+        require_optional("litellm")
         result = subprocess.run(
             [sys.executable, "-B", __file__, name, message],
             capture_output=True,

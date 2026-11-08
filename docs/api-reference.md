@@ -319,7 +319,7 @@ Execution mutates node values and statuses on the supplied plan, so round-trip a
 | `SELECT_THEN_AVERAGE_TEMPLATE` | `RulePlanTemplate` | The shipped filter-then-average rule |
 | `project_then_aggregate_template(name)` | function | The project-to-aggregate template for `"avg"`, `"sum"`, `"min"`, or `"max"` |
 | `RequireSinglePlan` | class | The shipped selector; it accepts exactly one candidate |
-| `OpenAIPlanGenerator(model, *, registry, allowed_operator_ids, ...)` | class | One non-streaming Responses call per `generate()`; needs the `[openai]` extra and a nonempty allowlist |
+| `OpenAIPlanGenerator(model, *, registry, allowed_operator_ids, ...)` | class | One non-streaming Responses call per `generate()`; needs the OpenAI SDK (`openai` or `llm` extra) and a nonempty allowlist |
 
 Nonempty `PlanningRequest.input_label` and `output_label` must differ; an equal pair
 returns `INVALID_REQUEST` before generation. During compilation, `PipelinePlanner`
@@ -373,6 +373,7 @@ from blue_data_ops import BlueDataRegistryProvider, DataRegistryProvider, Regist
 | `set_source_database_description(...)` / `set_source_database_collection_entity_description(...)` | Attach descriptions used by discovery |
 | `register_source(source)` / `connect_source(source)` / `get_source_properties(source)` | Source lifecycle |
 | `list_collection_entities(...)` / `list_entity_attributes(...)` / `list_collection_relations(...)` | Read registered metadata only, without connecting or querying |
+| `get_source_database_collection_properties(source, database, collection)` | Read the properties sync stored for a collection; `None` when the wrapped registry has no such method |
 | `execute_query(query, source, database=None, collection=None, optional_properties={})` | Run a query through the registry |
 | `get_data_source_schema(source, database, collection, protocol=None, format="dict")` | Read a source schema |
 | `set_record_data(...)` / `get_record(...)` | Registry record storage |

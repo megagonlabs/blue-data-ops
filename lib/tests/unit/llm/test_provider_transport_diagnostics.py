@@ -36,6 +36,9 @@ def _attach_retry_evidence(error: Any, name: str) -> None:
 @pytest.mark.parametrize("mode", ["sync", "async", "observed"])
 def test_genuine_provider_transport_attempts_and_diagnostics(mode: str) -> None:
     if __name__ != "__main__":
+        from tests.optional_integrations import require_optional
+
+        require_optional("litellm")
         result = subprocess.run(
             [sys.executable, "-B", __file__, mode],
             capture_output=True,

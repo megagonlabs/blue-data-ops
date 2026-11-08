@@ -12,10 +12,8 @@ import pytest
 from blue_data_ops.data import RegistrySeam
 from blue_data_ops.operators import active_registry, default_registry, versioned_registry
 from blue_data_ops.plan import DataPipeline, PipelineExecutor
-from blue_data_ops_cli import config
-from blue_data_ops_cli.commands import cli
-from click.testing import CliRunner
 from mcp.shared.memory import create_connected_server_and_client_session
+from optional_integrations import require_optional
 
 from blue_data_ops_mcp.server import create_server
 
@@ -40,13 +38,23 @@ def test_real_provider_bn_diagnostics_across_four_surfaces(
     case: str,
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    require_optional("blue_data_ops_cli")
+    config: Any = importlib.import_module("blue_data_ops_cli.config")
+    profile_home = tmp_path / "profiles"
+    monkeypatch.setenv("BLUE_DATA_OPS_HOME", str(profile_home))
+    assert Path(config.cli_home()).resolve().is_relative_to(tmp_path.resolve())
     asyncio.run(check_surfaces(selector, case, tmp_path, caplog))
 
 
 async def check_surfaces(
     selector: str, case: str, directory: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    from click.testing import CliRunner
+
+    config: Any = importlib.import_module("blue_data_ops_cli.config")
+    cli: Any = importlib.import_module("blue_data_ops_cli.commands").cli
     caplog.set_level(logging.DEBUG)
     lite = importlib.import_module("litellm")
     assert lite.__file__ and "site-packages/litellm/" in lite.__file__
