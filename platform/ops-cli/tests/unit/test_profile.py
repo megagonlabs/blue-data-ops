@@ -1,8 +1,8 @@
-"""The six `profile` subcommands, which the family requires to behave identically.
+"""The six `profile` subcommands, which behave the same as in the other Blue CLIs.
 
 The store's own rules are checked in `test_configstore`. What is checked here is the Click
 layer over it: the three `config` forms, the messages, the confirmation, and the two things
-the checklist adds to the family shape — coded errors and three output formats.
+this CLI adds to the shared shape — coded errors and three output formats.
 """
 
 from __future__ import annotations

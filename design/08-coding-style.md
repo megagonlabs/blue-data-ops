@@ -294,5 +294,5 @@ These are never exported and never reach a caller; they exist so that the conver
 
 Two parts of the error vocabulary are kept for compatibility rather than for current use.
 `ErrorStage.REFINE` and the `REFINEMENT_FAILED` and `REFINEMENT_RESULT_INVALID` codes stay in the enums although 3.0 removed the refinement seam, so a record produced by an earlier release still parses.
-`BlueDataOpsDeprecationWarning` stays importable for the same reason, and 3.0 emits none.
+`BlueDataOpsDeprecationWarning` stays importable for the same reason, and the package emits none.
 [`lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md) is the source of truth for that boundary.

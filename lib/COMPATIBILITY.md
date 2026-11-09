@@ -181,13 +181,7 @@ Code that depended on Blue-exact similarity numbers should treat `blue-data`'s r
 
 The reduce key is spelled six ways across the arithmetic operators: `argmax_key`, `argmin_key`, `avg_key`, `max_key`, `min_key` and `sum_key`. They name the same thing — the key whose values an operator reduces — and a caller moving between two of those operators has to change the attribute name as well as the operator.
 
-These names remain unchanged in this release.
-
-Attribute names are part of the operator contract. They appear in the card each operator publishes, in the generated reference, in the resource package that documents each exact version, in the schema every MCP client reads, and in the attributes map of every existing caller. Collapsing six names to one `key` is a breaking change to all of those at once, and a breaking change to an operator contract belongs in a major release with a migration, not in a minor release whose subject is packaging and documentation.
-
-When it happens, the shape is already decided: accept both spellings for one release with the old name undocumented and the new one published, then drop the old name in the release after. That gives a caller a version in which either spelling works, which a straight rename does not.
-
-Until then, the mapping is the obvious one — each operator's reduce key is its own name followed by `_key`, and `operator inspect` on the command line or the tool schema over MCP will show it.
+Attribute names are part of each operator's published contract: its attribute schema, the generated reference, its resource package and the MCP tool schema. Each operator's reduce key is its own name followed by `_key`; `operator inspect` on the command line or the tool schema over MCP shows it.
 
 ## LLM prompt and SQL execution security changes
 

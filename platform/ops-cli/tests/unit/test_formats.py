@@ -39,7 +39,7 @@ def render_to_string(result: formats.Result, fmt: str, capsys: pytest.CaptureFix
 
 
 # ------------------------------------------------------------- the formats --
-def test_the_advertised_formats_are_the_guide_s_three() -> None:
+def test_the_advertised_formats_are_table_json_and_nl() -> None:
     assert FORMATS == ("table", "json", "nl")
 
 

@@ -15,7 +15,7 @@ This is the first planned published release line. Earlier 3.x distribution numbe
 - HTTP now defaults to `127.0.0.1:8010`, with shared API-key and CSRF guards on streamable HTTP and SSE. Existing clients must configure `BLUE_DATA_OPS_MCP_KEY` and send `X-API-Key` or Bearer authentication. Deliberate no-key HTTP requires `BLUE_DATA_OPS_MCP_AUTH_DISABLED=true`.
 - The dependency floor is blue-data 1.0.0; MCP requires its `server` extra. Supported Python versions are 3.12 and 3.13; Python 3.12 is recommended.
 - Runtime dependencies now bound `jsonpath-ng`, `tenacity`, and `diskcache` below their next major versions, without adding minimum versions. The core no longer declares Jinja2 directly; prompt placeholders use the standard library. Development extras pin Ruff 0.17.3 and Pyright 1.1.414.
-- Package metadata now identifies the custom terms as `LicenseRef-BlueData` and selects `LICENSE` and `NOTICE`. The legal files are unchanged.
+- Package metadata now identifies the custom terms as `LicenseRef-BlueData` and selects `LICENSE` and `NOTICE`. The `LICENSE` text is unchanged.
 - The checkout includes the five CLI JSON examples, the Code of Conduct, disclosures, dataset and OSS inventories, and matching NOTICE files.
 
 **Added**

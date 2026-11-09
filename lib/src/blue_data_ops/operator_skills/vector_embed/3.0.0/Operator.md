@@ -1,6 +1,6 @@
 # Vector embed
 
-`vector_embed@3.0.0` converts record text into embeddings and processes every supplied group. Resolve this exact version explicitly; ordinary planner and MCP selection remains on version 2.
+`vector_embed@3.0.0` converts record text into embeddings and processes every supplied group.
 
 ## Settings
 

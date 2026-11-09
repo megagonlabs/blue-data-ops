@@ -309,7 +309,7 @@ def test_readme_operator_skill_inventory_matches_the_package_index() -> None:
     assert "All 55 packages declare levels 2 and 3" in readme
     assert "`load()` defaults to level 2" in readme
     assert "`describe().declared_levels` reports the levels available" in readme
-    assert "No package in 3.0 includes level-4 `history.md`" in readme
+    assert "No package in this release includes level-4 `history.md`" in readme
     assert "multipart_query@2.0.0" not in operator_ids
 
     loader = OperatorSkillLoader(versioned_registry())
@@ -324,7 +324,7 @@ def test_readme_documents_available_skill_levels() -> None:
     assert "All 55 packages declare levels 2 and 3" in readme
     assert "`load()` defaults to level 2" in readme
     assert "`describe().declared_levels` reports the levels available" in readme
-    assert "No package in 3.0 includes level-4 `history.md`" in readme
+    assert "No package in this release includes level-4 `history.md`" in readme
 
     loader = OperatorSkillLoader(active_registry())
     assert loader.load("select@2.0.0").requested_level == 2

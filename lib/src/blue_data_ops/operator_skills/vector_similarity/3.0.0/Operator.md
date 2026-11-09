@@ -1,6 +1,6 @@
 # Vector similarity
 
-`vector_similarity@3.0.0` compares records from exactly two groups. Cartesian mode produces every left-right pair. Pairwise mode compares matching positions. Resolve this exact version explicitly; ordinary planner and MCP selection remains on version 2.
+`vector_similarity@3.0.0` compares records from exactly two groups. Cartesian mode produces every left-right pair. Pairwise mode compares matching positions.
 
 ## Settings
 

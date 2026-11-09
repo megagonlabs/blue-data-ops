@@ -34,7 +34,7 @@ from blue_data_ops_mcp.schema import RunResult, handler_signature
 
 # The adapter-committed selections are explicit policy, not a semver maximum or registry query.
 # Both tuples are ordered by logical name. V2_OPERATOR_IDS preserves the retained historical-v2
-# selection; ACTIVE_OPERATOR_IDS is the ordinary 3.0 deployment default.
+# selection; ACTIVE_OPERATOR_IDS is the default deployment selection.
 V2_OPERATOR_IDS: tuple[str, ...] = (
     "argmax@2.0.0",
     "argmin@2.0.0",

@@ -43,7 +43,7 @@ python -m pip install -e ./blue-data-ops/lib
 
 ## 4. Check the install
 
-`active_registry()` is the ordinary 3.0 view of the catalog, and it holds 33 exact operator cards.
+`active_registry()` is the current view of the catalog, and it holds 33 exact operator cards.
 
 ```bash
 python -c "from blue_data_ops.operators import active_registry; print(len(active_registry().list_cards()))"

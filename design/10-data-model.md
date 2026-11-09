@@ -241,7 +241,7 @@ Five stages, in the order the boundary runs them:
 | `VALIDATE` | the validation hook runs and its result is type-checked |
 | `EXECUTE` | the transform runs |
 | `NORMALIZE` | the result is type-checked and empty output is normalized |
-| `REFINE` | retained so a stored 2.x record still decodes; 3.0 produces no record at this stage |
+| `REFINE` | retained so a stored 2.x record still decodes; this release produces no record at this stage |
 
 Nine codes:
 
@@ -253,8 +253,8 @@ Nine codes:
 | `VALIDATION_RESULT_INVALID` | `FAILED` | `VALIDATE` | the validator returned something that is not a usable `ValidationResult` |
 | `EXECUTION_FAILED` | `FAILED` or `RECOVERABLE` | `EXECUTE` | the transform raised, or returned `None`. A missing LLM extra or a host-bound SQL schema mistake is recoverable. |
 | `EXECUTION_RESULT_INVALID` | `FAILED` | `NORMALIZE` | the transform returned something that is not a usable `FunctionResult` |
-| `REFINEMENT_FAILED` | — | `REFINE` | retained for decoding; unused in 3.0 |
-| `REFINEMENT_RESULT_INVALID` | — | `REFINE` | retained for decoding; unused in 3.0 |
+| `REFINEMENT_FAILED` | — | `REFINE` | retained for decoding; unused in this release |
+| `REFINEMENT_RESULT_INVALID` | — | `REFINE` | retained for decoding; unused in this release |
 | `OPERATOR_TIMEOUT` | `TIMEOUT` | `EXECUTE` | the per-call deadline expired |
 
 `EXECUTION_FAILED` is the one code that appears under two categories.
@@ -296,7 +296,7 @@ It is an immutable dataclass and its `operator_id` is always pinned.
 | `description` | `str` | copied from the operator class |
 | `tags` | `tuple[str, ...]` | ordered discovery tags; see 4.3 |
 | `when_to_invoke` | `str` | one sentence of invocation guidance |
-| `deprecated` | `bool` | lifecycle flag. No card in 3.0 sets it. |
+| `deprecated` | `bool` | lifecycle flag. No built-in card sets it. |
 
 ```python
 OperatorCard(

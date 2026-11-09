@@ -136,16 +136,9 @@ are operator attribute names throughout this library. ``host``, ``port``, ``data
 ``login`` are the interesting ones: an account name is not key material, and a data source
 is ordinarily configured with one on the command line.
 
-Those last three are where this list parts from the one the library's discovery operator
-uses to **mask** a discovered registry value, and it parts on purpose. Masking costs nothing
-when the guess is wrong — a username comes out as ``***`` in one message. Refusing costs the
-caller the command they typed. So a name that is ordinary somewhere has to stay usable here
-even where it is worth hiding there.
-
-Discovery folds a key the same way this module does, and keeps its own list for that reason.
-One folding rule used by both, with a list on each side, is the shape this wants; the change
-reaches across both packages and has not been made. Until it is, the folding is written
-twice and nothing checks that the two stay the same.
+Those last three are left out on purpose. A key on this list is refused, and a refusal costs
+the caller the command they typed, so a name that is ordinary on a command line has to stay
+usable here.
 """
 
 _CREDENTIAL_KEY = re.compile(rf"(?:^|_)(?:{'|'.join(CREDENTIAL_WORDS)})(?:$|_)")

@@ -19,8 +19,7 @@ a consumer matches on rather than text it prints, so rewriting one would break t
 
 There is no ``csv``. A record bundle here is ``list[list[dict]]`` — groups of records — and
 CSV has no representation for the group boundary, so flattening one would silently merge
-groups into a single table. The guide lists ``json``, ``table`` and ``nl``, and those are
-what this CLI offers.
+groups into a single table. This CLI offers ``json``, ``table`` and ``nl``.
 
 Stdout carries the result and nothing else. Progress, logs, warnings and errors are the
 caller's other stream, so every format is safe to pipe.

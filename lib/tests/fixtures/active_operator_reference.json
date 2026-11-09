@@ -1,19 +1,17 @@
 {
   "schema_version": 1,
-  "source_instrument": {
-    "instrument_id": "blue-data-ops-core-3.10-active-reference",
-    "document_sha256": "dd8d4a6f0a251597e61bb3fbda867c995a03abf625f670b2ffda2423c83e2f1e",
-    "seal_sha256": "63a789e59716b22426db62ed1ee6afb7d060e56cd589a84fe0a24f40216c8e24"
+  "source": {
+    "id": "operator-reference-v1"
   },
   "conversion": {
     "row_order": "ASCII lexical order by logical operator name; exactly one row per active exact ID.",
-    "identity": "operator_id is the original accepted exact evidence ID; name and version are split without aliasing, latest lookup, or substitution. A live subject must resolve that exact ID and match type.__module__, type.__name__, inspect.getsourcefile(), and the bound source SHA-256 before any case can pass.",
+    "identity": "operator_id is the original exact evidence ID; name and version are split without aliasing, latest lookup, or substitution. A live subject must resolve that exact ID and match type.__module__, type.__name__, inspect.getsourcefile(), and the bound source SHA-256 before any case can pass.",
     "result_projection": {
       "output_data": "Preserve list/group/record order, exact key sets, JSON scalar types, and values. A tensor [[]] is not itself proof of empty or failure.",
       "output_attributes": "Preserve exact keys and ordinary value types. Counts are nonnegative integers; bool and float do not equal an integer count.",
       "is_empty": "Require an actual Boolean. Successful-empty requires no errors; errors with [[]] require false.",
       "errors": "Project each error to exact code and stage. Ignore message, traceback, logs, elapsed time, cost, input_shape, and output_shape.",
-      "floating_point": "Exact by default. The accepted avg output field alone allows absolute tolerance 1e-9, zero relative tolerance, finite int/float only, and excludes bool.",
+      "floating_point": "Exact by default. The avg output field alone allows absolute tolerance 1e-9, zero relative tolerance, finite int/float only, and excludes bool.",
       "non_json_inputs": "Apply only evidence-declared typed transforms or deterministic doubles; never eval arbitrary descriptors."
     },
     "evidence_schemas": {
@@ -67,11 +65,11 @@
         "module": "blue_data_ops.operators.argmax_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "argmax@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -117,11 +115,11 @@
         "module": "blue_data_ops.operators.argmin_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "argmin@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -167,7 +165,7 @@
         "module": "blue_data_ops.operators._avg_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "avg@3.0.0",
         "test_locator": {
@@ -193,7 +191,7 @@
         },
         "failure": {
           "status": "not_applicable",
-          "reason": "The exact active-ID fixture has no approved ordinary execution-failure coordinate for avg."
+          "reason": "No ordinary execution-failure case is recorded for avg."
         }
       },
       "dependency_profile": {
@@ -216,7 +214,7 @@
         "module": "blue_data_ops.operators._classify_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "classify@3.0.0",
         "test_locator": {
@@ -266,7 +264,7 @@
         "module": "blue_data_ops.operators._cluster_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "cluster@3.0.0",
         "test_locator": {
@@ -316,11 +314,11 @@
         "module": "blue_data_ops.operators.create_database_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "create_database@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -365,11 +363,11 @@
         "module": "blue_data_ops.operators.create_table_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "create_table@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -414,7 +412,7 @@
         "module": "blue_data_ops.operators.data_discover_operator"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "data_discover@2.0.0",
         "test_locator": {
@@ -464,11 +462,11 @@
         "module": "blue_data_ops.operators.delete_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "delete@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -490,7 +488,7 @@
         },
         "failure": {
           "status": "not_applicable",
-          "reason": "The pure slicing body has no genuine execution-failure coordinate for a valid record bundle."
+          "reason": "The pure slicing body has no genuine execution-failure case for a valid record bundle."
         }
       },
       "dependency_profile": {
@@ -513,7 +511,7 @@
         "module": "blue_data_ops.operators._insert_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "insert@3.0.0",
         "test_locator": {
@@ -563,7 +561,7 @@
         "module": "blue_data_ops.operators._insert_table_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "insert_table@3.0.0",
         "test_locator": {
@@ -613,7 +611,7 @@
         "module": "blue_data_ops.operators._intersect_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "intersect@3.0.0",
         "test_locator": {
@@ -639,7 +637,7 @@
         },
         "failure": {
           "status": "not_applicable",
-          "reason": "The accepted pure-operation instrument names no separate execution-failure coordinate."
+          "reason": "No separate execution-failure case is recorded for this pure operation."
         }
       },
       "dependency_profile": {
@@ -662,7 +660,7 @@
         "module": "blue_data_ops.operators._join_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "join@3.0.0",
         "test_locator": {
@@ -688,7 +686,7 @@
         },
         "failure": {
           "status": "not_applicable",
-          "reason": "The exact active-ID fixture has no approved ordinary execution-failure coordinate for join."
+          "reason": "No ordinary execution-failure case is recorded for join."
         }
       },
       "dependency_profile": {
@@ -711,7 +709,7 @@
         "module": "blue_data_ops.operators._max_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "max@3.0.0",
         "test_locator": {
@@ -743,7 +741,7 @@
       },
       "dependency_profile": {
         "kind": "none",
-        "setup": "Pure exact-ID direct calls with a narrow coercion double for the failure coordinate."
+        "setup": "Pure exact-ID direct calls with a narrow coercion double for the failure case."
       },
       "discriminators": [
         "No usable value differs from a real zero maximum.",
@@ -761,7 +759,7 @@
         "module": "blue_data_ops.operators._min_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "min@3.0.0",
         "test_locator": {
@@ -793,7 +791,7 @@
       },
       "dependency_profile": {
         "kind": "none",
-        "setup": "Pure exact-ID direct calls with a narrow coercion double for the failure coordinate."
+        "setup": "Pure exact-ID direct calls with a narrow coercion double for the failure case."
       },
       "discriminators": [
         "No usable value differs from a real zero minimum.",
@@ -811,7 +809,7 @@
         "module": "blue_data_ops.operators._nl2bn_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "nl2bn@3.0.0",
         "test_locator": {
@@ -861,7 +859,7 @@
         "module": "blue_data_ops.operators._nl2llm_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "nl2llm@3.0.0",
         "test_locator": {
@@ -911,7 +909,7 @@
         "module": "blue_data_ops.operators._nl2sql_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "nl2sql@3.0.0",
         "test_locator": {
@@ -961,11 +959,11 @@
         "module": "blue_data_ops.operators.normalize_text_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "normalize_text@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -1011,7 +1009,7 @@
         "module": "blue_data_ops.operators._project_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "project@3.0.0",
         "test_locator": {
@@ -1037,7 +1035,7 @@
         },
         "failure": {
           "status": "not_applicable",
-          "reason": "The accepted pure projection instrument names no separate execution-failure coordinate."
+          "reason": "No separate execution-failure case is recorded for this pure projection."
         }
       },
       "dependency_profile": {
@@ -1060,11 +1058,11 @@
         "module": "blue_data_ops.operators.segment_text_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "segment_text@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -1110,11 +1108,11 @@
         "module": "blue_data_ops.operators.select_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "select@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -1137,7 +1135,7 @@
         "failure": {
           "status": "supported",
           "case_id": "select-validator-exception",
-          "summary": "The accepted lax eps string boundary is contained as VALIDATION_FAILED at VALIDATE."
+          "summary": "The lax eps string boundary is contained as VALIDATION_FAILED at VALIDATE."
         }
       },
       "dependency_profile": {
@@ -1160,7 +1158,7 @@
         "module": "blue_data_ops.operators._semantic_extract_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "semantic_extract@3.0.0",
         "test_locator": {
@@ -1210,7 +1208,7 @@
         "module": "blue_data_ops.operators._semantic_filter_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "semantic_filter@3.0.0",
         "test_locator": {
@@ -1260,7 +1258,7 @@
         "module": "blue_data_ops.operators._semantic_join_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "semantic_join@3.0.0",
         "test_locator": {
@@ -1310,7 +1308,7 @@
         "module": "blue_data_ops.operators._semantic_project_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "semantic_project@3.0.0",
         "test_locator": {
@@ -1331,7 +1329,7 @@
         },
         "invalid": {
           "status": "not_observed",
-          "reason": "The accepted family instrument names no separate validation-stage invalid case."
+          "reason": "No separate validation-stage invalid case is recorded."
         },
         "failure": {
           "status": "supported",
@@ -1359,7 +1357,7 @@
         "module": "blue_data_ops.operators._semantic_transform_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "semantic_transform@3.0.0",
         "test_locator": {
@@ -1375,11 +1373,11 @@
         },
         "empty": {
           "status": "not_observed",
-          "reason": "The accepted family instrument has no successful-empty tensor coordinate; an empty object is record data."
+          "reason": "No successful-empty tensor case is recorded; an empty object is record data."
         },
         "invalid": {
           "status": "not_observed",
-          "reason": "The accepted family instrument names no separate validation-stage invalid case."
+          "reason": "No separate validation-stage invalid case is recorded."
         },
         "failure": {
           "status": "supported",
@@ -1407,11 +1405,11 @@
         "module": "blue_data_ops.operators.sum_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "sum@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -1456,11 +1454,11 @@
         "module": "blue_data_ops.operators.union_operator"
       },
       "evidence": {
-        "source_kind": "accepted runtime observation",
+        "source_kind": "recorded runtime observation",
         "schema": "observations",
         "original_operator_id": "union@2.0.0",
         "test_locator": {
-          "kind": "acceptance probe",
+          "kind": "unshipped observation script",
           "node": "def main()"
         }
       },
@@ -1506,7 +1504,7 @@
         "module": "blue_data_ops.operators._vector_embed_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "vector_embed@3.0.0",
         "test_locator": {
@@ -1556,7 +1554,7 @@
         "module": "blue_data_ops.operators._vector_search_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "vector_search@3.0.0",
         "test_locator": {
@@ -1606,7 +1604,7 @@
         "module": "blue_data_ops.operators._vector_similarity_outcome"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "vector_similarity@3.0.0",
         "test_locator": {
@@ -1646,5 +1644,5 @@
       ]
     }
   ],
-  "projection_seal_sha256": "d3d9b6e061f46b547441827275bc05a51303e9c7754e7d687ee4705314a9d1eb"
+  "content_sha256": "51baf0f10f4cf261da00b1a32eff0b137238341500cb375b583e4da2d30bd199"
 }

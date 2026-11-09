@@ -1,9 +1,8 @@
 """``blue-ops operator resource`` — the reviewed package that ships beside an operator.
 
-This is the guide's ``{<subcomponent>}`` slot, and it is a subcomponent rather than a
-component because a resource package has no identity of its own: it is addressed by the
-operator id it belongs to, and it exists only where that operator exists. So it is reachable
-as ``operator resource <action>`` and nowhere else.
+It is a subcomponent rather than a component because a resource package has no identity of
+its own: it is addressed by the operator id it belongs to, and it exists only where that
+operator exists. So it is reachable as ``operator resource <action>`` and nowhere else.
 
 ``export`` carries no ``--format``. An export emits the artifact as it is — here, the
 package Markdown — and re-encoding it as a table or a sentence would not be an export. The
