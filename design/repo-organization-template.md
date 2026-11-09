@@ -7,7 +7,6 @@ records the layout conventions contributors should preserve when adding a packag
 ```text
 blue-data-ops/
 ├── README.md
-├── CHANGELOG.md
 ├── LICENSE
 ├── design/                         # architecture and maintenance rationale
 ├── docs/                           # current user documentation

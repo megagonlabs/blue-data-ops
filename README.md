@@ -22,7 +22,6 @@ See [features](docs/features.md) for the capabilities, [examples](examples/READM
 ```text
 blue-data-ops/
 ├── README.md              # this overview
-├── CHANGELOG.md           # release history
 ├── LICENSE                # repository license
 ├── NOTICE                 # attribution notices
 ├── CODE_OF_CONDUCT.md     # contributor conduct

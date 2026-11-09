@@ -8,7 +8,6 @@ Where every file in the repository lives and why it lives there, one level deepe
 blue-data-ops/
 │
 ├── .gitignore                              # ignore rules for the whole repository: caches, build output, environments
-├── CHANGELOG.md                            # one entry per released version, newest first
 ├── LICENSE                                 # BSD 3-Clause with a NOTICE clause, one copy for all three
 ├── README.md                               # entry point: one-line description, doc links, layout, quickstart, package table
 ├── ruff.toml                               # repository-root lint scope: extends lib/pyproject.toml so examples/ stays linted
@@ -173,10 +172,9 @@ blue-data-ops/
 
 ## Layout Rationale
 
-### `README.md`, `CHANGELOG.md`, `LICENSE`, `.gitignore`, and `ruff.toml`
+### `README.md`, `LICENSE`, `.gitignore`, and `ruff.toml`
 
-Five regular files sit at the root. `README.md`, `CHANGELOG.md`, and `LICENSE` are the ones a reader meets before choosing a direction; `.gitignore` and `ruff.toml` exist for tooling rather than for reading.
-`CHANGELOG.md` carries one entry per released version, newest first, and names the three distributions a version moved.
+`README.md` and `LICENSE` are the root files a reader meets before choosing a direction; `.gitignore` and `ruff.toml` exist for tooling rather than for reading.
 `LICENSE` is a BSD 3-Clause licence with a fourth attribution and NOTICE clause, covering all three distributions from the root.
 `README.md` states what the package is, links [`docs/`](../docs/README.md) and [`examples/README.md`](../examples/README.md), and carries a quickstart that runs on a clean checkout.
 `.gitignore` covers the whole repository, and `lib/.gitignore` adds the package-local entries for the environment and caches that live under `lib/`.

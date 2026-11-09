@@ -170,7 +170,6 @@ The loopback default is a deliberate starting point rather than a recommendation
 | Build | `setuptools>=77.0.3` + `wheel`, `python -m build` | the same three files |
 | Lint scope outside the packages | Ruff, from the repository root | `ruff.toml`, which adds no rules: it extends `lib/pyproject.toml` and sets `src = ["lib/src"]` |
 | License | `LicenseRef-BlueData` with `LICENSE` and `NOTICE` | Project metadata in all three distributions; legal-file bytes are unchanged |
-| Release notes | one entry per released version | `CHANGELOG.md` at the repository root |
 
 Ruff supplies both the linter and the formatter, so a single `line-length = 100` setting governs each.
 Pyright runs in strict mode over `src`, with `tests/stubs` on its extra path in the core so the deterministic fakes for LiteLLM and sentence-transformers resolve during analysis.

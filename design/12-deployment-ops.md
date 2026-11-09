@@ -42,7 +42,6 @@ Explicitly reinstall an older 3.x checkout from the 1.0.0 source.
 A documentation-only change does not move any of the three versions.
 
 The repository carries no Git tags, so a release is identified by its commit and by the version in the `pyproject.toml` at that commit.
-[`../CHANGELOG.md`](../CHANGELOG.md) carries one entry per released version and names which of the three distributions moved.
 
 ---
 
@@ -210,8 +209,7 @@ The pre-publish sequence, all of it manual:
 3. Run `cd lib && python scripts/generate_operator_reference.py --check`, so a stale `OPERATORS.md` stops the release instead of shipping.
 4. Build each distribution with its `scripts/build.sh`.
 5. Run the built-artifact check over the wheels together, which verifies the versions, the exact core pin, and every resource package digest.
-6. Add a `CHANGELOG.md` entry naming each distribution whose version moved and what a caller has to do about it.
-7. Set `TWINE_REPOSITORY_URL` to the intended index and run `scripts/publish.sh` from each package.
+6. Set `TWINE_REPOSITORY_URL` to the intended index and run `scripts/publish.sh` from each package.
 
 Steps 3 and 5 are specific to this repository and are not part of `pytest`.
 

@@ -845,7 +845,7 @@ They are repository maintenance, not a product interface, and they install no en
 | `properties` keys | the cross-cutting dotted keys are public; operator-specific keys are documented per operator in [`../lib/OPERATORS.md`](../lib/OPERATORS.md) |
 | CLI command and option names, the JSON payload keys, and the exit codes | public. A renamed command, a removed option, a renamed payload key, or a moved exit code is a major version of `blue-data-ops-cli`. |
 
-Migration boundaries between release lines are in [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md), for the adapter in [`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md), and for released versions of all three distributions in [`../CHANGELOG.md`](../CHANGELOG.md).
+Migration boundaries between release lines are in [`../lib/COMPATIBILITY.md`](../lib/COMPATIBILITY.md) and, for the adapter, in [`../platform/ops-mcp/README.md`](../platform/ops-mcp/README.md).
 
 HTTP requires the shared API key by default on both streamable HTTP and SSE.
 See the [HTTP bind, authentication and mounted lifespan contract](../docs/mcp.md#http-authentication-and-bind-settings)
