@@ -100,7 +100,7 @@ Examples are available only in the source checkout. The generated `OPERATORS.md`
 
 ### Registry roles
 
-Use `default_registry()` for the raw compatibility view, `active_registry()` for ordinary 3.0 discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 33 exact cards: 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0`. The history factory has 88 cards.
+Use `default_registry()` for the raw compatibility view, `active_registry()` for current discovery and execution, and `versioned_registry()` when migration code needs retained history. The active factory has 33 exact cards: 12 at `@2.0.0`, 20 at `@3.0.0`, and `nl2sql@4.0.0`. The history factory has 88 cards.
 
 <!-- blue-data-ops-test: registry-roles -->
 ```python
@@ -126,7 +126,7 @@ Registry construction does not grant planning authority. A raw override card is 
 
 The private in-memory tables that distinguish reviewed built-ins from raw cards are integrity controls for ordinary planner admission. They are not a tamper-proof isolation boundary against arbitrary same-process code that mutates private registry state.
 
-`OperatorRegistry.resolve()` accepts only `name@<MAJOR.MINOR.PATCH>` and raises `ResolveError` on a miss. The eight retired IDs for `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` at versions 1 and 2 are absent from all 3.0 factories. There is no latest-version fallback at resolution time.
+`OperatorRegistry.resolve()` accepts only `name@<MAJOR.MINOR.PATCH>` and raises `ResolveError` on a miss. The eight retired IDs for `multipart_query`, `nl2query_router`, `plan_discover`, and `query_breakdown` at versions 1 and 2 are absent from every package factory. There is no latest-version fallback at resolution time.
 
 ### Direct execution
 
@@ -318,7 +318,7 @@ operator = catalog.resolve(cards[0].operator_id) if cards else None
 
 ### Operator skill resources
 
-`blue_data_ops.operator_skills` ships 55 exact-version packages: 33 retained `@2.0.0` packages, 21 outcome packages at `@3.0.0`, and `nl2sql@4.0.0`. Every active exact ID has a package. All 55 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in 3.0 includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
+`blue_data_ops.operator_skills` ships 55 exact-version packages: 33 retained `@2.0.0` packages, 21 outcome packages at `@3.0.0`, and `nl2sql@4.0.0`. Every active exact ID has a package. All 55 packages declare levels 2 and 3. `load()` defaults to level 2, which combines the card and live attribute schema with `Operator.md`; level 3 also loads `examples.md`. `describe().declared_levels` reports the levels available for a package. No package in this release includes level-4 `history.md`, so requesting level 4 or another unsupported level raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`. Loading a skill does not invoke the operator or add its text to planner or provider input.
 
 ```python
 from blue_data_ops.operator_skills import OperatorSkillLoader

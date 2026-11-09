@@ -1,7 +1,7 @@
 """The shape of the CLI itself: the tree, the version, the formats, the precedence chain.
 
-These are the claims the compliance checklist makes about every command at once, so they are
-checked against every command at once rather than one at a time in the command's own file.
+These are claims about every command at once, so they are checked against every command at
+once rather than one at a time in the command's own file.
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ def test_every_boolean_option_is_a_bare_flag_defaulting_to_false() -> None:
 
 
 def test_every_resource_is_a_bare_positional() -> None:
-    """The guide's `<name>` convention: the resource is the argument, never an option."""
+    """The `<name>` convention: the resource is the argument, never an option."""
     for label, command in every_command():
         for parameter in command.params:
             if isinstance(parameter, click.Argument):

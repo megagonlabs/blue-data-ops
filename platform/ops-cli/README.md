@@ -98,12 +98,11 @@ The CLI's `blue-ops operator run select@2.0.0` calls the same core operator as t
 The three additional components use repository-specific nouns.
 A `catalog` is a view of the operator registry that later commands can share.
 An `operator` is one of the library's 33 versioned operations; each has a pinned ID, card, tags, attribute schema, and resource package.
-A `pipeline` is a serializable graph of operators, which is what makes `import`, `export` and `inspect` mean here what they mean everywhere else.
+A `pipeline` is a serializable graph of operators.
 `operator resource` is a subcomponent rather than a component because a resource package has no identity of its own: it is addressed by the operator id it belongs to.
 
-There is no `database`, `data` or `schema` component.
-This repository is not a `-source` repository: it has no store of its own, no database behind it, and no stored schema.
-An operator's attribute schema is part of the operator's own description rather than a component, and the data registry those three words would name belongs to `blue-data`, whose CLI already manages it with `source add/sync/query/inspect`.
+There is no `database`, `data` or `schema` component: this CLI has no data store of its own.
+An operator's attribute schema is part of `operator inspect`, and the data registry belongs to `blue-data`, whose CLI manages it with `source add/sync/query/inspect`.
 
 ```bash
 blue-ops metadata inspect
@@ -680,13 +679,13 @@ blue-ops pipeline remove nightly --confirm
 
 Removing a pipeline deletes that pipeline's directory and nothing else.
 
-## Where this departs from the family guide
+## Where this differs from the other Blue CLIs
 
 | Departure | Why |
 |---|---|
-| `run` is a verb outside the standard list | The guide's verbs are `add`, `remove`, `list`, `config`, `select`, `query`, `inspect`, `search`, `import` and `export`. None of them means "apply a transformation to a supplied record bundle and return the result". `query` is the nearest and is the wrong one: everywhere else in the family `query` retrieves from a store, and reusing it here would put one word on two meanings, which the guide forbids more firmly than it forbids a new verb. `run` is the library's own name for the same entry point. |
-| `catalog` is a component the guide does not name | It is this repository's analogue of `database`: a named view selected once that later commands read. `registry` would have collided with the data registry that `blue-data` owns and that this CLI also reads. |
-| `database`, `data` and `schema` are absent | The guide marks them as mostly for the source repositories. This one has no store: records arrive from a file and leave on stdout, so the resource being named is the operator, not the data. Operator attribute schemas are part of `operator inspect`; data schemas belong to the registry and to `blue-data`'s CLI. `profile` and `metadata` are kept, with the family's meanings. |
+| `run` is a verb outside the shared list | The family's shared verbs are `add`, `remove`, `list`, `config`, `select`, `query`, `inspect`, `search`, `import` and `export`. None of them means "apply a transformation to a supplied record bundle and return the result". `query` is the nearest and is the wrong one: everywhere else in the family `query` retrieves from a store, and reusing it here would put one word on two meanings. `run` is the library's own name for the same entry point. |
+| `catalog` is not one of the family's shared components | It is this repository's analogue of `database`: a named view selected once that later commands read. `registry` would have collided with the data registry that `blue-data` owns and that this CLI also reads. |
+| `database`, `data` and `schema` are absent | They are mostly for the source repositories' CLIs. This one has no data store: records arrive from a file and leave on stdout, so the resource being named is the operator, not the data. Operator attribute schemas are part of `operator inspect`; data schemas belong to the registry and to `blue-data`'s CLI. `profile` and `metadata` are kept, with the family's meanings. |
 
 ## What this CLI leaves out
 
@@ -808,7 +807,7 @@ The CLI code is what a script branches on; the library code is what diagnoses th
 | `TIMEOUT` | 9 | An operator run exceeded its time allowance |
 
 `CONFIG` and `PROFILE` share exit 4 and are told apart by the code token.
-Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own families.
+Exits 0 through 5 match the other Blue CLIs; 6 through 9 are this library's own families.
 
 Under `--format json` the same failure is also written to standard output as one object, so a machine consumer gets JSON either way:
 

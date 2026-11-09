@@ -152,7 +152,7 @@ from blue_data_ops import ErrorRecord, ExecMeta, FunctionResult, ValidationResul
 | `ErrorRecord` | `category: ErrorCategory`, `code: ErrorCode`, `operator_id: str`, `stage: ErrorStage`, `message: str`, `retryable: bool`, `suggestion: str \| None` |
 
 `ErrorCode` values: `DEFAULTS_FAILED`, `INVALID_INPUT`, `VALIDATION_FAILED`, `VALIDATION_RESULT_INVALID`, `EXECUTION_FAILED`, `EXECUTION_RESULT_INVALID`, `REFINEMENT_FAILED`, `REFINEMENT_RESULT_INVALID`, `OPERATOR_TIMEOUT`.
-The two `REFINEMENT_*` codes and the `REFINE` stage are retained vocabulary: no 3.0 code path produces them, and old serialized records still decode.
+The two `REFINEMENT_*` codes and the `REFINE` stage are retained vocabulary: no code path in this release produces them, and old serialized records still decode.
 
 The 20 operators active at `@3.0.0` and `nl2sql@4.0.0` may add `input_shape`, `output_shape`, and `elapsed_ms` measurements to `ExecMeta.traces`.
 A missing measurement means unavailable, not zero.
@@ -269,7 +269,7 @@ Loading a resource does not invoke the operator and does not add its text to pla
 | `load(operator_id, level=2)` | `OperatorSkillView` | Level 2 is the card, the live attribute schema, and `Operator.md`; level 3 adds `examples.md`; level 4 adds `history.md` |
 
 All 55 packages declare levels 2 and 3.
-No package ships level-4 `history.md` in 3.0, so requesting level 4 raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
+No package in this release ships level-4 `history.md`, so requesting level 4 raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
 The loader holds no cache, so each call rereads the index; a package that changes between two calls fails the second one rather than serving a mixed view.
 Custom registrations are not eligible.
 

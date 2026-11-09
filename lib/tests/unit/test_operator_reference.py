@@ -24,8 +24,8 @@ def _generator() -> ModuleType:
     return module
 
 
-def _reseal(generator: ModuleType, document: dict[str, Any]) -> dict[str, Any]:
-    document["projection_seal_sha256"] = generator._document_seal(document)
+def _redigest(generator: ModuleType, document: dict[str, Any]) -> dict[str, Any]:
+    document["content_sha256"] = generator._document_digest(document)
     return document
 
 
@@ -72,59 +72,56 @@ def test_source_manifest_includes_the_sdist_only_generator_inputs() -> None:
         assert not evidence_path.is_relative_to(LIB_ROOT / "src")
 
 
-def test_generator_input_is_the_sealed_release_projection() -> None:
+def test_generator_input_is_the_recorded_reference() -> None:
     generator = _generator()
     raw = cast(Path, generator.EVIDENCE_PATH).read_bytes()
 
-    assert hashlib.sha256(raw).hexdigest() == generator.ACCEPTED_PROJECTION_SHA256
+    assert hashlib.sha256(raw).hexdigest() == generator.EVIDENCE_SHA256
     document = json.loads(raw)
-    assert document["source_instrument"] == generator.SOURCE_INSTRUMENT
+    assert document["source"] == generator.REFERENCE_SOURCE
     assert document["active_ids"] == list(generator.CORE_ACTIVE_IDS)
-    assert "processor" not in document
-    assert "artifacts" not in document
-    assert "historical_inputs" not in document
 
 
-def test_sklearn_supplement_is_sealed_separately() -> None:
+def test_sklearn_supplement_has_its_own_digest() -> None:
     generator = _generator()
     path = cast(Path, generator.SUPPLEMENTAL_EVIDENCE_PATH)
     raw = path.read_bytes()
     source_locator = cast(str, generator.SUPPLEMENTAL_SOURCE_LOCATOR)
     source_path = LIB_ROOT.parent / source_locator
 
-    assert hashlib.sha256(raw).hexdigest() == generator.SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256
+    assert hashlib.sha256(raw).hexdigest() == generator.SUPPLEMENTAL_EVIDENCE_SHA256
     document = json.loads(raw)
-    assert document["source_instrument"] == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT
+    assert document["source"] == generator.SUPPLEMENTAL_REFERENCE_SOURCE
     assert (
         hashlib.sha256(source_path.read_bytes()).hexdigest()
-        == generator.SUPPLEMENTAL_SOURCE_INSTRUMENT["evidence_sha256"]
+        == generator.SUPPLEMENTAL_REFERENCE_SOURCE["evidence_sha256"]
     )
     assert document["active_ids"] == list(generator.SUPPLEMENTAL_ACTIVE_IDS)
-    assert generator._document_seal(document) == document["projection_seal_sha256"]
+    assert generator._document_digest(document) == document["content_sha256"]
     rows = generator._validate_evidence(
         document,
         expected_active_ids=generator.SUPPLEMENTAL_ACTIVE_IDS,
-        source_instrument=generator.SUPPLEMENTAL_SOURCE_INSTRUMENT,
+        source=generator.SUPPLEMENTAL_REFERENCE_SOURCE,
     )
-    generator._validate_supplemental_source_instrument(rows)
+    generator._validate_supplemental_source(rows)
 
-    wrong_evidence = copy.deepcopy(generator.SUPPLEMENTAL_SOURCE_INSTRUMENT)
+    wrong_evidence = copy.deepcopy(generator.SUPPLEMENTAL_REFERENCE_SOURCE)
     wrong_evidence["evidence_sha256"] = "0" * 64
-    with pytest.raises(ValueError, match="source instrument seal mismatch"):
-        generator._validate_supplemental_source_instrument(
+    with pytest.raises(ValueError, match="source digest mismatch"):
+        generator._validate_supplemental_source(
             rows,
-            source_instrument=wrong_evidence,
+            source=wrong_evidence,
         )
 
     wrong_rows = copy.deepcopy(rows)
     wrong_rows[0]["claims"]["success"]["summary"] = "changed"
-    with pytest.raises(ValueError, match="source instrument seal mismatch"):
-        generator._validate_supplemental_source_instrument(wrong_rows)
+    with pytest.raises(ValueError, match="source digest mismatch"):
+        generator._validate_supplemental_source(wrong_rows)
 
     wrong_locator = copy.deepcopy(rows)
     wrong_locator[0]["evidence"]["test_locator"]["node"] = "tests/other.py"
     with pytest.raises(ValueError, match="source evidence locator mismatch"):
-        generator._validate_supplemental_source_instrument(wrong_locator)
+        generator._validate_supplemental_source(wrong_locator)
 
 
 def test_combined_load_calls_supplemental_source_validation(
@@ -132,11 +129,11 @@ def test_combined_load_calls_supplemental_source_validation(
 ) -> None:
     generator = _generator()
 
-    def firing_control(_rows: tuple[dict[str, Any], ...]) -> None:
-        raise ValueError("supplemental validation firing control")
+    def negative_control(_rows: tuple[dict[str, Any], ...]) -> None:
+        raise ValueError("supplemental validation negative control")
 
-    monkeypatch.setattr(generator, "_validate_supplemental_source_instrument", firing_control)
-    with pytest.raises(ValueError, match="supplemental validation firing control"):
+    monkeypatch.setattr(generator, "_validate_supplemental_source", negative_control)
+    with pytest.raises(ValueError, match="supplemental validation negative control"):
         generator._load_combined_rows()
 
 
@@ -196,13 +193,13 @@ def test_reference_applies_reader_facing_overrides() -> None:
     assert rewritten_claims == set(generator.CLAIM_TEXT_OVERRIDES)
 
 
-def test_reference_omits_internal_source_case_ids_with_firing_control() -> None:
+def test_reference_omits_internal_source_case_ids_with_negative_control() -> None:
     generator = _generator()
     documents = (
         _document(generator),
         generator._load_evidence(
             generator.SUPPLEMENTAL_EVIDENCE_PATH,
-            expected_sha256=generator.SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256,
+            expected_sha256=generator.SUPPLEMENTAL_EVIDENCE_SHA256,
         ),
     )
     case_ids = tuple(case_id for document in documents for case_id in _supported_case_ids(document))
@@ -298,12 +295,12 @@ def test_evidence_mutations_fail_closed(mutation: str, message: str) -> None:
     elif mutation == "wrong-version":
         document["active_ids"][2] = "avg@2.0.0"
     elif mutation == "wrong-evidence-body":
-        document["rows"][0]["evidence"]["source_kind"] = "accepted expected case"
+        document["rows"][0]["evidence"]["source_kind"] = "recorded expected case"
     else:
         document["rows"][0]["evidence"]["original_operator_id"] = "argmin@2.0.0"
 
     with pytest.raises(ValueError, match=message):
-        generator._validate_evidence(_reseal(generator, document))
+        generator._validate_evidence(_redigest(generator, document))
 
 
 @pytest.mark.parametrize(
@@ -328,7 +325,7 @@ def test_supported_source_case_id_mutations_fail_closed(mutation: str, message: 
                 claim["case_id"] = "one-source-case"
 
     with pytest.raises(ValueError, match=message):
-        generator._validate_evidence(_reseal(generator, document))
+        generator._validate_evidence(_redigest(generator, document))
 
 
 def test_duplicate_json_key_fails_before_mapping(tmp_path: Path) -> None:

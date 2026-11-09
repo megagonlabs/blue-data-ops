@@ -4,10 +4,7 @@ Covers indexing behavior and its negative control, delegation round-trips on a m
 store, a temporary SQLite source, the record listings the planning data context reads,
 and the dependency methods used by the facade.
 
-Source pin: blue-data `1b796fe911c1c94b683f72b8d0881e3252d4447c`. Against the previous
-`0eac5d3` pin the three direct-read methods are byte-identical; `execute_query_nl_tools`
-and `export_data` are new and deliberately unused here; `connect_source()` now requires
-stored `_class` provenance to rehydrate a persisted source.
+`connect_source()` requires stored `_class` provenance to rehydrate a persisted source.
 """
 
 # blue-data ships no py.typed:

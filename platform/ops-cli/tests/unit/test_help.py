@@ -1,10 +1,10 @@
 """Three levels of help, and nothing documented that the runtime does not have.
 
-`--help` is the only documentation a user reaches from inside the CLI, so the checklist asks
-three things of it: that each level exists and says something, that every option with a
-default or a closed set shows it, and that nothing appears there which the command would
-refuse. The last one is checked by comparing the text against the registered parameters
-rather than by reading it.
+`--help` is the only documentation a user reaches from inside the CLI, so three things are
+checked: that each level exists and says something, that every option with a default or a
+closed set shows it, and that nothing appears there which the command would refuse. The last
+one is checked by comparing the text against the registered parameters rather than by
+reading it.
 """
 
 from __future__ import annotations

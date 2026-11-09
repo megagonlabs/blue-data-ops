@@ -77,8 +77,8 @@ PROFILE_VARIABLE = "BLUE_DATA_PROFILE"
 
 # --------------------------------------------------------------- exit codes --
 # 2 belongs to Click, which uses it for usage errors, so the library families start at 3.
-# 0 through 5 carry the meanings the family's other guide-compliant CLI already gave them;
-# 6 through 9 are this library's own families and collide with nothing.
+# 0 through 5 match the other Blue CLIs; 6 through 9 are this library's own families and
+# collide with nothing.
 EXIT_OK = 0
 EXIT_INTERNAL = 1
 EXIT_USAGE = 2
@@ -624,8 +624,8 @@ CATALOGS = ("active", "history")
 """The two views this CLI exposes. ``raw`` is deliberately not one of them; see below."""
 
 _RAW_REFUSAL = (
-    "the raw view is not exposed: its cards carry no tags and no when_to_invoke, and core "
-    "3.x rejects every one of them as planning authority. Use 'active' for the reviewed "
+    "the raw view is not exposed: its cards carry no tags and no when_to_invoke, and the "
+    "planner rejects every one of them as planning authority. Use 'active' for the reviewed "
     "cards, or 'history' for every retained version."
 )
 

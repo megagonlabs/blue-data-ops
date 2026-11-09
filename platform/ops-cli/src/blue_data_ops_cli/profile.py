@@ -1,11 +1,9 @@
 """``blue-ops profile`` — the profile command group, over the local config engine.
 
-A deliberate near-copy of the same module in the family's other CLIs: the CLI checklist
-requires ``profile`` to behave identically across the family, so they are meant to read the
-same, and a fix to one belongs in all of them. The engine underneath (spec, ``.profiles``
-I/O, precedence, secrets) is :mod:`blue_data_ops_cli.configstore` here and
-``blue_data.utils.config`` once the family's shared engine ships; this module is the Click
-layer over it and holds nothing reusable but the prompting.
+The other Blue CLIs carry a near-copy of this module so that ``profile`` behaves the same in
+each; a fix to one belongs in all of them. The engine underneath (spec, ``.profiles`` I/O,
+precedence, secrets) is :mod:`blue_data_ops_cli.configstore`; this module is the Click layer
+over it and holds nothing reusable but the prompting.
 """
 
 from __future__ import annotations

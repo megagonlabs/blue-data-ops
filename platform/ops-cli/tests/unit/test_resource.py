@@ -1,7 +1,7 @@
 """The resource package beside an operator: what is there, and getting it out.
 
-`operator resource` is the guide's subcomponent slot, so the first claim here is a shape
-claim — it is reachable that way and no other. The rest is the loader's own vocabulary
+`operator resource` is a subcomponent, so the first claim here is a shape claim — it is
+reachable that way and no other. The rest is the loader's own vocabulary
 reaching the terminal intact: a level that no package declares is refused in help rather
 than at runtime, and an operator with no package gets the library's own stable code.
 """

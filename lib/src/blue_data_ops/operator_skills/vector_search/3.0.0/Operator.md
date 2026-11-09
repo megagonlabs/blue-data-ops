@@ -1,6 +1,6 @@
 # Vector search
 
-`vector_search@3.0.0` ranks records in each input group against a text query or an embedding query. Resolve this exact version explicitly; ordinary planner and MCP selection remains on version 2.
+`vector_search@3.0.0` ranks records in each input group against a text query or an embedding query.
 
 ## Settings
 

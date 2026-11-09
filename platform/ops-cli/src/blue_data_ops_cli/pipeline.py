@@ -13,8 +13,7 @@ records into ``~/.blue-ops`` and would leave a stored plan the executor refuses 
 again, because a node that has already run cannot run twice. So a run loads from disk,
 executes an in-memory copy, and writes nothing; ``add`` and ``import`` are the only writers.
 
-Pipelines are stored per profile, under ``<profile>/pipeline/<name>/``, which is the
-hierarchy the guide gives for a component's own state.
+Pipelines are stored per profile, under ``<profile>/pipeline/<name>/``.
 """
 
 from __future__ import annotations

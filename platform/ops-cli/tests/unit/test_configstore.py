@@ -73,7 +73,7 @@ def test_the_family_parameters_keep_the_family_names_and_casts() -> None:
 
 
 def test_every_parameter_name_is_uppercase_and_prefixed() -> None:
-    """The checklist's naming row, asserted over the whole spec rather than spot-checked."""
+    """Every parameter name is uppercase and prefixed, checked over the whole spec."""
     for parameter in cli_spec():
         assert parameter.name == parameter.name.upper(), parameter.name
         assert parameter.name.startswith("BLUE_DATA_") or parameter.name == "OPENAI_API_KEY"

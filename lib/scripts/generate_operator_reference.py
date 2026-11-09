@@ -20,7 +20,7 @@ SUPPLEMENTAL_EVIDENCE_PATH = (
     LIB_ROOT / "tests" / "fixtures" / "sklearn_estimator_active_reference.json"
 )
 SUPPLEMENTAL_SOURCE_LOCATOR = "lib/tests/unit/operators/test_sklearn.py"
-ACCEPTED_PROJECTION_SHA256 = "5c38499246bc80a503c17545fd37e2203384086b409573fdb3c453cedbffac3c"
+EVIDENCE_SHA256 = "a0257124891894308513a5ab40819bd7411bc4366b52f1fea79d70427b73bbe4"
 # Keep archived evidence intact while binding maintenance changes to exact source.
 _CURRENT_IMPLEMENTATION_BINDINGS: dict[str, tuple[str, str]] = {
     "create_database@2.0.0": (
@@ -44,18 +44,12 @@ _CURRENT_IMPLEMENTATION_BINDINGS: dict[str, tuple[str, str]] = {
         "bffdf429bd7413b4ebc30b5e77c755f83767daca0e92266ca7c8a76a8a84b0b7",
     ),
 }
-SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256 = (
-    "09420f91763092548d10b5918b39661ae724189728c8da537ef36810807802c8"
-)
-SOURCE_INSTRUMENT = {
-    "instrument_id": "blue-data-ops-core-3.10-active-reference",
-    "document_sha256": "dd8d4a6f0a251597e61bb3fbda867c995a03abf625f670b2ffda2423c83e2f1e",
-    "seal_sha256": "63a789e59716b22426db62ed1ee6afb7d060e56cd589a84fe0a24f40216c8e24",
-}
-SUPPLEMENTAL_SOURCE_INSTRUMENT = {
-    "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence-r2",
+SUPPLEMENTAL_EVIDENCE_SHA256 = "504ac56a0c16b3a5c9902d3f709ab8141dcb04d705d2a245b6f5f40431cc5610"
+REFERENCE_SOURCE = {"id": "operator-reference-v1"}
+SUPPLEMENTAL_REFERENCE_SOURCE = {
+    "id": "sklearn-estimator-reference-v1",
     "evidence_sha256": "855dd26d04cf42daa1c656444618baa35b468fcc1e0d724585177f2a97a988b6",
-    "seal_sha256": "55f5e36b126e352c0476c19b23b09be1945eb30da4ca3ffa4aa8aa70c800caa8",
+    "digest_sha256": "3eb5c3113128134eca2abbf55736e0ee4f15323a2f968106532c066719cdd962",
 }
 CORE_ACTIVE_IDS = (
     "argmax@2.0.0",
@@ -105,11 +99,11 @@ EXPECTED_ACTIVE_IDS = tuple(
 )
 TOP_LEVEL_KEYS = {
     "schema_version",
-    "source_instrument",
+    "source",
     "conversion",
     "active_ids",
     "rows",
-    "projection_seal_sha256",
+    "content_sha256",
 }
 ROW_KEYS = {
     "operator_id",
@@ -185,7 +179,7 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 def _load_evidence(
     path: Path = EVIDENCE_PATH,
     *,
-    expected_sha256: str | None = ACCEPTED_PROJECTION_SHA256,
+    expected_sha256: str | None = EVIDENCE_SHA256,
 ) -> dict[str, Any]:
     raw = path.read_bytes()
     if expected_sha256 is not None and _sha256(raw) != expected_sha256:
@@ -196,19 +190,19 @@ def _load_evidence(
     return cast(dict[str, Any], value)
 
 
-def _document_seal(document: dict[str, Any]) -> str:
-    projection = copy.deepcopy(document)
-    projection.pop("projection_seal_sha256", None)
-    return _sha256(_canonical_bytes(projection))
+def _document_digest(document: dict[str, Any]) -> str:
+    content = copy.deepcopy(document)
+    content.pop("content_sha256", None)
+    return _sha256(_canonical_bytes(content))
 
 
-def _supplemental_source_seal(
-    source_instrument: dict[str, str],
+def _supplemental_source_digest(
+    source: dict[str, str],
     rows: tuple[dict[str, Any], ...],
 ) -> str:
     lines = [
-        source_instrument["instrument_id"],
-        f"{source_instrument['evidence_sha256']}  {SUPPLEMENTAL_SOURCE_LOCATOR}",
+        source["id"],
+        f"{source['evidence_sha256']}  {SUPPLEMENTAL_SOURCE_LOCATOR}",
         *(
             f"{_sha256(_canonical_bytes(row))}  {row['operator_id']}"
             for row in sorted(rows, key=lambda row: row["operator_id"])
@@ -217,36 +211,36 @@ def _supplemental_source_seal(
     return _sha256(("\n".join(lines) + "\n").encode())
 
 
-def _validate_supplemental_source_instrument(
+def _validate_supplemental_source(
     rows: tuple[dict[str, Any], ...],
     *,
-    source_instrument: dict[str, str] = SUPPLEMENTAL_SOURCE_INSTRUMENT,
+    source: dict[str, str] = SUPPLEMENTAL_REFERENCE_SOURCE,
 ) -> None:
-    if set(source_instrument) != {
-        "instrument_id",
+    if set(source) != {
+        "id",
         "evidence_sha256",
-        "seal_sha256",
+        "digest_sha256",
     }:
-        raise ValueError("supplemental source instrument fields differ")
+        raise ValueError("supplemental source fields differ")
     locators = tuple(row["evidence"]["test_locator"]["node"] for row in rows)
     if locators != (SUPPLEMENTAL_SOURCE_LOCATOR,):
         raise ValueError("supplemental source evidence locator mismatch")
-    if _supplemental_source_seal(source_instrument, rows) != source_instrument["seal_sha256"]:
-        raise ValueError("supplemental source instrument seal mismatch")
+    if _supplemental_source_digest(source, rows) != source["digest_sha256"]:
+        raise ValueError("supplemental source digest mismatch")
 
 
 def _validate_evidence(
     document: dict[str, Any],
     *,
     expected_active_ids: tuple[str, ...] = CORE_ACTIVE_IDS,
-    source_instrument: dict[str, str] = SOURCE_INSTRUMENT,
+    source: dict[str, str] = REFERENCE_SOURCE,
 ) -> tuple[dict[str, Any], ...]:
     if set(document) != TOP_LEVEL_KEYS:
         raise ValueError("active-reference top-level keys differ")
     if document.get("schema_version") != 1:
         raise ValueError("active-reference schema_version must be 1")
-    if document.get("source_instrument") != source_instrument:
-        raise ValueError("active-reference source instrument provenance mismatch")
+    if document.get("source") != source:
+        raise ValueError("active-reference source mismatch")
     raw_conversion = document.get("conversion")
     if type(raw_conversion) is not dict:
         raise ValueError("active-reference conversion provenance is incomplete")
@@ -260,8 +254,8 @@ def _validate_evidence(
         raise ValueError("active-reference conversion provenance is incomplete")
     if any(not conversion[key] for key in conversion):
         raise ValueError("active-reference conversion provenance is empty")
-    if _document_seal(document) != document.get("projection_seal_sha256"):
-        raise ValueError("active-reference seal mismatch")
+    if _document_digest(document) != document.get("content_sha256"):
+        raise ValueError("active-reference digest mismatch")
     if tuple(document.get("active_ids", ())) != expected_active_ids:
         raise ValueError("active-reference exact ID set or order mismatch")
 
@@ -322,13 +316,13 @@ def _validate_evidence(
         if evidence.get("original_operator_id") != operator_id:
             raise ValueError(f"{operator_id}: original exact evidence ID mismatch")
         if evidence.get("source_kind") not in {
-            "accepted runtime observation",
-            "accepted expected case",
+            "recorded runtime observation",
+            "recorded expected case",
         } or evidence.get("schema") not in {"observations", "cases"}:
             raise ValueError(f"{operator_id}: evidence source is invalid")
         if (evidence["source_kind"], evidence["schema"]) not in {
-            ("accepted runtime observation", "observations"),
-            ("accepted expected case", "cases"),
+            ("recorded runtime observation", "observations"),
+            ("recorded expected case", "cases"),
         }:
             raise ValueError(f"{operator_id}: evidence source/schema mismatch")
         raw_locator = evidence.get("test_locator")
@@ -338,7 +332,7 @@ def _validate_evidence(
         if set(locator) != {"kind", "node"}:
             raise ValueError(f"{operator_id}: evidence test locator is missing")
         if locator.get("kind") not in {
-            "acceptance probe",
+            "unshipped observation script",
             "product regression test",
         } or not locator.get("node"):
             raise ValueError(f"{operator_id}: evidence test locator is missing")
@@ -380,15 +374,15 @@ def _load_combined_rows(
     core = _load_evidence(evidence_path)
     supplemental = _load_evidence(
         supplemental_evidence_path,
-        expected_sha256=SUPPLEMENTAL_ACCEPTED_PROJECTION_SHA256,
+        expected_sha256=SUPPLEMENTAL_EVIDENCE_SHA256,
     )
     core_rows = _validate_evidence(core)
     supplemental_rows = _validate_evidence(
         supplemental,
         expected_active_ids=SUPPLEMENTAL_ACTIVE_IDS,
-        source_instrument=SUPPLEMENTAL_SOURCE_INSTRUMENT,
+        source=SUPPLEMENTAL_REFERENCE_SOURCE,
     )
-    _validate_supplemental_source_instrument(supplemental_rows)
+    _validate_supplemental_source(supplemental_rows)
     rows_by_id = {row["operator_id"]: row for row in (*core_rows, *supplemental_rows)}
     if len(rows_by_id) != len(core_rows) + len(supplemental_rows):
         raise ValueError("active-reference evidence sets overlap")

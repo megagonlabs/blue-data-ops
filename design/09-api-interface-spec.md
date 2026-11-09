@@ -61,11 +61,11 @@ And sixteen other names:
 | `DataRegistryProvider` | abstract class | the provider contract for constructing a registry |
 | `BlueDataRegistryProvider` | class | the default provider, caching one registry per name pair |
 | `resolve_registry` | function | resolve an injected registry or construct one from properties |
-| `BlueDataOpsDeprecationWarning` | warning class | the category the 2.x lifecycle surface used. 3.0 emits it nowhere and keeps it importable. |
+| `BlueDataOpsDeprecationWarning` | warning class | the category the 2.x lifecycle surface used. The package emits it nowhere and keeps it importable. |
 | `utils` | module | the platform-compatible helpers, re-exported as a submodule |
 
 The 33rd active operator's class, `SklearnEstimator`, is reachable from `blue_data_ops.operators` rather than from the top level, and its class name has no `Operator` suffix.
-Both are deliberate: it arrived after the top-level surface was settled, and the registry is the intended way to reach it.
+The registry is the intended way to reach it.
 
 Every type name in this table is also importable from `blue_data_ops.operators`, except `Tool`, `RegistrySeam`, `DataRegistryProvider`, `BlueDataRegistryProvider`, `resolve_registry`, `BlueDataOpsDeprecationWarning`, and `utils`, which live in `blue_data_ops.tools`, `blue_data_ops.data`, and the package root.
 
@@ -814,7 +814,7 @@ Ten codes, one per failure family, each carrying the library's own code in the d
 | `EXECUTION` | 8 | an operator run returned a failed `ErrorRecord` |
 | `TIMEOUT` | 9 | an operator run exceeded its allowance |
 
-Exits 0 through 5 carry the meanings the family's other guide-compliant CLI gave them; 6 through 9 are this library's own failure families.
+Exits 0 through 5 match the other Blue CLIs; 6 through 9 are this library's own failure families.
 
 ### 4.5 Secrets
 

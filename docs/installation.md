@@ -44,9 +44,7 @@ validates and installs that same source's `[server]` extra. CLI alone does not n
 
 All three distributions in this checkout declare 1.0.0. If an environment already contains
 a numerically higher core version, select `==1.0.0` explicitly; an unqualified upgrade may
-retain or choose the higher version. Before publishing, check that all three 1.0.0
-distribution names are available on the intended package index. Published versions are
-immutable; resolve any version conflict before uploading.
+retain or choose the higher version.
 
 ## Path 1: editable source install
 
@@ -97,7 +95,6 @@ This is the direct path for a contributor, and the one [quickstart.md](quickstar
 | `dev` | `numpy`, `scikit-learn`, `tenacity<10`, `diskcache<6`, `openai>=2.54,<3`, `pytest`, `pytest-asyncio`, `pytest-recording`, `pytest-cov`, `ruff==0.17.3`, `pyright==1.1.414`, `build`, `twine` | running the tests, the linters, and the build |
 
 The package bounds `jsonpath-ng` below 2, `tenacity` below 10, and `diskcache` below 6 without adding minimum versions. `blue-data` retains its `>=1.0.0` minimum and adds `<2`.
-The next major version of each requires a compatibility review.
 
 Both `openai` and `llm` require `openai>=2.54,<3`; `openai` leaves out LiteLLM. Other Blue packages declare their own extras.
 
@@ -117,14 +114,7 @@ Install `vector` only when you need embedding generation or search; `vector_simi
 Install the `build` frontend (also included in `dev`) for all three builds. The backend requirements and runtime dependencies still need a configured package index or wheelhouse. Run these commands from the directory containing both checkouts.
 `lib/scripts/build.sh` clears the component's `build/` and `dist/`, runs `python -m build`, then checks the wheel.
 It writes `blue_data_ops-1.0.0-py3-none-any.whl` and `blue_data_ops-1.0.0.tar.gz` into `lib/dist/`.
-The core checker expects `.py`, `.json`, `.md` and `py.typed` files from the `src/` working tree, excluding `__pycache__`.
-It examines every ZIP member, rejects duplicate or noncanonical names, outside members and undeclared package files of any suffix, and compares expected file bytes.
-Package directory records must be parents of expected files; current dist-info directory records must be parents of actual metadata files.
-The adapters also reject noncanonical names before their existing membership checks.
-The check runs in the build and publish wrappers; a direct `python -m build` neither cleans nor invokes it.
-The guard compares with the working tree rather than Git HEAD and does not validate dist-info contents, RECORD or entry points.
-It adds no general sdist-contamination guarantee and does not clear `*.egg-info`.
-Wheel lookup and the metadata prefix assume the version in `pyproject.toml` is already canonical.
+The check compares the wheel's package files with the `src/` working tree. It runs in the build and publish wrappers; a direct `python -m build` neither cleans nor invokes it.
 
 ```bash
 python -m pip install build

@@ -9,7 +9,7 @@ The ML, vector, and LLM sections say which extra they need.
 ## Setup: pick a registry view
 
 Start from `active_registry()`.
-It is the ordinary 3.0 view, and it holds the 33 exact cards that current discovery and execution use.
+It is the current view, and it holds the 33 exact cards that current discovery and execution use.
 
 ```python
 from blue_data_ops.operators import active_registry
@@ -281,7 +281,7 @@ print(skill.io.attributes["question"].required)    # True
 
 Level 2 is the default and combines the card and the live attribute schema with the operator guide.
 Level 3 adds worked examples.
-Nothing in 3.0 declares level 4, so asking for it raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
+Nothing in this release declares level 4, so asking for it raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
 
 Check eligibility before you expand a card from the history view.
 Not every historical card has a package.

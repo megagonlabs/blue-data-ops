@@ -152,7 +152,7 @@ The same catalog is exposed three ways, because discovery, execution, and migrat
 
 | Factory | Cards | Use it for |
 |---|---|---|
-| `active_registry()` | 33 | ordinary 3.0 discovery and execution |
+| `active_registry()` | 33 | current discovery and execution |
 | `default_registry()` | 33 | the raw v1-compatible view, with per-name version overrides |
 | `versioned_registry()` | 88 | retained history, when migration code must resolve a 1.x or 2.x card |
 
@@ -240,7 +240,7 @@ print(skill.io.attributes["question"].required)          # True
 ```
 
 Level 2 combines the card and live attribute schema with the operator guide; level 3 adds worked examples.
-No package in 3.0 carries level 4, so asking for it raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
+No package in this release carries level 4, so asking for it raises `OperatorSkillLoadError` with code `NOT_AVAILABLE`.
 
 ## Registry-backed database operations
 

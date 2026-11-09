@@ -1,9 +1,8 @@
 """Nothing is reachable except as `<component> {<subcomponent>} <action>`.
 
-The guide gives one command shape and the checklist asks that every command follow it. That
-is a claim about the tree rather than about any one command, and the way it breaks is a
-convenience action added at the root — `blue-ops list`, `blue-ops run` — which reads fine on
-its own and leaves the CLI with two grammars.
+Every command follows one shape. That is a claim about the tree rather than about any one
+command, and the way it breaks is a convenience action added at the root — `blue-ops list`,
+`blue-ops run` — which reads fine on its own and leaves the CLI with two grammars.
 """
 
 from __future__ import annotations
@@ -18,13 +17,13 @@ from blue_data_ops_cli.commands import cli
 STANDARD_VERBS = frozenset(
     {"add", "remove", "list", "config", "select", "query", "inspect", "search", "import", "export"}
 )
-"""The guide's verb list. Anything outside it is a documented deviation, not an accident."""
+"""The shared Blue CLI verbs. Any other verb must be listed in NON_STANDARD_VERBS."""
 
 NON_STANDARD_VERBS = frozenset({"run"})
-"""Verbs this CLI introduces, each argued in the README and in the design.
+"""Verbs this CLI introduces.
 
 `run` means "apply a transformation to supplied records and return the result". No standard
-verb covers that, and `query` means "retrieve from a store" everywhere else in the family.
+verb covers that, and `query` means "retrieve from a store" in the other Blue CLIs.
 """
 
 SYNONYMS = frozenset({"create", "delete", "show", "set", "register", "sync", "get", "update"})

@@ -7,8 +7,7 @@ raw`` is refused with the reason rather than with an unknown-value message, and
 :mod:`blue_data_ops_cli.config` owns that refusal so every command carrying ``--catalog``
 gives the same answer.
 
-A catalog is selected once and every later command reads it, which is the role the family's
-``database`` component plays in a ``-source`` repository. The selection is written to
+A catalog is selected once and every later command reads it. The selection is written to
 ``<profile>/.selected.catalog`` and sits under ``BLUE_DATA_OPS_CATALOG`` in the precedence
 chain, because the parameter is reachable from the environment and a file on disk is not.
 """

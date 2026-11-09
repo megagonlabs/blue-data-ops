@@ -6,10 +6,8 @@ reported back, because a run that silently chose a version is a run nobody can r
 In a catalog holding more than one version of that name the bare form is refused instead,
 with the versions listed: picking the highest would be a guess dressed as a resolution.
 
-``run`` is the one verb here outside the guide's list. It means "apply a transformation to
-supplied records and return the result", which no standard verb covers; ``query`` means
-"retrieve from a store" everywhere else in the family, and reusing it would put one word on
-two behaviours. The README argues it again where a user reads it.
+``run`` applies a transformation to supplied records and returns the result. It is not
+called ``query`` because ``query`` means "retrieve from a store" in the other Blue CLIs.
 """
 
 from __future__ import annotations

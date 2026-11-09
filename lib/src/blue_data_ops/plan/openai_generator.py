@@ -321,8 +321,8 @@ class OpenAIPlanGenerator:
             raise _invalid_generator("plan generator requires an operator registry")
         if type(send_data_context) is not bool:
             raise _invalid_generator("send_data_context must be a bool")
-        # v2.1 ships one selector, and it accepts exactly one candidate. Allowing a
-        # larger value here would advertise a capability nothing downstream honors.
+        # The selector accepts exactly one candidate. Allowing a larger value here would
+        # advertise a capability nothing downstream honors.
         if type(max_candidates) is not int or max_candidates != 1:
             raise _invalid_generator("max_candidates must be 1")
         if type(timeout_seconds) not in {int, float} or type(timeout_seconds) is bool:

@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "source_instrument": {
-    "instrument_id": "blue-data-ops-sklearn-estimator-2.0-regression-evidence-r2",
+  "source": {
+    "id": "sklearn-estimator-reference-v1",
     "evidence_sha256": "855dd26d04cf42daa1c656444618baa35b468fcc1e0d724585177f2a97a988b6",
-    "seal_sha256": "55f5e36b126e352c0476c19b23b09be1945eb30da4ca3ffa4aa8aa70c800caa8"
+    "digest_sha256": "3eb5c3113128134eca2abbf55736e0ee4f15323a2f968106532c066719cdd962"
   },
   "conversion": {
     "row_order": "ASCII lexical order by logical operator name; exactly one row per active exact ID.",
@@ -36,7 +36,7 @@
         "module": "blue_data_ops.operators.sklearn_estimator"
       },
       "evidence": {
-        "source_kind": "accepted expected case",
+        "source_kind": "recorded expected case",
         "schema": "cases",
         "original_operator_id": "sklearn_estimator@2.0.0",
         "test_locator": {
@@ -76,5 +76,5 @@
       ]
     }
   ],
-  "projection_seal_sha256": "44f963c3f06004828b67d20320d58e45deb2f1f8492a0d9ed39e7171bf4c175b"
+  "content_sha256": "cba35c8edba9540e6cc33771e5d04730ebeec0c9ee4344a6429ef3a70a95eadb"
 }

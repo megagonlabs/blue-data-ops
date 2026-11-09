@@ -147,14 +147,12 @@ def load_fixture(path: Path = FIXTURE) -> dict[str, Any]:
     assert fixture.keys() == {
         "schema_version",
         "operator_version",
-        "baseline_core_version",
         "cases",
         "runner_requirements",
         "limitations",
     }
     exact(fixture["schema_version"], 1)
     assert fixture["operator_version"] == "3.0.0"
-    assert fixture["baseline_core_version"] == "2.8.0"
     cases: list[dict[str, Any]] = fixture["cases"]
     assert type(cases) is list and len(cases) == 25
     assert len({case["id"] for case in cases}) == 25
